@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>同行计划 - 可编辑旅行计划</title>
+    <link rel="preconnect" href="https://images.unsplash.com" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="旅行概览">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true"><i data-lucide="map"></i></div>
+          <div>
+            <p class="eyebrow">Tripboard</p>
+            <h1 id="tripName">京都 6 日同行计划</h1>
+          </div>
+        </div>
+
+        <section class="trip-card">
+          <div class="trip-cover" id="tripCover" role="img" aria-label="旅行封面"></div>
+          <div class="trip-meta">
+            <span><i data-lucide="calendar-days"></i><span id="tripDateRange">6月4日 - 6月9日</span></span>
+            <span><i data-lucide="users-round"></i>4 位成员在线协作</span>
+          </div>
+          <div class="avatar-row" aria-label="当前在线成员">
+            <span class="avatar a1">林</span>
+            <span class="avatar a2">周</span>
+            <span class="avatar a3">M</span>
+            <span class="avatar a4">许</span>
+            <span class="online-dot"></span>
+          </div>
+        </section>
+
+        <section class="collab-panel">
+          <div class="section-title">
+            <span>多人协作</span>
+            <strong id="collabMode">本地模式</strong>
+          </div>
+          <label class="collab-field">
+            你的名字
+            <input id="collabName" placeholder="例如：林" />
+          </label>
+          <div class="collab-actions">
+            <button class="text-btn" id="createSharedTripBtn"><i data-lucide="cloud-upload"></i>创建共享计划</button>
+            <button class="text-btn" id="copySharedLinkBtn"><i data-lucide="link"></i>复制链接</button>
+          </div>
+          <p class="helper-text" id="collabStatus">未配置云端时，计划只保存在当前浏览器。</p>
+        </section>
+
+        <nav class="day-list" id="dayList" aria-label="日期列表"></nav>
+
+        <section class="side-block">
+          <div class="section-title">
+            <span>预算</span>
+            <strong id="budgetTotal">¥0 / ¥10,000</strong>
+          </div>
+          <div class="meter" aria-hidden="true"><span id="budgetMeter"></span></div>
+          <div class="budget-grid" id="budgetGrid"></div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="routeLabel">Day 1</p>
+            <h2 id="dayTitle">第1天</h2>
+            <p class="save-state" id="saveState">已保存到本地</p>
+          </div>
+          <div class="top-actions">
+            <button class="icon-btn" id="resetBtn" title="重置示例"><i data-lucide="rotate-ccw"></i></button>
+            <button class="icon-btn" id="exportBtn" title="导出 JSON"><i data-lucide="download"></i></button>
+            <button class="primary-btn" id="shareBtn"><i data-lucide="share-2"></i>分享</button>
+          </div>
+        </header>
+
+        <section class="day-summary">
+          <div id="dayPills"></div>
+          <button class="text-btn" id="addStopBtn"><i data-lucide="plus"></i>新增地点</button>
+        </section>
+
+        <section class="guide-panel">
+          <div class="guide-head">
+            <div>
+              <p class="eyebrow">Guided setup</p>
+              <h3>从模板生成可编辑计划</h3>
+            </div>
+            <span class="guide-progress">可保存</span>
+          </div>
+          <div class="guide-layout">
+            <div class="template-card">
+              <span class="template-label">当前计划</span>
+              <strong id="templateName">京都 6 日同行计划</strong>
+              <p id="guideResult">输入目的地后生成，生成结果可以继续编辑。</p>
+            </div>
+            <div class="guide-controls" aria-label="定制选项">
+              <div class="control-group destination-field">
+                <span>目的地</span>
+                <label class="input-shell">
+                  <i data-lucide="map-pin"></i>
+                  <input id="destinationInput" value="甘肃" aria-label="目的地" />
+                </label>
+              </div>
+              <div class="control-group">
+                <span>天数</span>
+                <label class="stepper-shell">
+                  <button type="button" id="daysMinus" title="减少天数"><i data-lucide="minus"></i></button>
+                  <input id="daysInput" type="number" min="1" max="30" value="6" aria-label="旅行天数" />
+                  <button type="button" id="daysPlus" title="增加天数"><i data-lucide="plus"></i></button>
+                </label>
+              </div>
+              <div class="control-group">
+                <span>旅行节奏</span>
+                <div class="segmented" data-guide-group="pace">
+                  <button class="is-active" data-guide-option="轻松">轻松</button>
+                  <button data-guide-option="均衡">均衡</button>
+                  <button data-guide-option="高强度">高强度</button>
+                </div>
+              </div>
+              <div class="control-group">
+                <span>兴趣偏好</span>
+                <div class="chip-row" data-guide-group="interest">
+                  <button class="chip is-active" data-guide-option="文化">文化</button>
+                  <button class="chip is-active" data-guide-option="美食">美食</button>
+                  <button class="chip" data-guide-option="自然">自然</button>
+                  <button class="chip" data-guide-option="亲子">亲子</button>
+                </div>
+              </div>
+              <div class="control-group">
+                <span>预算档位</span>
+                <div class="segmented" data-guide-group="budget">
+                  <button data-guide-option="节省">节省</button>
+                  <button class="is-active" data-guide-option="舒适">舒适</button>
+                  <button data-guide-option="品质">品质</button>
+                </div>
+              </div>
+              <button class="primary-btn guide-apply" id="applyGuideBtn">
+                <i data-lucide="sparkles"></i>创建计划
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="quick-add-panel">
+          <div class="section-title">
+            <span>快速加入景点</span>
+            <strong>可用高德关键词</strong>
+          </div>
+          <form class="quick-add-form" id="quickAddForm">
+            <label>
+              景点名称
+              <input id="quickPlaceName" placeholder="例如：莫高窟、嘉峪关关城" required />
+            </label>
+            <label>
+              高德地点关键词
+              <input id="quickAmapKeyword" placeholder="例如：甘肃 莫高窟" />
+            </label>
+            <label>
+              预计时间
+              <input id="quickTime" placeholder="09:30" />
+            </label>
+            <label>
+              预算
+              <input id="quickBudget" type="number" min="0" step="1" placeholder="240" />
+            </label>
+            <label class="full">
+              地址/备注
+              <input id="quickAddress" placeholder="可粘贴高德地址、集合点或订单里的地点" />
+            </label>
+            <div class="quick-actions full">
+              <button type="button" class="text-btn" id="openAmapBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
+              <button type="submit" class="primary-btn"><i data-lucide="map-pin-plus"></i>加入当天</button>
+              <button type="button" class="text-btn" id="optimizeRouteBtn"><i data-lucide="wand-sparkles"></i>AI 优化路径</button>
+            </div>
+          </form>
+          <p class="helper-text" id="optimizeHint">优化会根据当前地点的坐标/地图位置重新排序；真实 AI 调用需要接入后端模型接口。</p>
+          <a class="map-link" id="quickAmapLink" href="#" target="_blank" rel="noopener">高德链接会显示在这里</a>
+        </section>
+
+        <section class="timeline-wrap">
+          <div class="timeline-head">
+            <div>
+              <p class="eyebrow">Itinerary</p>
+              <h3>当日行程</h3>
+            </div>
+            <div class="edit-presence"><span class="pulse"></span><span id="presenceText">你正在编辑计划</span></div>
+          </div>
+          <div class="timeline" id="timeline"></div>
+        </section>
+
+        <section class="candidate-panel">
+          <div class="section-title">
+            <span>备选池</span>
+            <strong>点击加入当天</strong>
+          </div>
+          <div class="candidate-grid" id="candidateGrid"></div>
+        </section>
+      </main>
+
+      <aside class="detail-panel" aria-label="地点详情与编辑">
+        <section class="map-panel">
+          <div class="map-toolbar">
+            <span><i data-lucide="route"></i><span id="routeDistance">7.6 km</span></span>
+            <span><i data-lucide="clock-3"></i><span id="routeDuration">58 min</span></span>
+          </div>
+          <div class="map-canvas" id="mapCanvas" aria-label="行程地图"></div>
+        </section>
+
+        <section class="place-detail">
+          <div class="place-photo" id="placePhoto" role="img"></div>
+          <div class="place-body">
+            <div class="place-title-row">
+              <div>
+                <p class="eyebrow" id="placeType">Place</p>
+                <h3 id="placeTitle">选择地点</h3>
+              </div>
+              <button class="icon-btn selected" id="favoriteBtn" title="收藏"><i data-lucide="star"></i></button>
+            </div>
+            <p class="place-address" id="placeAddress"></p>
+            <p class="place-note" id="placeNote"></p>
+            <div class="decision-row">
+              <button class="vote-btn" id="mustVote"><i data-lucide="thumbs-up"></i>必去 <span id="voteCount">0</span></button>
+              <button class="vote-btn" id="commentFocusBtn"><i data-lucide="message-square"></i>评论 <span id="commentCount">0</span></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="editor-panel">
+          <div class="section-title">
+            <span>编辑地点</span>
+            <strong>保存后立即更新</strong>
+          </div>
+          <form class="edit-form" id="stopForm">
+            <label>时间<input id="fieldTime" name="time" placeholder="09:00" /></label>
+            <label>名称<input id="fieldTitle" name="title" placeholder="地点名称" required /></label>
+            <label>类型<input id="fieldType" name="type" placeholder="Museum / Food" /></label>
+            <label>预算<input id="fieldBudget" name="budget" type="number" min="0" step="1" placeholder="人均或项目预算" /></label>
+            <label class="full">地址<input id="fieldAddress" name="address" placeholder="地址或集合点" /></label>
+            <label class="full">高德地点关键词<input id="fieldAmapKeyword" name="amapKeyword" placeholder="例如：甘肃 莫高窟" /></label>
+            <label>经度<input id="fieldLng" name="lng" type="number" step="0.000001" placeholder="可选" /></label>
+            <label>纬度<input id="fieldLat" name="lat" type="number" step="0.000001" placeholder="可选" /></label>
+            <label class="full">标签<input id="fieldTags" name="tags" placeholder="用逗号分隔，比如 必去,日落,需预约" /></label>
+            <label class="full">备注<textarea id="fieldNote" name="note" rows="4" placeholder="写下预订、交通、注意事项"></textarea></label>
+            <a class="map-link full" id="fieldAmapLink" href="#" target="_blank" rel="noopener">生成后可打开高德搜索</a>
+            <div class="form-actions full">
+              <button type="button" class="text-btn" id="amapLookupBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
+              <button type="button" class="text-btn" id="moveUpBtn"><i data-lucide="arrow-up"></i>上移</button>
+              <button type="button" class="text-btn" id="moveDownBtn"><i data-lucide="arrow-down"></i>下移</button>
+              <button type="button" class="danger-btn" id="deleteStopBtn"><i data-lucide="trash-2"></i>删除</button>
+              <button type="submit" class="primary-btn"><i data-lucide="save"></i>保存</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="comments-panel">
+          <div class="section-title">
+            <span>评论</span>
+            <strong id="commentTitle">当前地点</strong>
+          </div>
+          <div class="comment-list" id="commentList"></div>
+          <form class="comment-form" id="commentForm">
+            <input id="commentInput" placeholder="添加同行意见或提醒" />
+            <button class="primary-btn" type="submit"><i data-lucide="send"></i></button>
+          </form>
+        </section>
+
+        <section class="sync-panel">
+          <div class="section-title">
+            <span>外部同步</span>
+            <strong id="syncBadge">可手动导入</strong>
+          </div>
+          <div class="sync-grid">
+            <button class="sync-card" data-provider="美团/点评">
+              <i data-lucide="utensils"></i>
+              <strong>美团/点评</strong>
+              <span>录入餐厅预约、团购券、到店时间</span>
+            </button>
+            <button class="sync-card" data-provider="民宿/酒店">
+              <i data-lucide="house"></i>
+              <strong>民宿/酒店</strong>
+              <span>录入入住时间、地址、房费</span>
+            </button>
+            <button class="sync-card" data-provider="分享/截图">
+              <i data-lucide="file-input"></i>
+              <strong>分享/截图</strong>
+              <span>粘贴链接、短信、邮件里的订单信息</span>
+            </button>
+          </div>
+          <div class="sync-status" id="syncStatus">
+            <i data-lucide="shield-check"></i>
+            <span>真实接入外部 App 前，需要用户授权或平台 API；这里先支持手动导入并写入计划。</span>
+          </div>
+        </section>
+
+        <section class="activity-panel">
+          <div class="section-title">
+            <span>操作记录</span>
+            <strong>本地</strong>
+          </div>
+          <div class="activity-list" id="activityList"></div>
+        </section>
+      </aside>
+    </div>
+
+    <div class="permission-modal" id="importModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-import></div>
+      <section class="permission-dialog" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+        <button class="icon-btn modal-close" data-close-import title="关闭"><i data-lucide="x"></i></button>
+        <p class="eyebrow">Import</p>
+        <h3 id="importTitle">导入外部记录</h3>
+        <p class="permission-copy" id="importCopy">把订单里和行程有关的信息录入计划。</p>
+        <form class="import-form" id="importForm">
+          <label>名称<input id="importName" required placeholder="餐厅预约 / 民宿入住" /></label>
+          <label>时间<input id="importTime" placeholder="18:30" /></label>
+          <label>金额<input id="importBudget" type="number" min="0" step="1" placeholder="320" /></label>
+          <label>地点<input id="importAddress" placeholder="地址或集合点" /></label>
+          <label>备注<textarea id="importNote" rows="4" placeholder="可粘贴订单短信、分享链接、入住规则等"></textarea></label>
+          <div class="modal-actions">
+            <button type="button" class="text-btn" data-close-import>取消</button>
+            <button type="submit" class="primary-btn"><i data-lucide="file-plus-2"></i>导入到当天</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="permission-modal" id="createChoiceModal" aria-hidden="true">
+      <div class="modal-backdrop" data-close-create></div>
+      <section class="permission-dialog create-dialog" role="dialog" aria-modal="true" aria-labelledby="createChoiceTitle">
+        <button class="icon-btn modal-close" data-close-create title="关闭"><i data-lucide="x"></i></button>
+        <p class="eyebrow">Create plan</p>
+        <h3 id="createChoiceTitle">要如何开始这次旅行？</h3>
+        <p class="permission-copy" id="createChoiceCopy">可以先生成一份推荐行程作为参考，也可以创建空白模板自己填写。</p>
+        <div class="choice-grid">
+          <button class="choice-card" id="recommendedPlanBtn">
+            <i data-lucide="sparkles"></i>
+            <strong>生成推荐计划</strong>
+            <span>根据目的地、天数、节奏、兴趣和预算生成参考路线。</span>
+          </button>
+          <button class="choice-card" id="blankPlanBtn">
+            <i data-lucide="file-plus-2"></i>
+            <strong>生成空白模板</strong>
+            <span>只创建日期和待填写地点，适合自己逐步录入。</span>
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="text-btn" data-close-create>取消</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
