@@ -103,13 +103,20 @@
                 </label>
               </div>
               <div class="control-group">
-                <span>天数</span>
-                <label class="stepper-shell">
-                  <button type="button" id="daysMinus" title="减少天数"><i data-lucide="minus"></i></button>
-                  <input id="daysInput" type="number" min="1" max="30" value="6" aria-label="旅行天数" />
-                  <button type="button" id="daysPlus" title="增加天数"><i data-lucide="plus"></i></button>
+                <span>出发日期</span>
+                <label class="input-shell">
+                  <i data-lucide="calendar-days"></i>
+                  <input id="startDateInput" type="date" aria-label="出发日期" />
                 </label>
               </div>
+              <div class="control-group">
+                <span>返程日期</span>
+                <label class="input-shell">
+                  <i data-lucide="calendar-check"></i>
+                  <input id="endDateInput" type="date" aria-label="返程日期" />
+                </label>
+              </div>
+              <p class="date-range-note" id="tripLengthHint">共 6 天，按自然日生成。</p>
               <div class="control-group">
                 <span>旅行节奏</span>
                 <div class="segmented" data-guide-group="pace">
@@ -140,6 +147,52 @@
               </button>
             </div>
           </div>
+        </section>
+
+        <section class="transport-panel">
+          <div class="section-title">
+            <span>当日交通价格</span>
+            <strong id="transportProviderStatus">示例报价</strong>
+          </div>
+          <div class="transport-summary">
+            <div>
+              <span>机票均价</span>
+              <strong id="flightAvgPrice">¥--</strong>
+            </div>
+            <div>
+              <span>动车/高铁均价</span>
+              <strong id="trainAvgPrice">¥--</strong>
+            </div>
+            <p id="transportDayHint">按当前日期生成，可接入携程官方 API 后替换为实时价格。</p>
+          </div>
+          <form class="transport-controls" id="transportFilterForm">
+            <label>
+              类型
+              <select id="transportType">
+                <option value="all">全部</option>
+                <option value="flight">机票</option>
+                <option value="train">动车/高铁</option>
+              </select>
+            </label>
+            <label>
+              出发地
+              <input id="transportFrom" placeholder="例如：上海" />
+            </label>
+            <label>
+              到达地
+              <input id="transportTo" placeholder="例如：兰州" />
+            </label>
+            <label>
+              起始时间
+              <input id="transportStartTime" type="time" />
+            </label>
+            <label>
+              结束时间
+              <input id="transportEndTime" type="time" />
+            </label>
+            <button class="primary-btn" type="submit"><i data-lucide="list-filter"></i>筛选</button>
+          </form>
+          <div class="transport-list" id="transportList"></div>
         </section>
 
         <section class="quick-add-panel">
@@ -270,6 +323,11 @@
             <span>外部同步</span>
             <strong id="syncBadge">可手动导入</strong>
           </div>
+          <button class="provider-login" id="ctripLoginBtn" type="button">
+            <i data-lucide="plane"></i>
+            <strong>携程授权/登录入口</strong>
+            <span>连接开放平台后同步机票、动车、酒店订单；当前不会读取账号密码。</span>
+          </button>
           <div class="sync-grid">
             <button class="sync-card" data-provider="美团/点评">
               <i data-lucide="utensils"></i>
@@ -290,6 +348,10 @@
           <div class="sync-status" id="syncStatus">
             <i data-lucide="shield-check"></i>
             <span>真实接入外部 App 前，需要用户授权或平台 API；这里先支持手动导入并写入计划。</span>
+          </div>
+          <div class="sync-status provider-status" id="ctripStatus">
+            <i data-lucide="info"></i>
+            <span>携程实时票价需要官方开放平台或商旅接口权限；当前交通面板使用可筛选的示例报价。</span>
           </div>
         </section>
 
@@ -335,7 +397,7 @@
           <button class="choice-card" id="recommendedPlanBtn">
             <i data-lucide="sparkles"></i>
             <strong>生成推荐计划</strong>
-            <span>根据目的地、天数、节奏、兴趣和预算生成参考路线。</span>
+            <span>根据目的地、起止日期、节奏、兴趣和预算生成参考路线。</span>
           </button>
           <button class="choice-card" id="blankPlanBtn">
             <i data-lucide="file-plus-2"></i>

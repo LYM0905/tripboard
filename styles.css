@@ -76,6 +76,7 @@ button {
 .candidate-panel,
 .guide-panel,
 .quick-add-panel,
+.transport-panel,
 .map-panel,
 .place-detail,
 .editor-panel,
@@ -275,6 +276,7 @@ button {
 .candidate-panel,
 .guide-panel,
 .quick-add-panel,
+.transport-panel,
 .map-panel,
 .editor-panel,
 .comments-panel,
@@ -507,6 +509,18 @@ button {
   grid-column: span 2;
 }
 
+.date-range-note {
+  align-self: end;
+  margin: 0;
+  padding: 9px 10px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .control-group > span {
   display: block;
   margin-bottom: 8px;
@@ -591,6 +605,134 @@ button {
 .guide-apply {
   align-self: end;
   grid-column: 4;
+}
+
+.transport-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 0.24fr)) minmax(220px, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  margin-bottom: 12px;
+}
+
+.transport-summary > div,
+.transport-summary p {
+  margin: 0;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.transport-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.transport-summary strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.transport-summary p {
+  color: #34464f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.transport-controls {
+  display: grid;
+  grid-template-columns: 0.75fr repeat(4, minmax(110px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.transport-controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.transport-controls input,
+.transport-controls select {
+  width: 100%;
+  min-width: 0;
+  min-height: 39px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.transport-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.transport-item {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.transport-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--green);
+  background: var(--green-2);
+  border-radius: 8px;
+}
+
+.transport-item strong,
+.transport-item span {
+  display: block;
+}
+
+.transport-item strong {
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.transport-item span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.transport-item em {
+  color: var(--coral);
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  font-size: 13px;
 }
 
 .quick-add-form {
@@ -1044,6 +1186,34 @@ button {
   gap: 9px;
 }
 
+.provider-login {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 4px 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 76px;
+  margin-bottom: 10px;
+  padding: 12px;
+  color: var(--ink);
+  text-align: left;
+  background: #fff7ed;
+  border: 1px solid #f2d2ad;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.provider-login i {
+  grid-row: span 2;
+  color: var(--coral);
+}
+
+.provider-login span {
+  color: #76543a;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .sync-card {
   display: grid;
   grid-template-columns: 38px 1fr;
@@ -1082,6 +1252,10 @@ button {
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.provider-status {
+  margin-top: 8px;
 }
 
 .activity-list {
@@ -1220,7 +1394,8 @@ svg {
 
   .activity-panel,
   .sync-panel,
-  .comments-panel {
+  .comments-panel,
+  .transport-panel {
     grid-column: 1 / -1;
   }
 }
@@ -1263,6 +1438,8 @@ svg {
   .guide-controls,
   .edit-form,
   .quick-add-form,
+  .transport-summary,
+  .transport-controls,
   .choice-grid {
     grid-template-columns: 1fr;
   }
@@ -1271,6 +1448,10 @@ svg {
   .guide-apply,
   .quick-add-form .full {
     grid-column: auto;
+  }
+
+  .transport-controls .primary-btn {
+    width: 100%;
   }
 
   .stop-card {
@@ -1314,6 +1495,14 @@ svg {
   .quick-actions .primary-btn,
   .quick-actions .text-btn {
     flex: 1;
+  }
+
+  .transport-item {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .transport-item em {
+    grid-column: 2;
   }
 
   .budget-grid {

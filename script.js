@@ -41,6 +41,69 @@ function clampDays(value) {
   return Math.min(30, Math.max(1, parsed));
 }
 
+function addDays(date, amount) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function parseIsoDate(value) {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function formatIsoDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function weekdayName(date) {
+  return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
+}
+
+function formatDisplayDate(value) {
+  const date = typeof value === "string" ? parseIsoDate(value) : value;
+  if (!date) return "";
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function formatDatedTitle(dateValue, originalTitle, index) {
+  const date = parseIsoDate(dateValue);
+  const suffix = String(originalTitle || "")
+    .replace(/^第\d+天\s*/, "")
+    .replace(/^\d+月\d+日\s*周[一二三四五六日]\s*[·-]?\s*/, "")
+    .trim();
+  return `${formatDisplayDate(date)} ${weekdayName(date)}${suffix ? ` · ${suffix}` : ` · 第${index + 1}天`}`;
+}
+
+function daysBetweenInclusive(startValue, endValue) {
+  const start = parseIsoDate(startValue);
+  const end = parseIsoDate(endValue);
+  if (!start || !end) return 1;
+  const diff = Math.round((end - start) / 86400000) + 1;
+  return clampDays(diff);
+}
+
+function dateRangeText(startValue, endValue) {
+  const start = parseIsoDate(startValue);
+  const end = parseIsoDate(endValue);
+  if (!start || !end) return "自定义日期";
+  return `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
+}
+
+function defaultGuideDates() {
+  const start = addDays(new Date(), 14);
+  const end = addDays(start, 5);
+  return {
+    startDate: formatIsoDate(start),
+    endDate: formatIsoDate(end),
+  };
+}
+
 function amapSearchUrl(keyword) {
   const query = encodeURIComponent(keyword || "");
   return `https://uri.amap.com/search?keyword=${query}&src=tripboard&coordinate=gaode&callnative=1`;
@@ -338,6 +401,31 @@ function buildBlankPlan(destination, dayCount = 3, options = {}) {
   };
 }
 
+function applyPlanDates(plan, startDateValue) {
+  const start = parseIsoDate(startDateValue) || parseIsoDate(formatIsoDate(new Date()));
+  const dayCount = plan.days.length;
+  const finalEndDate = formatIsoDate(addDays(start, dayCount - 1));
+  plan.startDate = formatIsoDate(start);
+  plan.endDate = finalEndDate;
+  plan.dateRange = dateRangeText(plan.startDate, plan.endDate);
+  plan.days.forEach((day, index) => {
+    const date = addDays(start, index);
+    day.date = formatIsoDate(date);
+    day.label = `D${index + 1}`;
+    day.title = formatDatedTitle(day.date, day.title, index);
+  });
+  return plan;
+}
+
+function ensurePlanDates(plan) {
+  if (!plan?.days?.length) return plan;
+  if (plan.startDate && plan.endDate && plan.days.every((day) => day.date)) return plan;
+  const defaults = defaultGuideDates();
+  const startDate = plan.startDate || defaults.startDate;
+  const endDate = plan.endDate || formatIsoDate(addDays(parseIsoDate(startDate), plan.days.length - 1));
+  return applyPlanDates(plan, startDate, endDate);
+}
+
 const dom = {
   tripName: document.querySelector("#tripName"),
   templateName: document.querySelector("#templateName"),
@@ -403,9 +491,20 @@ const dom = {
   applyGuideBtn: document.querySelector("#applyGuideBtn"),
   guideResult: document.querySelector("#guideResult"),
   destinationInput: document.querySelector("#destinationInput"),
-  daysInput: document.querySelector("#daysInput"),
-  daysMinus: document.querySelector("#daysMinus"),
-  daysPlus: document.querySelector("#daysPlus"),
+  startDateInput: document.querySelector("#startDateInput"),
+  endDateInput: document.querySelector("#endDateInput"),
+  tripLengthHint: document.querySelector("#tripLengthHint"),
+  transportProviderStatus: document.querySelector("#transportProviderStatus"),
+  flightAvgPrice: document.querySelector("#flightAvgPrice"),
+  trainAvgPrice: document.querySelector("#trainAvgPrice"),
+  transportDayHint: document.querySelector("#transportDayHint"),
+  transportFilterForm: document.querySelector("#transportFilterForm"),
+  transportType: document.querySelector("#transportType"),
+  transportFrom: document.querySelector("#transportFrom"),
+  transportTo: document.querySelector("#transportTo"),
+  transportStartTime: document.querySelector("#transportStartTime"),
+  transportEndTime: document.querySelector("#transportEndTime"),
+  transportList: document.querySelector("#transportList"),
   amapLookupBtn: document.querySelector("#amapLookupBtn"),
   fieldAmapLink: document.querySelector("#fieldAmapLink"),
   exportBtn: document.querySelector("#exportBtn"),
@@ -427,21 +526,26 @@ const dom = {
   blankPlanBtn: document.querySelector("#blankPlanBtn"),
   syncBadge: document.querySelector("#syncBadge"),
   syncStatus: document.querySelector("#syncStatus"),
+  ctripLoginBtn: document.querySelector("#ctripLoginBtn"),
+  ctripStatus: document.querySelector("#ctripStatus"),
   activityList: document.querySelector("#activityList"),
 };
 
-let state = loadState();
+let state = ensurePlanDates(loadState());
 let activeDay = 0;
 let activeStop = 0;
 let pendingProvider = "";
+let transportFilterApplied = false;
 let supabaseClient = null;
 let realtimeChannel = null;
 let tripId = new URLSearchParams(window.location.search).get("trip") || localStorage.getItem("tripboard-current-trip-id") || "";
 let isApplyingRemote = false;
 let lastRemoteUpdatedAt = "";
+const initialGuideDates = defaultGuideDates();
 const guideState = {
   destination: "甘肃",
-  days: 6,
+  startDate: initialGuideDates.startDate,
+  endDate: initialGuideDates.endDate,
   pace: "轻松",
   budget: "舒适",
   interests: ["文化", "美食"],
@@ -521,6 +625,7 @@ async function loadRemoteState() {
   if (data?.data?.days?.length) {
     isApplyingRemote = true;
     state = data.data;
+    ensurePlanDates(state);
     lastRemoteUpdatedAt = data.updated_at || "";
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     dom.saveState.textContent = `已载入共享计划`;
@@ -548,6 +653,7 @@ function subscribeRemoteState() {
         lastRemoteUpdatedAt = next.updated_at;
         isApplyingRemote = true;
         state = next.data;
+        ensurePlanDates(state);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         dom.saveState.textContent = "收到协作者更新";
         dom.collabStatus.textContent = next.updated_by ? `${next.updated_by} 刚刚更新了计划` : "共享计划已更新";
@@ -603,6 +709,140 @@ function currentDay() {
 function currentStop() {
   const day = currentDay();
   return day?.stops[activeStop] || day?.stops[0];
+}
+
+function guideDayCount() {
+  return daysBetweenInclusive(guideState.startDate, guideState.endDate);
+}
+
+function timeToMinutes(value) {
+  if (!value) return null;
+  const [hour, minute] = value.split(":").map(Number);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+  return hour * 60 + minute;
+}
+
+function addMinutesToTime(value, minutes) {
+  const base = timeToMinutes(value) ?? 0;
+  const next = (base + minutes + 24 * 60) % (24 * 60);
+  return `${String(Math.floor(next / 60)).padStart(2, "0")}:${String(next % 60).padStart(2, "0")}`;
+}
+
+function stableNumber(input) {
+  return Array.from(String(input || "")).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function defaultTransportRoute(day) {
+  const text = day?.route || day?.title || "";
+  const parts = text
+    .split(/[·→\-—]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  let from = parts[0] || "出发城市";
+  let to = parts[1] || state.destination || "目的地";
+  if (from.startsWith("抵达")) {
+    to = from.replace(/^抵达/, "").trim() || state.destination || "目的地";
+    from = "出发城市";
+  }
+  if (/返程|返回/.test(text)) {
+    from = parts[0]?.replace(/返程|返回/g, "").trim() || state.destination || "目的地";
+    to = "返回城市";
+  }
+  return { from, to };
+}
+
+function transportDuration(type, seed) {
+  return type === "flight" ? 105 + (seed % 70) : 145 + (seed % 110);
+}
+
+function buildTransportOptions(day, index) {
+  const { from, to } = defaultTransportRoute(day);
+  const seed = stableNumber(`${state.destination}-${day?.date || index}-${day?.route || ""}`);
+  const flightCodes = ["MU", "CA", "CZ", "HO", "3U", "9C"];
+  const trainCodes = ["G", "D", "C", "G", "D", "G"];
+  const flightTimes = ["07:35", "09:50", "12:20", "15:40", "18:15", "21:05"];
+  const trainTimes = ["06:58", "08:46", "11:18", "14:05", "16:42", "19:30"];
+  const flightBase = 520 + (seed % 360) + index * 28;
+  const trainBase = 180 + (seed % 190) + index * 16;
+
+  const makeOption = (type, time, optionIndex) => {
+    const optionSeed = seed + optionIndex * 37 + (type === "flight" ? 100 : 20);
+    const duration = transportDuration(type, optionSeed);
+    const priceBase = type === "flight" ? flightBase : trainBase;
+    const price = priceBase + optionIndex * (type === "flight" ? 76 : 34) + (optionSeed % (type === "flight" ? 90 : 46));
+    const code =
+      type === "flight"
+        ? `${flightCodes[optionIndex % flightCodes.length]}${1300 + ((seed + optionIndex * 47) % 760)}`
+        : `${trainCodes[optionIndex % trainCodes.length]}${120 + ((seed + optionIndex * 29) % 760)}`;
+    return {
+      id: `${type}-${day?.date || index}-${optionIndex}`,
+      type,
+      code,
+      from,
+      to,
+      depart: time,
+      arrive: addMinutesToTime(time, duration),
+      duration,
+      price,
+      source: "示例报价",
+    };
+  };
+
+  return [
+    ...flightTimes.map((time, optionIndex) => makeOption("flight", time, optionIndex)),
+    ...trainTimes.map((time, optionIndex) => makeOption("train", time, optionIndex)),
+  ];
+}
+
+function averagePrice(options, type) {
+  const scoped = options.filter((item) => item.type === type);
+  if (!scoped.length) return 0;
+  return Math.round(scoped.reduce((sum, item) => sum + item.price, 0) / scoped.length);
+}
+
+function matchesTransportFilter(option) {
+  const type = dom.transportType.value;
+  const from = dom.transportFrom.value.trim();
+  const to = dom.transportTo.value.trim();
+  const start = timeToMinutes(dom.transportStartTime.value);
+  const end = timeToMinutes(dom.transportEndTime.value);
+  const depart = timeToMinutes(option.depart);
+  if (type !== "all" && option.type !== type) return false;
+  if (from && !option.from.includes(from)) return false;
+  if (to && !option.to.includes(to)) return false;
+  if (start !== null && depart < start) return false;
+  if (end !== null && depart > end) return false;
+  return true;
+}
+
+function renderTransport() {
+  const day = currentDay();
+  const options = buildTransportOptions(day, activeDay);
+  const filtered = options.filter(matchesTransportFilter);
+  const visible = transportFilterApplied ? filtered : filtered.slice(0, 4);
+  const route = defaultTransportRoute(day);
+  if (!dom.transportFrom.value) dom.transportFrom.placeholder = route.from;
+  if (!dom.transportTo.value) dom.transportTo.placeholder = route.to;
+
+  dom.flightAvgPrice.textContent = money(averagePrice(options, "flight"));
+  dom.trainAvgPrice.textContent = money(averagePrice(options, "train"));
+  dom.transportProviderStatus.textContent = "携程 API 待接入";
+  dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} · ${route.from} 到 ${route.to}，当前为可筛选示例报价。`;
+  dom.transportList.innerHTML =
+    visible
+      .map(
+        (item) => `
+          <article class="transport-item">
+            <span class="transport-icon">${icon(item.type === "flight" ? "plane" : "train-front")}</span>
+            <div>
+              <strong>${item.code} · ${item.from} → ${item.to}</strong>
+              <span>${item.depart} - ${item.arrive} · 约${Math.floor(item.duration / 60)}小时${item.duration % 60}分 · ${item.source}</span>
+            </div>
+            <em>${money(item.price)}</em>
+          </article>
+        `,
+      )
+      .join("") || `<p class="empty-state">这个时间段暂时没有匹配班次，可以放宽时间或切换类型。</p>`;
 }
 
 function totalBudget() {
@@ -769,8 +1009,12 @@ function renderActivities() {
 }
 
 function renderGuideResult() {
-  dom.guideResult.textContent = `${guideState.destination}${guideState.days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
-  dom.daysInput.value = guideState.days;
+  const days = guideDayCount();
+  const range = dateRangeText(guideState.startDate, guideState.endDate);
+  dom.guideResult.textContent = `${guideState.destination}${range}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
+  dom.startDateInput.value = guideState.startDate;
+  dom.endDateInput.value = guideState.endDate;
+  dom.tripLengthHint.textContent = `共 ${days} 天，按出发日到返程日生成。最多支持 30 天。`;
 }
 
 function render() {
@@ -779,6 +1023,7 @@ function render() {
   renderShell();
   renderDays();
   renderDaySummary();
+  renderTransport();
   renderTimeline();
   renderMap();
   renderDetail();
@@ -1029,21 +1274,31 @@ document.querySelectorAll("[data-guide-group]").forEach((group) => {
   });
 });
 
-function updateGuideDays(value) {
-  guideState.days = clampDays(value);
+function syncGuideDatesFromInputs() {
+  const start = dom.startDateInput.value || guideState.startDate;
+  let end = dom.endDateInput.value || guideState.endDate;
+  const startDate = parseIsoDate(start);
+  const endDate = parseIsoDate(end);
+  if (startDate && endDate && endDate < startDate) {
+    end = start;
+  }
+  const days = daysBetweenInclusive(start, end);
+  if (days >= 30 && parseIsoDate(start)) {
+    end = formatIsoDate(addDays(parseIsoDate(start), 29));
+  }
+  guideState.startDate = start;
+  guideState.endDate = end;
   renderGuideResult();
 }
 
-dom.daysInput.addEventListener("input", () => {
-  updateGuideDays(dom.daysInput.value);
-});
+dom.startDateInput.addEventListener("input", syncGuideDatesFromInputs);
+dom.endDateInput.addEventListener("input", syncGuideDatesFromInputs);
 
-dom.daysMinus.addEventListener("click", () => {
-  updateGuideDays(guideState.days - 1);
-});
-
-dom.daysPlus.addEventListener("click", () => {
-  updateGuideDays(guideState.days + 1);
+dom.transportFilterForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  transportFilterApplied = true;
+  renderTransport();
+  refreshIcons();
 });
 
 dom.destinationInput.addEventListener("input", () => {
@@ -1059,17 +1314,26 @@ function closeCreateChoice() {
 function createRecommendedPlan() {
   const destination = dom.destinationInput.value.trim() || "甘肃";
   guideState.destination = destination;
-  mutate(`生成${destination}${guideState.days}天计划`, () => {
+  syncGuideDatesFromInputs();
+  const days = guideDayCount();
+  mutate(`生成${destination}${days}天计划`, () => {
     if (destination.includes("甘肃")) {
-      state = buildGansuPlan(guideState.days, guideState);
+      state = buildGansuPlan(days, guideState);
     } else {
-      state = buildKyotoPlan();
-      state.name = `${destination} ${guideState.days} 日同行计划`;
+      state = buildBlankPlan(destination, days, guideState);
+      state.name = `${destination} ${days} 日同行计划`;
       state.destination = destination;
       state.activities = [`生成${destination}计划模板`];
+      state.days.forEach((day, index) => {
+        day.route = index === 0 ? `抵达${destination} · 入住与周边探索` : `${destination}自由探索 · 备选景点`;
+        day.transport = index === 0 ? "机票/动车 + 市内交通" : "市内交通";
+      });
     }
+    applyPlanDates(state, guideState.startDate, guideState.endDate);
+    state.name = `${destination} ${days} 日同行计划`;
     activeDay = 0;
     activeStop = 0;
+    transportFilterApplied = false;
   });
   closeCreateChoice();
 }
@@ -1077,10 +1341,14 @@ function createRecommendedPlan() {
 function createBlankTemplate() {
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
   guideState.destination = destination;
-  mutate(`创建${destination}${guideState.days}天空白模板`, () => {
-    state = buildBlankPlan(destination, guideState.days, guideState);
+  syncGuideDatesFromInputs();
+  const days = guideDayCount();
+  mutate(`创建${destination}${days}天空白模板`, () => {
+    state = buildBlankPlan(destination, days, guideState);
+    applyPlanDates(state, guideState.startDate, guideState.endDate);
     activeDay = 0;
     activeStop = 0;
+    transportFilterApplied = false;
   });
   closeCreateChoice();
 }
@@ -1088,8 +1356,10 @@ function createBlankTemplate() {
 dom.applyGuideBtn.addEventListener("click", () => {
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
   guideState.destination = destination;
+  syncGuideDatesFromInputs();
+  const days = guideDayCount();
   dom.createChoiceTitle.textContent = `为「${destination}」创建计划`;
-  dom.createChoiceCopy.textContent = `${guideState.days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
+  dom.createChoiceCopy.textContent = `${dateRangeText(guideState.startDate, guideState.endDate)}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
   dom.createChoiceModal.classList.add("is-open");
   dom.createChoiceModal.setAttribute("aria-hidden", "false");
   renderGuideResult();
@@ -1146,10 +1416,18 @@ dom.collabName.addEventListener("input", () => {
   localStorage.setItem("tripboard-user-name", dom.collabName.value.trim());
 });
 
+dom.ctripLoginBtn.addEventListener("click", () => {
+  dom.syncBadge.textContent = "等待授权";
+  dom.ctripStatus.innerHTML = `${icon("shield-check")}<span>已预留携程授权入口。真实同步机票、动车、酒店订单需要携程开放平台、商旅接口或 Trip.com 合作 API 授权；当前页面不会读取或保存你的携程账号密码。</span>`;
+  window.open("https://open.trip.com/?locale=zh-CN", "_blank", "noopener");
+  refreshIcons();
+});
+
 dom.resetBtn.addEventListener("click", () => {
-  state = buildKyotoPlan();
+  state = ensurePlanDates(buildKyotoPlan());
   activeDay = 0;
   activeStop = 0;
+  transportFilterApplied = false;
   saveState("已重置示例");
   render();
 });
@@ -1204,11 +1482,16 @@ dom.importForm.addEventListener("submit", (event) => {
 
 async function boot() {
   dom.collabName.value = localStorage.getItem("tripboard-user-name") || "";
+  guideState.destination = state.destination || guideState.destination;
+  guideState.startDate = state.startDate || guideState.startDate;
+  guideState.endDate = state.endDate || guideState.endDate;
+  dom.destinationInput.value = guideState.destination;
   initSupabaseClient();
   render();
-  saveState();
   if (supabaseClient && tripId) {
     await connectSharedTrip(tripId);
+  } else {
+    saveState();
   }
 }
 
