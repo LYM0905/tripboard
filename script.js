@@ -1,5 +1,6 @@
 const STORAGE_KEY = "tripboard-editable-v1";
 const CTRIP_CONFIG_KEY = "tripboard-ctrip-connector-v1";
+const MEMBER_PROFILE_KEY = "tripboard-member-profile-v1";
 
 const images = {
   kyoto:
@@ -447,8 +448,13 @@ const dom = {
   templateName: document.querySelector("#templateName"),
   tripCover: document.querySelector("#tripCover"),
   tripDateRange: document.querySelector("#tripDateRange"),
+  onlineCountText: document.querySelector("#onlineCountText"),
+  onlineAvatars: document.querySelector("#onlineAvatars"),
   collabMode: document.querySelector("#collabMode"),
+  memberForm: document.querySelector("#memberForm"),
   collabName: document.querySelector("#collabName"),
+  collabRole: document.querySelector("#collabRole"),
+  memberList: document.querySelector("#memberList"),
   collabStatus: document.querySelector("#collabStatus"),
   createSharedTripBtn: document.querySelector("#createSharedTripBtn"),
   copySharedLinkBtn: document.querySelector("#copySharedLinkBtn"),
@@ -563,6 +569,9 @@ let pendingProvider = "";
 let transportFilterApplied = false;
 let transportProviderItems = [];
 let ctripConfig = safeJsonParse(localStorage.getItem(CTRIP_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
+let memberProfile = safeJsonParse(localStorage.getItem(MEMBER_PROFILE_KEY), null);
+let onlineMembers = [];
+const sessionId = crypto.randomUUID ? crypto.randomUUID() : uid();
 let supabaseClient = null;
 let realtimeChannel = null;
 let tripId = new URLSearchParams(window.location.search).get("trip") || localStorage.getItem("tripboard-current-trip-id") || "";
@@ -602,9 +611,92 @@ function logActivity(text) {
 }
 
 function getCollabName() {
-  const name = dom.collabName.value.trim() || localStorage.getItem("tripboard-user-name") || "匿名成员";
+  const name = memberProfile?.name || dom.collabName.value.trim() || localStorage.getItem("tripboard-user-name") || "匿名成员";
   localStorage.setItem("tripboard-user-name", name);
   return name;
+}
+
+function memberInitial(name) {
+  const trimmed = String(name || "我").trim();
+  return trimmed.slice(0, 1).toUpperCase();
+}
+
+function normalizeMemberProfile(profile = {}) {
+  const name = String(profile.name || "").trim();
+  const role = String(profile.role || "").trim();
+  if (!name) return null;
+  return {
+    id: profile.id || sessionId,
+    name,
+    role: role || "同行成员",
+    joinedAt: profile.joinedAt || new Date().toISOString(),
+  };
+}
+
+function saveMemberProfile(profile) {
+  memberProfile = normalizeMemberProfile(profile);
+  if (!memberProfile) return false;
+  localStorage.setItem(MEMBER_PROFILE_KEY, JSON.stringify(memberProfile));
+  localStorage.setItem("tripboard-user-name", memberProfile.name);
+  dom.collabName.value = memberProfile.name;
+  dom.collabRole.value = memberProfile.role;
+  return true;
+}
+
+function presencePayload() {
+  const profile = memberProfile || normalizeMemberProfile({ name: dom.collabName.value.trim() || "匿名成员", role: dom.collabRole.value.trim() || "同行成员" });
+  return {
+    memberId: profile?.id || sessionId,
+    name: profile?.name || "匿名成员",
+    role: profile?.role || "同行成员",
+    activeDay: currentDay()?.label || "D1",
+    editing: currentStop()?.title || "行程",
+    joinedAt: profile?.joinedAt || new Date().toISOString(),
+    seenAt: new Date().toISOString(),
+  };
+}
+
+function uniqueMembersFromPresence(presenceState) {
+  const flattened = Object.values(presenceState || {}).flat().map((item) => item || {});
+  const byId = new Map();
+  flattened.forEach((item) => {
+    const id = item.memberId || item.id || item.name || sessionId;
+    const previous = byId.get(id);
+    if (!previous || String(item.seenAt || "") > String(previous.seenAt || "")) {
+      byId.set(id, item);
+    }
+  });
+  return [...byId.values()];
+}
+
+function renderMembers() {
+  const fallback = memberProfile ? [presencePayload()] : [];
+  const members = onlineMembers.length ? onlineMembers : fallback;
+  const count = members.length;
+  dom.onlineCountText.textContent = count ? `${count} 位成员在线协作` : "填写信息后加入协作";
+  dom.onlineAvatars.innerHTML = members
+    .slice(0, 5)
+    .map((member, index) => `<span class="avatar a${(index % 4) + 1}" title="${member.name} · ${member.role || "同行成员"}">${memberInitial(member.name)}</span>`)
+    .join("") + (count ? `<span class="online-dot"></span>` : "");
+  dom.memberList.innerHTML =
+    members
+      .map(
+        (member, index) => `
+          <div class="member-item">
+            <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
+            <p><strong>${member.name || "匿名成员"}</strong><small>${member.role || "同行成员"} · ${member.activeDay || "在线"} · ${member.editing || "浏览计划"}</small></p>
+          </div>
+        `,
+      )
+      .join("") || `<div class="member-empty">填写姓名后加入协作，在线成员会显示在这里。</div>`;
+}
+
+async function trackPresence() {
+  if (!realtimeChannel || !memberProfile) {
+    renderMembers();
+    return;
+  }
+  await realtimeChannel.track(presencePayload());
 }
 
 function getShareUrl() {
@@ -671,7 +763,13 @@ function subscribeRemoteState() {
     supabaseClient.removeChannel(realtimeChannel);
   }
   realtimeChannel = supabaseClient
-    .channel(`trip-plan-${tripId}`)
+    .channel(`trip-plan-${tripId}`, {
+      config: {
+        presence: {
+          key: sessionId,
+        },
+      },
+    })
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "trip_plans", filter: `id=eq.${tripId}` },
@@ -689,9 +787,22 @@ function subscribeRemoteState() {
         isApplyingRemote = false;
       },
     )
+    .on("presence", { event: "sync" }, () => {
+      onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
+      renderMembers();
+    })
+    .on("presence", { event: "join" }, () => {
+      onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
+      renderMembers();
+    })
+    .on("presence", { event: "leave" }, () => {
+      onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
+      renderMembers();
+    })
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
         dom.collabMode.textContent = "实时同步";
+        trackPresence();
       }
     });
 }
@@ -704,6 +815,9 @@ async function connectSharedTrip(id) {
   window.history.replaceState({}, "", url.toString());
   await loadRemoteState();
   subscribeRemoteState();
+  if (!memberProfile) {
+    dom.collabStatus.textContent = "请填写姓名和身份，然后点击“加入协作”，其他成员就能看到你在线。";
+  }
 }
 
 async function createSharedTrip() {
@@ -1172,6 +1286,7 @@ function render() {
   renderCandidates();
   renderActivities();
   renderGuideResult();
+  renderMembers();
   refreshIcons();
 }
 
@@ -1188,6 +1303,7 @@ dom.dayList.addEventListener("click", (event) => {
   activeDay = Number(button.dataset.day);
   activeStop = 0;
   render();
+  trackPresence();
 });
 
 dom.timeline.addEventListener("click", (event) => {
@@ -1195,6 +1311,7 @@ dom.timeline.addEventListener("click", (event) => {
   if (!card) return;
   activeStop = Number(card.dataset.stop);
   render();
+  trackPresence();
 });
 
 dom.mapCanvas.addEventListener("click", (event) => {
@@ -1202,6 +1319,7 @@ dom.mapCanvas.addEventListener("click", (event) => {
   if (!pin) return;
   activeStop = Number(pin.dataset.stop);
   render();
+  trackPresence();
 });
 
 dom.stopForm.addEventListener("submit", (event) => {
@@ -1574,8 +1692,30 @@ dom.copySharedLinkBtn.addEventListener("click", async () => {
   }
 });
 
+dom.memberForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const saved = saveMemberProfile({
+    name: dom.collabName.value,
+    role: dom.collabRole.value,
+  });
+  if (!saved) {
+    dom.collabStatus.textContent = "请先填写你的名字，再加入协作。";
+    return;
+  }
+  dom.collabStatus.textContent = tripId ? `${memberProfile.name} 已加入协作。` : `${memberProfile.name} 已准备加入，创建或打开共享链接后会显示在线。`;
+  renderMembers();
+  trackPresence();
+  refreshIcons();
+});
+
 dom.collabName.addEventListener("input", () => {
   localStorage.setItem("tripboard-user-name", dom.collabName.value.trim());
+});
+
+dom.collabRole.addEventListener("input", () => {
+  if (!memberProfile) return;
+  saveMemberProfile({ ...memberProfile, role: dom.collabRole.value });
+  trackPresence();
 });
 
 dom.ctripLoginBtn.addEventListener("click", () => {
@@ -1668,7 +1808,8 @@ dom.importForm.addEventListener("submit", (event) => {
 });
 
 async function boot() {
-  dom.collabName.value = localStorage.getItem("tripboard-user-name") || "";
+  dom.collabName.value = memberProfile?.name || localStorage.getItem("tripboard-user-name") || "";
+  dom.collabRole.value = memberProfile?.role || "";
   const appConfig = window.TRIPBOARD_CONFIG || {};
   const isPlaceholderEndpoint = /example\.com\/api\/ctrip\/transport/.test(ctripConfig.endpoint || "");
   if ((!ctripConfig.endpoint || isPlaceholderEndpoint) && appConfig.ctripProxyUrl) {
@@ -1690,6 +1831,7 @@ async function boot() {
   if (!dom.transportFrom.value) dom.transportFrom.value = guideState.origin;
   initSupabaseClient();
   render();
+  renderMembers();
   if (supabaseClient && tripId) {
     await connectSharedTrip(tripId);
   } else {

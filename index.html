@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260616-origin-city" />
+    <link rel="stylesheet" href="styles.css?v=20260616-live-members" />
   </head>
   <body>
     <div class="app-shell">
@@ -22,15 +22,9 @@
           <div class="trip-cover" id="tripCover" role="img" aria-label="旅行封面"></div>
           <div class="trip-meta">
             <span><i data-lucide="calendar-days"></i><span id="tripDateRange">6月4日 - 6月9日</span></span>
-            <span><i data-lucide="users-round"></i>4 位成员在线协作</span>
+            <span><i data-lucide="users-round"></i><span id="onlineCountText">等待成员加入</span></span>
           </div>
-          <div class="avatar-row" aria-label="当前在线成员">
-            <span class="avatar a1">林</span>
-            <span class="avatar a2">周</span>
-            <span class="avatar a3">M</span>
-            <span class="avatar a4">许</span>
-            <span class="online-dot"></span>
-          </div>
+          <div class="avatar-row" id="onlineAvatars" aria-label="当前在线成员"></div>
         </section>
 
         <section class="collab-panel">
@@ -38,10 +32,18 @@
             <span>多人协作</span>
             <strong id="collabMode">本地模式</strong>
           </div>
-          <label class="collab-field">
-            你的名字
-            <input id="collabName" placeholder="例如：林" />
-          </label>
+          <form class="member-form" id="memberForm">
+            <label class="collab-field">
+              你的名字
+              <input id="collabName" required placeholder="例如：林" />
+            </label>
+            <label class="collab-field">
+              身份/备注
+              <input id="collabRole" placeholder="例如：路线规划、订酒店、摄影" />
+            </label>
+            <button class="primary-btn" type="submit"><i data-lucide="user-round-check"></i>加入协作</button>
+          </form>
+          <div class="member-list" id="memberList" aria-label="在线成员列表"></div>
           <div class="collab-actions">
             <button class="text-btn" id="createSharedTripBtn"><i data-lucide="cloud-upload"></i>创建共享计划</button>
             <button class="text-btn" id="copySharedLinkBtn"><i data-lucide="link"></i>复制链接</button>
@@ -446,7 +448,7 @@ Response: { "items": [{ "type": "flight", "code": "MU1234", "from": "上海", "t
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260616-origin-city"></script>
-    <script src="script.js?v=20260616-origin-city"></script>
+    <script src="config.js?v=20260616-live-members"></script>
+    <script src="script.js?v=20260616-live-members"></script>
   </body>
 </html>
