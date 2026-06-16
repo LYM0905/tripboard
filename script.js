@@ -426,8 +426,15 @@ function applyPlanDates(plan, startDateValue) {
   return plan;
 }
 
+function ensurePlanOrigin(plan) {
+  if (!plan) return plan;
+  plan.origin = plan.origin || "上海";
+  return plan;
+}
+
 function ensurePlanDates(plan) {
   if (!plan?.days?.length) return plan;
+  ensurePlanOrigin(plan);
   if (plan.startDate && plan.endDate && plan.days.every((day) => day.date)) return plan;
   const defaults = defaultGuideDates();
   const startDate = plan.startDate || defaults.startDate;
@@ -500,6 +507,7 @@ const dom = {
   applyGuideBtn: document.querySelector("#applyGuideBtn"),
   guideResult: document.querySelector("#guideResult"),
   destinationInput: document.querySelector("#destinationInput"),
+  originInput: document.querySelector("#originInput"),
   startDateInput: document.querySelector("#startDateInput"),
   endDateInput: document.querySelector("#endDateInput"),
   tripLengthHint: document.querySelector("#tripLengthHint"),
@@ -563,6 +571,7 @@ let lastRemoteUpdatedAt = "";
 const initialGuideDates = defaultGuideDates();
 const guideState = {
   destination: "甘肃",
+  origin: "上海",
   startDate: initialGuideDates.startDate,
   endDate: initialGuideDates.endDate,
   pace: "轻松",
@@ -757,15 +766,15 @@ function defaultTransportRoute(day) {
     .split(/[·→\-—]/)
     .map((item) => item.trim())
     .filter(Boolean);
-  let from = parts[0] || "出发城市";
+  let from = parts[0] || state.origin || "出发城市";
   let to = parts[1] || state.destination || "目的地";
   if (from.startsWith("抵达")) {
     to = from.replace(/^抵达/, "").trim() || state.destination || "目的地";
-    from = "出发城市";
+    from = state.origin || "出发城市";
   }
   if (/返程|返回/.test(text)) {
     from = parts[0]?.replace(/返程|返回/g, "").trim() || state.destination || "目的地";
-    to = "返回城市";
+    to = state.origin || "返回城市";
   }
   return { from, to };
 }
@@ -855,12 +864,13 @@ function matchesTransportFilter(option) {
 
 function renderTransport() {
   const day = currentDay();
+  ensurePlanOrigin(state);
   const route = defaultTransportRoute(day);
   const options = transportProviderItems.length ? transportProviderItems : buildTransportOptions(day, activeDay);
   const filtered = options.filter(matchesTransportFilter);
   const visible = transportFilterApplied ? filtered : filtered.slice(0, 4);
-  if (!dom.transportFrom.value) dom.transportFrom.placeholder = route.from;
-  if (!dom.transportTo.value) dom.transportTo.placeholder = route.to;
+  if (!dom.transportFrom.value) dom.transportFrom.value = route.from;
+  if (!dom.transportTo.value) dom.transportTo.value = route.to;
 
   dom.flightAvgPrice.textContent = money(averagePrice(options, "flight"));
   dom.trainAvgPrice.textContent = money(averagePrice(options, "train"));
@@ -995,6 +1005,7 @@ function categoryBudget() {
 }
 
 function renderShell() {
+  ensurePlanOrigin(state);
   const total = totalBudget();
   const limit = Number(state.budgetLimit || 10000);
   const percent = Math.min(100, Math.round((total / limit) * 100));
@@ -1141,7 +1152,8 @@ function renderActivities() {
 function renderGuideResult() {
   const days = guideDayCount();
   const range = dateRangeText(guideState.startDate, guideState.endDate);
-  dom.guideResult.textContent = `${guideState.destination}${range}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
+  dom.guideResult.textContent = `${guideState.origin}出发，${guideState.destination}${range}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
+  dom.originInput.value = guideState.origin;
   dom.startDateInput.value = guideState.startDate;
   dom.endDateInput.value = guideState.endDate;
   dom.tripLengthHint.textContent = `共 ${days} 天，按出发日到返程日生成。最多支持 30 天。`;
@@ -1426,6 +1438,7 @@ dom.endDateInput.addEventListener("input", syncGuideDatesFromInputs);
 
 dom.transportFilterForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  transportProviderItems = [];
   transportFilterApplied = true;
   renderTransport();
   refreshIcons();
@@ -1436,6 +1449,12 @@ dom.destinationInput.addEventListener("input", () => {
   renderGuideResult();
 });
 
+dom.originInput.addEventListener("input", () => {
+  guideState.origin = dom.originInput.value.trim() || "出发城市";
+  dom.transportFrom.value = guideState.origin;
+  renderGuideResult();
+});
+
 function closeCreateChoice() {
   dom.createChoiceModal.classList.remove("is-open");
   dom.createChoiceModal.setAttribute("aria-hidden", "true");
@@ -1443,7 +1462,9 @@ function closeCreateChoice() {
 
 function createRecommendedPlan() {
   const destination = dom.destinationInput.value.trim() || "甘肃";
+  const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
+  guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
   mutate(`生成${destination}${days}天计划`, () => {
@@ -1461,8 +1482,12 @@ function createRecommendedPlan() {
     }
     applyPlanDates(state, guideState.startDate, guideState.endDate);
     state.name = `${destination} ${days} 日同行计划`;
+    state.origin = origin;
+    state.activities = [`${origin}出发`, ...(state.activities || [])].slice(0, 6);
     activeDay = 0;
     activeStop = 0;
+    dom.transportFrom.value = origin;
+    dom.transportTo.value = "";
     transportFilterApplied = false;
   });
   closeCreateChoice();
@@ -1470,14 +1495,19 @@ function createRecommendedPlan() {
 
 function createBlankTemplate() {
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
+  const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
+  guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
   mutate(`创建${destination}${days}天空白模板`, () => {
     state = buildBlankPlan(destination, days, guideState);
     applyPlanDates(state, guideState.startDate, guideState.endDate);
+    state.origin = origin;
     activeDay = 0;
     activeStop = 0;
+    dom.transportFrom.value = origin;
+    dom.transportTo.value = "";
     transportFilterApplied = false;
   });
   closeCreateChoice();
@@ -1485,11 +1515,13 @@ function createBlankTemplate() {
 
 dom.applyGuideBtn.addEventListener("click", () => {
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
+  const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
+  guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
   dom.createChoiceTitle.textContent = `为「${destination}」创建计划`;
-  dom.createChoiceCopy.textContent = `${dateRangeText(guideState.startDate, guideState.endDate)}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
+  dom.createChoiceCopy.textContent = `${origin}出发，${dateRangeText(guideState.startDate, guideState.endDate)}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
   dom.createChoiceModal.classList.add("is-open");
   dom.createChoiceModal.setAttribute("aria-hidden", "false");
   renderGuideResult();
@@ -1650,9 +1682,12 @@ async function boot() {
     setCtripStatus("已读取本机保存的携程后端代理地址，可测试连接或同步当天交通。", "plug-zap");
   }
   guideState.destination = state.destination || guideState.destination;
+  guideState.origin = state.origin || guideState.origin;
   guideState.startDate = state.startDate || guideState.startDate;
   guideState.endDate = state.endDate || guideState.endDate;
   dom.destinationInput.value = guideState.destination;
+  dom.originInput.value = guideState.origin;
+  if (!dom.transportFrom.value) dom.transportFrom.value = guideState.origin;
   initSupabaseClient();
   render();
   if (supabaseClient && tripId) {

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260616-ctrip-proxy" />
+    <link rel="stylesheet" href="styles.css?v=20260616-origin-city" />
   </head>
   <body>
     <div class="app-shell">
@@ -100,6 +100,13 @@
                 <label class="input-shell">
                   <i data-lucide="map-pin"></i>
                   <input id="destinationInput" value="甘肃" aria-label="目的地" />
+                </label>
+              </div>
+              <div class="control-group">
+                <span>出发城市</span>
+                <label class="input-shell">
+                  <i data-lucide="navigation"></i>
+                  <input id="originInput" value="上海" aria-label="出发城市" />
                 </label>
               </div>
               <div class="control-group">
@@ -439,7 +446,7 @@ Response: { "items": [{ "type": "flight", "code": "MU1234", "from": "上海", "t
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260616-ctrip-proxy"></script>
-    <script src="script.js?v=20260616-ctrip-proxy"></script>
+    <script src="config.js?v=20260616-origin-city"></script>
+    <script src="script.js?v=20260616-origin-city"></script>
   </body>
 </html>
