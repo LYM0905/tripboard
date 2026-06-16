@@ -1,4 +1,5 @@
 const STORAGE_KEY = "tripboard-editable-v1";
+const CTRIP_CONFIG_KEY = "tripboard-ctrip-connector-v1";
 
 const images = {
   kyoto:
@@ -21,6 +22,14 @@ function uid() {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function safeJsonParse(value, fallback = null) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
 function money(value) {
@@ -527,6 +536,14 @@ const dom = {
   syncBadge: document.querySelector("#syncBadge"),
   syncStatus: document.querySelector("#syncStatus"),
   ctripLoginBtn: document.querySelector("#ctripLoginBtn"),
+  ctripConnectPanel: document.querySelector("#ctripConnectPanel"),
+  ctripConnectForm: document.querySelector("#ctripConnectForm"),
+  ctripEndpointInput: document.querySelector("#ctripEndpointInput"),
+  ctripTokenInput: document.querySelector("#ctripTokenInput"),
+  ctripTestBtn: document.querySelector("#ctripTestBtn"),
+  ctripSyncTransportBtn: document.querySelector("#ctripSyncTransportBtn"),
+  ctripSpecBtn: document.querySelector("#ctripSpecBtn"),
+  ctripSpecBox: document.querySelector("#ctripSpecBox"),
   ctripStatus: document.querySelector("#ctripStatus"),
   activityList: document.querySelector("#activityList"),
 };
@@ -536,6 +553,8 @@ let activeDay = 0;
 let activeStop = 0;
 let pendingProvider = "";
 let transportFilterApplied = false;
+let transportProviderItems = [];
+let ctripConfig = safeJsonParse(localStorage.getItem(CTRIP_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
 let supabaseClient = null;
 let realtimeChannel = null;
 let tripId = new URLSearchParams(window.location.search).get("trip") || localStorage.getItem("tripboard-current-trip-id") || "";
@@ -800,6 +819,25 @@ function averagePrice(options, type) {
   return Math.round(scoped.reduce((sum, item) => sum + item.price, 0) / scoped.length);
 }
 
+function normalizeTransportItem(item, index, fallbackRoute) {
+  const type = item.type === "train" || item.type === "flight" ? item.type : String(item.type || "").includes("train") ? "train" : "flight";
+  const depart = item.depart || item.departTime || item.startTime || "09:00";
+  const arrive = item.arrive || item.arriveTime || item.endTime || addMinutesToTime(depart, Number(item.duration || 120));
+  const duration = Number(item.duration || Math.max(30, (timeToMinutes(arrive) ?? 0) - (timeToMinutes(depart) ?? 0)) || 120);
+  return {
+    id: item.id || `provider-${Date.now()}-${index}`,
+    type,
+    code: item.code || item.flightNo || item.trainNo || `${type === "flight" ? "Flight" : "Train"} ${index + 1}`,
+    from: item.from || fallbackRoute.from,
+    to: item.to || fallbackRoute.to,
+    depart,
+    arrive,
+    duration,
+    price: Number(item.price || item.amount || item.lowestPrice || 0),
+    source: item.source || "携程",
+  };
+}
+
 function matchesTransportFilter(option) {
   const type = dom.transportType.value;
   const from = dom.transportFrom.value.trim();
@@ -817,17 +855,17 @@ function matchesTransportFilter(option) {
 
 function renderTransport() {
   const day = currentDay();
-  const options = buildTransportOptions(day, activeDay);
+  const route = defaultTransportRoute(day);
+  const options = transportProviderItems.length ? transportProviderItems : buildTransportOptions(day, activeDay);
   const filtered = options.filter(matchesTransportFilter);
   const visible = transportFilterApplied ? filtered : filtered.slice(0, 4);
-  const route = defaultTransportRoute(day);
   if (!dom.transportFrom.value) dom.transportFrom.placeholder = route.from;
   if (!dom.transportTo.value) dom.transportTo.placeholder = route.to;
 
   dom.flightAvgPrice.textContent = money(averagePrice(options, "flight"));
   dom.trainAvgPrice.textContent = money(averagePrice(options, "train"));
-  dom.transportProviderStatus.textContent = "携程 API 待接入";
-  dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} · ${route.from} 到 ${route.to}，当前为可筛选示例报价。`;
+  dom.transportProviderStatus.textContent = transportProviderItems.length ? "携程已同步" : "携程 API 待接入";
+  dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} · ${route.from} 到 ${route.to}，${transportProviderItems.length ? "当前显示后端同步报价。" : "当前为可筛选示例报价。"}`;
   dom.transportList.innerHTML =
     visible
       .map(
@@ -843,6 +881,92 @@ function renderTransport() {
         `,
       )
       .join("") || `<p class="empty-state">这个时间段暂时没有匹配班次，可以放宽时间或切换类型。</p>`;
+}
+
+function setCtripStatus(message, iconName = "info") {
+  dom.ctripStatus.innerHTML = `${icon(iconName)}<span>${message}</span>`;
+  refreshIcons();
+}
+
+function getCtripPayload() {
+  const day = currentDay();
+  const route = defaultTransportRoute(day);
+  return {
+    tripId,
+    date: day?.date || "",
+    from: dom.transportFrom.value.trim() || route.from,
+    to: dom.transportTo.value.trim() || route.to,
+    type: dom.transportType.value || "all",
+    startTime: dom.transportStartTime.value || "",
+    endTime: dom.transportEndTime.value || "",
+  };
+}
+
+function saveCtripConfig() {
+  ctripConfig = {
+    endpoint: dom.ctripEndpointInput.value.trim(),
+    token: dom.ctripTokenInput.value.trim(),
+  };
+  localStorage.setItem(CTRIP_CONFIG_KEY, JSON.stringify(ctripConfig));
+  dom.syncBadge.textContent = ctripConfig.endpoint ? "已配置接口" : "可手动导入";
+}
+
+function ctripHeaders() {
+  const headers = { "Content-Type": "application/json" };
+  if (ctripConfig.token) headers.Authorization = `Bearer ${ctripConfig.token}`;
+  return headers;
+}
+
+async function requestCtripTransport({ testOnly = false } = {}) {
+  saveCtripConfig();
+  if (!ctripConfig.endpoint) {
+    setCtripStatus("请先填写你的后端代理接口地址。这个地址由你控制，负责安全保存携程密钥并调用官方 API。", "alert-circle");
+    return null;
+  }
+  const payload = { ...getCtripPayload(), testOnly };
+  setCtripStatus(testOnly ? "正在测试后端代理连接..." : "正在通过后端代理同步携程交通报价...", "loader");
+  try {
+    const response = await fetch(ctripConfig.endpoint, {
+      method: "POST",
+      headers: ctripHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || data.error || `HTTP ${response.status}`);
+    }
+    return data;
+  } catch (error) {
+    setCtripStatus(`连接失败：${error.message}。如果接口在本地，请先部署为 HTTPS 后端或 Supabase Edge Function，公开页面无法直接访问你的本机服务。`, "alert-triangle");
+    return null;
+  }
+}
+
+async function testCtripConnection() {
+  const data = await requestCtripTransport({ testOnly: true });
+  if (!data) return;
+  setCtripStatus(data.message || "连接成功。现在可以点击“同步当天交通”拉取报价。", "check-circle-2");
+  dom.syncBadge.textContent = "接口可用";
+}
+
+async function syncCtripTransport() {
+  const data = await requestCtripTransport();
+  if (!data) return;
+  const route = defaultTransportRoute(currentDay());
+  const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
+  if (!rawItems.length) {
+    transportProviderItems = [];
+    setCtripStatus("后端已响应，但没有返回班次。请检查日期、城市、时间段，或确认你的携程 API 权限是否包含机票/火车票报价。", "alert-circle");
+    renderTransport();
+    return;
+  }
+  transportProviderItems = rawItems.map((item, index) => normalizeTransportItem(item, index, route));
+  transportFilterApplied = true;
+  setCtripStatus(`已同步 ${transportProviderItems.length} 条携程交通报价，并更新当前交通列表。`, "check-circle-2");
+  dom.syncBadge.textContent = "携程已同步";
+  logActivity(`同步携程交通报价 ${transportProviderItems.length} 条`);
+  saveState("已同步携程报价");
+  render();
 }
 
 function totalBudget() {
@@ -1417,10 +1541,35 @@ dom.collabName.addEventListener("input", () => {
 });
 
 dom.ctripLoginBtn.addEventListener("click", () => {
-  dom.syncBadge.textContent = "等待授权";
-  dom.ctripStatus.innerHTML = `${icon("shield-check")}<span>已预留携程授权入口。真实同步机票、动车、酒店订单需要携程开放平台、商旅接口或 Trip.com 合作 API 授权；当前页面不会读取或保存你的携程账号密码。</span>`;
-  window.open("https://open.trip.com/?locale=zh-CN", "_blank", "noopener");
-  refreshIcons();
+  const nextOpen = dom.ctripConnectPanel.hidden;
+  dom.ctripConnectPanel.hidden = !nextOpen;
+  dom.syncBadge.textContent = ctripConfig.endpoint ? "已配置接口" : "等待配置";
+  setCtripStatus(
+    nextOpen
+      ? "请填写你的后端代理接口，然后点击“测试连接”。携程密钥只放在后端环境变量里。"
+      : "携程接入配置已收起。",
+    nextOpen ? "plug-zap" : "info",
+  );
+});
+
+dom.ctripConnectForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveCtripConfig();
+  setCtripStatus(ctripConfig.endpoint ? "接入地址已保存。下一步点击“测试连接”。" : "请填写后端代理接口地址。", ctripConfig.endpoint ? "check-circle-2" : "alert-circle");
+});
+
+dom.ctripTestBtn.addEventListener("click", testCtripConnection);
+
+dom.ctripSyncTransportBtn.addEventListener("click", syncCtripTransport);
+
+dom.ctripSpecBtn.addEventListener("click", async () => {
+  const spec = dom.ctripSpecBox.textContent.trim();
+  try {
+    await navigator.clipboard.writeText(spec);
+    setCtripStatus("接口规范已复制。把这个规范给后端或 Supabase Edge Function 使用。", "copy-check");
+  } catch {
+    setCtripStatus("浏览器未允许复制，你可以直接选中规范文本。", "info");
+  }
 });
 
 dom.resetBtn.addEventListener("click", () => {
@@ -1482,6 +1631,12 @@ dom.importForm.addEventListener("submit", (event) => {
 
 async function boot() {
   dom.collabName.value = localStorage.getItem("tripboard-user-name") || "";
+  dom.ctripEndpointInput.value = ctripConfig.endpoint || "";
+  dom.ctripTokenInput.value = ctripConfig.token || "";
+  if (ctripConfig.endpoint) {
+    dom.syncBadge.textContent = "已配置接口";
+    setCtripStatus("已读取本机保存的携程后端代理地址，可测试连接或同步当天交通。", "plug-zap");
+  }
   guideState.destination = state.destination || guideState.destination;
   guideState.startDate = state.startDate || guideState.startDate;
   guideState.endDate = state.endDate || guideState.endDate;

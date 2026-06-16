@@ -325,9 +325,35 @@
           </div>
           <button class="provider-login" id="ctripLoginBtn" type="button">
             <i data-lucide="plane"></i>
-            <strong>携程授权/登录入口</strong>
-            <span>连接开放平台后同步机票、动车、酒店订单；当前不会读取账号密码。</span>
+            <strong>携程 / Trip.com 接入</strong>
+            <span>配置后端代理后，可测试连接并同步当日机票、动车报价。</span>
           </button>
+          <div class="provider-connect-panel" id="ctripConnectPanel" hidden>
+            <div class="provider-connect-head">
+              <strong>接入配置</strong>
+              <a href="https://connect.trip.com/" target="_blank" rel="noopener">打开开放平台</a>
+            </div>
+            <p class="helper-text">请填写你自己的后端代理接口地址。不要把携程 AppSecret、签名密钥或个人账号密码填到这个公开网页里。</p>
+            <form class="provider-form" id="ctripConnectForm">
+              <label>
+                后端代理接口
+                <input id="ctripEndpointInput" type="url" placeholder="https://your-domain.com/api/ctrip/transport" />
+              </label>
+              <label>
+                前端访问令牌（可选）
+                <input id="ctripTokenInput" type="password" placeholder="只填你的后端需要的访问令牌，不填携程密钥" autocomplete="off" />
+              </label>
+              <div class="connection-actions">
+                <button type="submit" class="primary-btn"><i data-lucide="plug-zap"></i>保存接入</button>
+                <button type="button" class="text-btn" id="ctripTestBtn"><i data-lucide="activity"></i>测试连接</button>
+                <button type="button" class="text-btn" id="ctripSyncTransportBtn"><i data-lucide="refresh-cw"></i>同步当天交通</button>
+                <button type="button" class="text-btn" id="ctripSpecBtn"><i data-lucide="copy"></i>复制接口规范</button>
+              </div>
+            </form>
+            <pre class="api-spec" id="ctripSpecBox">POST 你的后端接口
+Request: { "date": "2026-06-30", "from": "上海", "to": "兰州", "type": "all", "startTime": "", "endTime": "" }
+Response: { "items": [{ "type": "flight", "code": "MU1234", "from": "上海", "to": "兰州", "depart": "09:30", "arrive": "12:20", "duration": 170, "price": 860, "source": "携程" }] }</pre>
+          </div>
           <div class="sync-grid">
             <button class="sync-card" data-provider="美团/点评">
               <i data-lucide="utensils"></i>
