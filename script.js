@@ -1,6 +1,9 @@
 const STORAGE_KEY = "tripboard-editable-v1";
 const CTRIP_CONFIG_KEY = "tripboard-ctrip-connector-v1";
 const MEMBER_PROFILE_KEY = "tripboard-member-profile-v1";
+const SERVICE_CONFIG_KEY = "tripboard-service-connectors-v1";
+const VERSION_PREFIX = "tripboard-version-history:";
+const MAX_VERSION_HISTORY = 12;
 
 const images = {
   kyoto:
@@ -35,6 +38,11 @@ function safeJsonParse(value, fallback = null) {
 
 function money(value) {
   return `¥${Number(value || 0).toLocaleString("zh-CN")}`;
+}
+
+function numberValue(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function normalizeTags(value) {
@@ -119,6 +127,25 @@ function amapSearchUrl(keyword) {
   return `https://uri.amap.com/search?keyword=${query}&src=tripboard&coordinate=gaode&callnative=1`;
 }
 
+async function lookupAmapPlace(keyword) {
+  if (!serviceConfig.amapEndpoint || !keyword) return null;
+  const response = await fetch(serviceConfig.amapEndpoint, {
+    method: "POST",
+    headers: serviceHeaders(),
+    body: JSON.stringify({ keyword, city: state.destination || "" }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+  const place = Array.isArray(data.places) ? data.places[0] : data.place || data;
+  if (!place) return null;
+  return {
+    title: place.title || place.name || keyword,
+    address: place.address || place.formattedAddress || "",
+    lng: String(place.lng || place.longitude || ""),
+    lat: String(place.lat || place.latitude || ""),
+  };
+}
+
 function pointForStop(stop) {
   const lng = Number(stop.lng);
   const lat = Number(stop.lat);
@@ -142,6 +169,8 @@ function makeStop({
   note = "补充交通、预订和同行意见。",
   tags = ["草稿"],
   budget = 0,
+  paid = 0,
+  payer = "",
   votes = 1,
   userVoted = true,
   comments = [],
@@ -161,6 +190,8 @@ function makeStop({
     note,
     tags: normalizeTags(tags),
     budget: Number(budget || 0),
+    paid: Number(paid || 0),
+    payer,
     votes,
     userVoted,
     favorite: userVoted,
@@ -462,6 +493,10 @@ const dom = {
   budgetTotal: document.querySelector("#budgetTotal"),
   budgetMeter: document.querySelector("#budgetMeter"),
   budgetGrid: document.querySelector("#budgetGrid"),
+  partySizeInput: document.querySelector("#partySizeInput"),
+  budgetSettlement: document.querySelector("#budgetSettlement"),
+  versionCount: document.querySelector("#versionCount"),
+  versionList: document.querySelector("#versionList"),
   dayList: document.querySelector("#dayList"),
   routeLabel: document.querySelector("#routeLabel"),
   dayTitle: document.querySelector("#dayTitle"),
@@ -492,10 +527,13 @@ const dom = {
   fieldTitle: document.querySelector("#fieldTitle"),
   fieldType: document.querySelector("#fieldType"),
   fieldBudget: document.querySelector("#fieldBudget"),
+  fieldPaid: document.querySelector("#fieldPaid"),
+  fieldPayer: document.querySelector("#fieldPayer"),
   fieldAddress: document.querySelector("#fieldAddress"),
   fieldAmapKeyword: document.querySelector("#fieldAmapKeyword"),
   fieldLng: document.querySelector("#fieldLng"),
   fieldLat: document.querySelector("#fieldLat"),
+  fieldImage: document.querySelector("#fieldImage"),
   fieldTags: document.querySelector("#fieldTags"),
   fieldNote: document.querySelector("#fieldNote"),
   addStopBtn: document.querySelector("#addStopBtn"),
@@ -542,8 +580,11 @@ const dom = {
   importName: document.querySelector("#importName"),
   importTime: document.querySelector("#importTime"),
   importBudget: document.querySelector("#importBudget"),
+  importPaid: document.querySelector("#importPaid"),
+  importPayer: document.querySelector("#importPayer"),
   importAddress: document.querySelector("#importAddress"),
   importNote: document.querySelector("#importNote"),
+  parseImportBtn: document.querySelector("#parseImportBtn"),
   createChoiceModal: document.querySelector("#createChoiceModal"),
   createChoiceTitle: document.querySelector("#createChoiceTitle"),
   createChoiceCopy: document.querySelector("#createChoiceCopy"),
@@ -562,6 +603,14 @@ const dom = {
   ctripSpecBtn: document.querySelector("#ctripSpecBtn"),
   ctripSpecBox: document.querySelector("#ctripSpecBox"),
   ctripStatus: document.querySelector("#ctripStatus"),
+  serviceConfigStatus: document.querySelector("#serviceConfigStatus"),
+  aiRouteEndpointInput: document.querySelector("#aiRouteEndpointInput"),
+  aiRouteTokenInput: document.querySelector("#aiRouteTokenInput"),
+  amapEndpointInput: document.querySelector("#amapEndpointInput"),
+  weatherEndpointInput: document.querySelector("#weatherEndpointInput"),
+  saveServiceConfigBtn: document.querySelector("#saveServiceConfigBtn"),
+  syncWeatherBtn: document.querySelector("#syncWeatherBtn"),
+  serviceStatusText: document.querySelector("#serviceStatusText"),
   activityList: document.querySelector("#activityList"),
 };
 
@@ -571,7 +620,9 @@ let activeStop = 0;
 let pendingProvider = "";
 let transportFilterApplied = false;
 let transportProviderItems = [];
+let transportProviderSource = "";
 let ctripConfig = safeJsonParse(localStorage.getItem(CTRIP_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
+let serviceConfig = safeJsonParse(localStorage.getItem(SERVICE_CONFIG_KEY), { aiEndpoint: "", aiToken: "", amapEndpoint: "", weatherEndpoint: "" }) || { aiEndpoint: "", aiToken: "", amapEndpoint: "", weatherEndpoint: "" };
 let memberProfile = safeJsonParse(localStorage.getItem(MEMBER_PROFILE_KEY), null);
 let onlineMembers = [];
 const sessionId = crypto.randomUUID ? crypto.randomUUID() : uid();
@@ -582,6 +633,7 @@ let tripId = urlParams.get("trip") || localStorage.getItem("tripboard-current-tr
 const isReadonlyMode = urlParams.get("mode") === "readonly";
 let isApplyingRemote = false;
 let lastRemoteUpdatedAt = "";
+let remoteVersionHistoryEnabled = true;
 const initialGuideDates = defaultGuideDates();
 const guideState = {
   destination: "甘肃",
@@ -601,6 +653,93 @@ function loadState() {
     localStorage.removeItem(STORAGE_KEY);
   }
   return buildKyotoPlan();
+}
+
+function historyKey() {
+  return `${VERSION_PREFIX}${tripId || "local"}`;
+}
+
+function versionHistory() {
+  return safeJsonParse(localStorage.getItem(historyKey()), []) || [];
+}
+
+function saveVersionSnapshot(reason = "保存前版本") {
+  if (!state?.days?.length) return;
+  const history = versionHistory();
+  const last = history[0];
+  const serialized = JSON.stringify(state);
+  if (last?.serialized === serialized) return;
+  const entry = {
+    id: uid(),
+    reason,
+    at: new Date().toISOString(),
+    by: getCollabName(),
+    serialized,
+    data: clone(state),
+  };
+  localStorage.setItem(historyKey(), JSON.stringify([entry, ...history].slice(0, MAX_VERSION_HISTORY)));
+  queueRemoteVersionSnapshot(entry);
+}
+
+function queueRemoteVersionSnapshot(entry) {
+  if (!canEdit() || !supabaseClient || !tripId || !remoteVersionHistoryEnabled) return;
+  supabaseClient
+    .from("trip_plan_versions")
+    .insert({
+      trip_id: tripId,
+      data: entry.data,
+      reason: entry.reason,
+      created_by: entry.by,
+    })
+    .then(({ error }) => {
+      if (error) remoteVersionHistoryEnabled = false;
+    });
+}
+
+async function loadRemoteVersionHistory() {
+  if (!supabaseClient || !tripId || !remoteVersionHistoryEnabled) return;
+  const { data, error } = await supabaseClient
+    .from("trip_plan_versions")
+    .select("id, data, reason, created_at, created_by")
+    .eq("trip_id", tripId)
+    .order("created_at", { ascending: false })
+    .limit(MAX_VERSION_HISTORY);
+  if (error) {
+    remoteVersionHistoryEnabled = false;
+    return;
+  }
+  const remoteEntries = (data || [])
+    .filter((entry) => entry.data?.days?.length)
+    .map((entry) => ({
+      id: entry.id,
+      reason: entry.reason || "云端历史版本",
+      at: entry.created_at,
+      by: entry.created_by || "未知成员",
+      serialized: JSON.stringify(entry.data),
+      data: entry.data,
+    }));
+  const merged = [...remoteEntries, ...versionHistory()];
+  const deduped = [];
+  const seen = new Set();
+  merged.forEach((entry) => {
+    if (seen.has(entry.serialized)) return;
+    seen.add(entry.serialized);
+    deduped.push(entry);
+  });
+  localStorage.setItem(historyKey(), JSON.stringify(deduped.slice(0, MAX_VERSION_HISTORY)));
+}
+
+function restoreVersion(versionId) {
+  if (!requireEdit("恢复历史版本")) return;
+  const entry = versionHistory().find((item) => item.id === versionId);
+  if (!entry?.data?.days?.length) return;
+  saveVersionSnapshot("恢复前版本");
+  state = ensurePlanDates(clone(entry.data));
+  activeDay = 0;
+  activeStop = 0;
+  logActivity(`恢复历史版本：${entry.reason || "旧版本"}`);
+  saveState("已恢复历史版本");
+  render();
 }
 
 async function saveState(label = "已保存到本地") {
@@ -704,6 +843,7 @@ function applyReadonlyUi() {
   document.body.classList.toggle("readonly-mode", isReadonlyMode);
   const writeControls = [
     dom.createSharedTripBtn,
+    dom.partySizeInput,
     dom.addStopBtn,
     dom.applyGuideBtn,
     dom.recommendedPlanBtn,
@@ -716,6 +856,8 @@ function applyReadonlyUi() {
     dom.mustVote,
     dom.ctripSyncTransportBtn,
     dom.resetBtn,
+    dom.saveServiceConfigBtn,
+    dom.syncWeatherBtn,
   ];
   writeControls.forEach((control) => {
     if (control) control.disabled = isReadonlyMode;
@@ -735,6 +877,9 @@ function applyReadonlyUi() {
   document.querySelectorAll(".guide-controls input, .guide-controls button, .choice-card").forEach((control) => {
     control.disabled = isReadonlyMode;
   });
+  document.querySelectorAll(".connector-grid input, .connector-grid button").forEach((control) => {
+    control.disabled = isReadonlyMode;
+  });
   dom.candidateGrid.querySelectorAll("button").forEach((button) => {
     button.disabled = isReadonlyMode;
   });
@@ -751,6 +896,24 @@ function applyReadonlyUi() {
     dom.presenceText.textContent = "你正在编辑计划";
     dom.guideProgress.textContent = "可保存";
   }
+}
+
+function renderVersionHistory() {
+  const history = versionHistory();
+  dom.versionCount.textContent = `${history.length} 条`;
+  dom.versionList.innerHTML =
+    history
+      .map((entry) => {
+        const date = new Date(entry.at);
+        const time = Number.isNaN(date.getTime()) ? "刚刚" : date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        return `
+          <button class="version-item" data-version="${entry.id}">
+            <strong>${entry.reason || "历史版本"}</strong>
+            <span>${time} · ${entry.by || "未知成员"}</span>
+          </button>
+        `;
+      })
+      .join("") || `<div class="member-empty">开始编辑后会自动保存最近 ${MAX_VERSION_HISTORY} 个版本。</div>`;
 }
 
 async function trackPresence() {
@@ -830,6 +993,7 @@ async function loadRemoteState() {
   }
   if (data?.data?.days?.length) {
     isApplyingRemote = true;
+    saveVersionSnapshot("载入云端前版本");
     state = data.data;
     ensurePlanDates(state);
     lastRemoteUpdatedAt = data.updated_at || "";
@@ -873,6 +1037,7 @@ function subscribeRemoteState() {
         if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
         lastRemoteUpdatedAt = next.updated_at;
         isApplyingRemote = true;
+        saveVersionSnapshot("协作者更新前版本");
         state = next.data;
         ensurePlanDates(state);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -909,6 +1074,8 @@ async function connectSharedTrip(id) {
   url.searchParams.set("trip", tripId);
   window.history.replaceState({}, "", url.toString());
   await loadRemoteState();
+  await loadRemoteVersionHistory();
+  renderVersionHistory();
   subscribeRemoteState();
   if (!memberProfile) {
     dom.collabStatus.textContent = "请填写姓名和身份，然后点击“加入协作”，其他成员就能看到你在线。";
@@ -1038,6 +1205,125 @@ function averagePrice(options, type) {
   return Math.round(scoped.reduce((sum, item) => sum + item.price, 0) / scoped.length);
 }
 
+function saveServiceConfig() {
+  serviceConfig = {
+    aiEndpoint: dom.aiRouteEndpointInput.value.trim(),
+    aiToken: dom.aiRouteTokenInput.value.trim(),
+    amapEndpoint: dom.amapEndpointInput.value.trim(),
+    weatherEndpoint: dom.weatherEndpointInput.value.trim(),
+  };
+  localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+  renderServiceStatus();
+}
+
+function serviceHeaders(token) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+function renderServiceStatus() {
+  const connected = [
+    serviceConfig.aiEndpoint && "AI",
+    serviceConfig.amapEndpoint && "高德",
+    serviceConfig.weatherEndpoint && "天气代理",
+  ].filter(Boolean);
+  dom.serviceConfigStatus.textContent = connected.length ? `已配置 ${connected.join(" / ")}` : "本地兜底";
+  dom.serviceStatusText.textContent = connected.length
+    ? `已保存 ${connected.join("、")} 接口。密钥仍应放在你的后端代理里，前端只保存代理地址和可选访问令牌。`
+    : "AI、高德需要你自己的后端代理保存密钥；天气未配置代理时使用 Open-Meteo 免费接口。";
+}
+
+function weatherLabel(code) {
+  const map = {
+    0: "晴",
+    1: "少云",
+    2: "多云",
+    3: "阴",
+    45: "雾",
+    48: "雾凇",
+    51: "小毛毛雨",
+    53: "毛毛雨",
+    55: "强毛毛雨",
+    61: "小雨",
+    63: "中雨",
+    65: "大雨",
+    71: "小雪",
+    73: "中雪",
+    75: "大雪",
+    80: "阵雨",
+    81: "强阵雨",
+    82: "暴雨",
+    95: "雷雨",
+  };
+  return map[Number(code)] || "天气待确认";
+}
+
+async function geocodeDestination() {
+  const query = state.destination || guideState.destination || "";
+  if (!query) return null;
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=zh&format=json`;
+  const response = await fetch(url);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
+  const result = data.results?.[0];
+  if (!result) return null;
+  return { latitude: result.latitude, longitude: result.longitude, name: result.name };
+}
+
+async function requestWeatherForecast() {
+  const payload = {
+    destination: state.destination,
+    startDate: state.startDate,
+    endDate: state.endDate,
+    days: state.days.map((day) => ({ id: day.id, date: day.date, title: day.title })),
+  };
+  if (serviceConfig.weatherEndpoint) {
+    const response = await fetch(serviceConfig.weatherEndpoint, {
+      method: "POST",
+      headers: serviceHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+    return { source: data.source || "weather-proxy", days: Array.isArray(data.days) ? data.days : [] };
+  }
+
+  const place = await geocodeDestination();
+  if (!place) throw new Error("没有找到目的地坐标，请尝试填写更具体的城市名，或配置自己的天气代理。");
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=16`;
+  const response = await fetch(url);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
+  const days = (data.daily?.time || []).map((date, index) => ({
+    date,
+    text: `${Math.round(data.daily.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily.temperature_2m_max?.[index] ?? 0)}°C ${weatherLabel(data.daily.weather_code?.[index])} · 降水${Math.round(data.daily.precipitation_probability_max?.[index] ?? 0)}%`,
+  }));
+  return { source: `Open-Meteo · ${place.name}`, days };
+}
+
+async function syncWeather() {
+  if (!requireEdit("同步天气")) return;
+  saveVersionSnapshot("同步天气前版本");
+  dom.serviceStatusText.textContent = "正在同步天气...";
+  try {
+    const forecast = await requestWeatherForecast();
+    let applied = 0;
+    state.days.forEach((day, index) => {
+      const match = forecast.days.find((item) => item.date && item.date === day.date) || forecast.days[index];
+      if (!match) return;
+      day.weather = match.text || match.weather || match.summary || day.weather;
+      applied += 1;
+    });
+    logActivity(`同步天气 ${applied} 天`);
+    saveState("已同步天气");
+    dom.serviceStatusText.textContent = `已同步 ${applied} 天天气，来源：${forecast.source || "天气接口"}。`;
+    render();
+  } catch (error) {
+    dom.serviceStatusText.textContent = `天气同步失败：${error.message}`;
+  }
+}
+
 function normalizeTransportItem(item, index, fallbackRoute) {
   const type = item.type === "train" || item.type === "flight" ? item.type : String(item.type || "").includes("train") ? "train" : "flight";
   const depart = item.depart || item.departTime || item.startTime || "09:00";
@@ -1054,6 +1340,21 @@ function normalizeTransportItem(item, index, fallbackRoute) {
     duration,
     price: Number(item.price || item.amount || item.lowestPrice || 0),
     source: item.source || "携程",
+  };
+}
+
+function parseExternalOrderText(text) {
+  const source = String(text || "");
+  const amountMatch = source.match(/(?:¥|￥|金额|房费|总价|合计|支付)[^\d]{0,6}(\d+(?:\.\d+)?)/);
+  const timeMatch = source.match(/(?:\b|[^0-9])([01]?\d|2[0-3])[:：]([0-5]\d)(?:\b|[^0-9])/);
+  const dateTimeMatch = source.match(/(\d{1,2})月(\d{1,2})日[^0-9]{0,8}([01]?\d|2[0-3])[:：]([0-5]\d)/);
+  const addressMatch = source.match(/(?:地址|地点|位置|入住地址|到店地址)[:：\s]*(.+?)(?:\n|$)/);
+  const titleMatch = source.match(/(?:商户|酒店|民宿|餐厅|名称|订单)[:：\s]*(.+?)(?:\n|$)/);
+  return {
+    title: titleMatch?.[1]?.trim(),
+    time: dateTimeMatch ? `${dateTimeMatch[3].padStart(2, "0")}:${dateTimeMatch[4]}` : timeMatch ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}` : "",
+    budget: amountMatch ? Math.round(Number(amountMatch[1])) : 0,
+    address: addressMatch?.[1]?.trim(),
   };
 }
 
@@ -1084,8 +1385,15 @@ function renderTransport() {
 
   dom.flightAvgPrice.textContent = money(averagePrice(options, "flight"));
   dom.trainAvgPrice.textContent = money(averagePrice(options, "train"));
-  dom.transportProviderStatus.textContent = transportProviderItems.length ? "携程已同步" : "携程 API 待接入";
-  dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} · ${route.from} 到 ${route.to}，${transportProviderItems.length ? "当前显示后端同步报价。" : "当前为可筛选示例报价。"}`;
+  const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
+  dom.transportProviderStatus.textContent = transportProviderItems.length ? (isDemoProxy ? "代理示例" : "真实接口") : "本地示例";
+  dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} · ${route.from} 到 ${route.to}，${
+    transportProviderItems.length
+      ? isDemoProxy
+        ? "后端已连通，但当前仍是代理示例数据。"
+        : "当前显示后端真实接口返回的报价。"
+      : "当前为本地生成的可筛选示例报价。"
+  }`;
   dom.transportList.innerHTML =
     visible
       .map(
@@ -1188,16 +1496,39 @@ async function syncCtripTransport() {
     return;
   }
   transportProviderItems = rawItems.map((item, index) => normalizeTransportItem(item, index, route));
+  transportProviderSource = data.source || "";
   transportFilterApplied = true;
-  setCtripStatus(`已同步 ${transportProviderItems.length} 条携程交通报价，并更新当前交通列表。`, "check-circle-2");
-  dom.syncBadge.textContent = "携程已同步";
+  const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
+  setCtripStatus(isDemoProxy ? `后端代理已连通，返回 ${transportProviderItems.length} 条示例交通数据。配置 Trip.com/Ctrip 正式 API 后会显示真实报价。` : `已同步 ${transportProviderItems.length} 条真实交通报价，并更新当前交通列表。`, isDemoProxy ? "info" : "check-circle-2");
+  dom.syncBadge.textContent = isDemoProxy ? "代理示例" : "真实报价";
   logActivity(`同步携程交通报价 ${transportProviderItems.length} 条`);
   saveState("已同步携程报价");
   render();
 }
 
 function totalBudget() {
-  return state.days.reduce((sum, day) => sum + day.stops.reduce((daySum, stop) => daySum + Number(stop.budget || 0), 0), 0);
+  return state.days.reduce((sum, day) => sum + day.stops.reduce((daySum, stop) => daySum + numberValue(stop.budget), 0), 0);
+}
+
+function totalPaid() {
+  return state.days.reduce((sum, day) => sum + day.stops.reduce((daySum, stop) => daySum + numberValue(stop.paid), 0), 0);
+}
+
+function partySize() {
+  return Math.max(1, Number.parseInt(dom.partySizeInput.value || state.partySize || 1, 10) || 1);
+}
+
+function payerBudget() {
+  const groups = {};
+  state.days.forEach((day) => {
+    day.stops.forEach((stop) => {
+      const paid = numberValue(stop.paid);
+      if (!paid) return;
+      const payer = String(stop.payer || "未指定").trim() || "未指定";
+      groups[payer] = (groups[payer] || 0) + paid;
+    });
+  });
+  return groups;
 }
 
 function categoryBudget() {
@@ -1205,7 +1536,7 @@ function categoryBudget() {
   state.days.forEach((day) => {
     day.stops.forEach((stop) => {
       const title = `${stop.title}${stop.type}${stop.tags.join("")}`;
-      const value = Number(stop.budget || 0);
+      const value = numberValue(stop.budget);
       if (/酒店|民宿|住宿|入住/.test(title)) groups.住宿 += value;
       else if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(title)) groups.餐饮 += value;
       else if (/交通|高铁|Transit|车|机场|返程/.test(title)) groups.交通 += value;
@@ -1218,6 +1549,8 @@ function categoryBudget() {
 function renderShell() {
   ensurePlanOrigin(state);
   const total = totalBudget();
+  const paid = totalPaid();
+  const people = partySize();
   const limit = Number(state.budgetLimit || 10000);
   const percent = Math.min(100, Math.round((total / limit) * 100));
   dom.tripName.textContent = state.name;
@@ -1231,6 +1564,16 @@ function renderShell() {
   dom.budgetGrid.innerHTML = Object.entries(groups)
     .map(([key, value]) => `<span>${key} ${money(value)}</span>`)
     .join("");
+  dom.partySizeInput.value = people;
+  const payerRows = Object.entries(payerBudget())
+    .map(([payer, value]) => `<span>${payer} 已付 ${money(value)}</span>`)
+    .join("");
+  dom.budgetSettlement.innerHTML = `
+    <span>已付 ${money(paid)}</span>
+    <span>待付 ${money(Math.max(0, total - paid))}</span>
+    <span>人均 ${money(Math.round(total / people))}</span>
+    ${payerRows || "<span>暂无付款记录</span>"}
+  `;
 }
 
 function renderDays() {
@@ -1321,10 +1664,13 @@ function renderDetail() {
   dom.fieldTitle.value = stop.title || "";
   dom.fieldType.value = stop.type || "";
   dom.fieldBudget.value = stop.budget || "";
+  dom.fieldPaid.value = stop.paid || "";
+  dom.fieldPayer.value = stop.payer || "";
   dom.fieldAddress.value = stop.address || "";
   dom.fieldAmapKeyword.value = stop.amapKeyword || `${state.destination || ""} ${stop.title}`.trim();
   dom.fieldLng.value = stop.lng || "";
   dom.fieldLat.value = stop.lat || "";
+  dom.fieldImage.value = stop.image || "";
   const detailKeyword = dom.fieldAmapKeyword.value || stop.title;
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
   dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
@@ -1384,12 +1730,14 @@ function render() {
   renderActivities();
   renderGuideResult();
   renderMembers();
+  renderVersionHistory();
   applyReadonlyUi();
   refreshIcons();
 }
 
 function mutate(label, action) {
   if (!requireEdit(label)) return;
+  saveVersionSnapshot(label);
   action();
   logActivity(label);
   saveState(label);
@@ -1428,11 +1776,14 @@ dom.stopForm.addEventListener("submit", (event) => {
     stop.time = dom.fieldTime.value.trim();
     stop.title = dom.fieldTitle.value.trim() || "未命名地点";
     stop.type = dom.fieldType.value.trim() || "Place";
-    stop.budget = Number(dom.fieldBudget.value || 0);
+    stop.budget = numberValue(dom.fieldBudget.value);
+    stop.paid = numberValue(dom.fieldPaid.value);
+    stop.payer = dom.fieldPayer.value.trim();
     stop.address = dom.fieldAddress.value.trim();
     stop.amapKeyword = dom.fieldAmapKeyword.value.trim();
     stop.lng = dom.fieldLng.value.trim();
     stop.lat = dom.fieldLat.value.trim();
+    stop.image = dom.fieldImage.value.trim() || stop.image || images.city;
     stop.tags = normalizeTags(dom.fieldTags.value);
     stop.note = dom.fieldNote.value.trim();
   });
@@ -1487,7 +1838,7 @@ dom.quickAddForm.addEventListener("submit", (event) => {
   });
 });
 
-dom.openAmapBtn.addEventListener("click", () => {
+dom.openAmapBtn.addEventListener("click", async () => {
   const keyword =
     dom.quickAmapKeyword.value.trim() ||
     `${state.destination || ""} ${dom.quickPlaceName.value.trim()}`.trim() ||
@@ -1495,15 +1846,37 @@ dom.openAmapBtn.addEventListener("click", () => {
     "景点";
   dom.quickAmapLink.href = amapSearchUrl(keyword);
   dom.quickAmapLink.textContent = `打开高德搜索：${keyword}`;
-  dom.optimizeHint.textContent = `已生成高德链接：${keyword}`;
+  if (!serviceConfig.amapEndpoint) {
+    dom.optimizeHint.textContent = `已生成高德链接：${keyword}。配置高德代理后可自动回填地址和经纬度。`;
+    return;
+  }
+  try {
+    const place = await lookupAmapPlace(keyword);
+    if (place?.address) dom.quickAddress.value = place.address;
+    dom.optimizeHint.textContent = place?.lng && place?.lat ? `高德代理已定位：${place.address || keyword}（${place.lng}, ${place.lat}）。加入后可在右侧保存坐标。` : `高德代理已响应，但没有返回经纬度；已保留搜索链接。`;
+  } catch (error) {
+    dom.optimizeHint.textContent = `高德代理调用失败：${error.message}。已保留高德搜索链接。`;
+  }
 });
 
-dom.amapLookupBtn.addEventListener("click", () => {
+dom.amapLookupBtn.addEventListener("click", async () => {
   const stop = currentStop();
   const keyword = dom.fieldAmapKeyword.value.trim() || `${state.destination || ""} ${stop.title}`.trim();
   dom.fieldAmapLink.href = amapSearchUrl(keyword);
   dom.fieldAmapLink.textContent = `打开高德搜索：${keyword}`;
-  dom.saveState.textContent = `已生成高德链接：${keyword}`;
+  if (!serviceConfig.amapEndpoint) {
+    dom.saveState.textContent = `已生成高德链接：${keyword}`;
+    return;
+  }
+  try {
+    const place = await lookupAmapPlace(keyword);
+    if (place?.address) dom.fieldAddress.value = place.address;
+    if (place?.lng) dom.fieldLng.value = place.lng;
+    if (place?.lat) dom.fieldLat.value = place.lat;
+    dom.saveState.textContent = place?.lng && place?.lat ? `高德代理已回填定位：${keyword}` : `高德代理已响应：${keyword}`;
+  } catch (error) {
+    dom.saveState.textContent = `高德代理调用失败：${error.message}`;
+  }
 });
 
 dom.deleteStopBtn.addEventListener("click", () => {
@@ -1537,42 +1910,102 @@ dom.moveDownBtn.addEventListener("click", () => {
   });
 });
 
-function optimizeCurrentDayRoute() {
+function localOptimizeStops(stops) {
+  const [start, ...rest] = stops;
+  const optimized = [start];
+  const remaining = [...rest];
+
+  while (remaining.length) {
+    const current = optimized[optimized.length - 1];
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    remaining.forEach((stop, index) => {
+      const distance = distanceBetween(current, stop);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+    optimized.push(remaining.splice(bestIndex, 1)[0]);
+  }
+
+  return optimized;
+}
+
+async function requestAiRoute(day) {
+  if (!serviceConfig.aiEndpoint) return null;
+  const response = await fetch(serviceConfig.aiEndpoint, {
+    method: "POST",
+    headers: serviceHeaders(serviceConfig.aiToken),
+    body: JSON.stringify({
+      tripId,
+      day: day.date || day.label,
+      destination: state.destination,
+      origin: state.origin,
+      stops: day.stops.map((stop, index) => ({
+        index,
+        id: stop.id,
+        title: stop.title,
+        time: stop.time,
+        address: stop.address,
+        lng: stop.lng,
+        lat: stop.lat,
+        tags: stop.tags || [],
+      })),
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+  const order = Array.isArray(data.order) ? data.order : Array.isArray(data.stopIds) ? data.stopIds : [];
+  return { order, note: data.note || data.reason || "AI 已返回优化顺序" };
+}
+
+async function optimizeCurrentDayRoute() {
   const day = currentDay();
   if (day.stops.length < 3) {
     dom.optimizeHint.textContent = "当前天少于 3 个地点，暂时不需要优化路径。";
     return;
   }
 
-  mutate("AI 优化当天路径", () => {
-    const [start, ...rest] = day.stops;
-    const optimized = [start];
-    const remaining = [...rest];
-
-    while (remaining.length) {
-      const current = optimized[optimized.length - 1];
-      let bestIndex = 0;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      remaining.forEach((stop, index) => {
-        const distance = distanceBetween(current, stop);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestIndex = index;
-        }
-      });
-      optimized.push(remaining.splice(bestIndex, 1)[0]);
+  if (!requireEdit("优化路径")) return;
+  saveVersionSnapshot("优化路径前版本");
+  try {
+    dom.optimizeHint.textContent = serviceConfig.aiEndpoint ? "正在请求 AI 路径代理..." : "未配置 AI 代理，使用本地距离排序。";
+    const aiResult = await requestAiRoute(day);
+    let optimized = null;
+    if (aiResult?.order?.length) {
+      const byId = new Map(day.stops.map((stop, index) => [stop.id, { stop, index }]));
+      const byIndex = day.stops.map((stop, index) => ({ stop, index }));
+      const picked = aiResult.order
+        .map((key) => byId.get(String(key))?.stop || byIndex[Number(key)]?.stop)
+        .filter(Boolean);
+      const pickedIds = new Set(picked.map((stop) => stop.id));
+      optimized = [...picked, ...day.stops.filter((stop) => !pickedIds.has(stop.id))];
     }
-
+    if (!optimized) optimized = localOptimizeStops(day.stops);
     day.stops = optimized.map((stop, index) => ({
       ...stop,
-      tags: Array.from(new Set([...(stop.tags || []).filter((tag) => tag !== "待优化"), index === 0 ? "起点" : "已优化"])),
+      tags: Array.from(new Set([...(stop.tags || []).filter((tag) => !["待优化", "已优化", "AI优化"].includes(tag)), index === 0 ? "起点" : serviceConfig.aiEndpoint ? "AI优化" : "已优化"])),
     }));
     activeStop = 0;
-    dom.optimizeHint.textContent = `已按${day.stops.length}个地点的地图位置优化顺序；接入后端 AI 后可进一步考虑营业时间、交通方式和停留时长。`;
-  });
+    logActivity(serviceConfig.aiEndpoint ? "AI 优化当天路径" : "本地优化当天路径");
+    saveState(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
+    dom.optimizeHint.textContent = serviceConfig.aiEndpoint ? `AI 已优化 ${day.stops.length} 个地点：${aiResult?.note || "已应用返回顺序"}` : `已按 ${day.stops.length} 个地点的坐标/地图位置做本地距离排序；配置 AI 代理后可考虑营业时间、交通方式、天气和体力。`;
+    render();
+  } catch (error) {
+    dom.optimizeHint.textContent = `AI 代理调用失败：${error.message}。已保留原顺序，可检查后端地址或令牌。`;
+  }
 }
 
 dom.optimizeRouteBtn.addEventListener("click", optimizeCurrentDayRoute);
+
+dom.saveServiceConfigBtn.addEventListener("click", () => {
+  if (!requireEdit("保存接口配置")) return;
+  saveServiceConfig();
+  dom.saveState.textContent = "接口配置已保存到当前浏览器";
+});
+
+dom.syncWeatherBtn.addEventListener("click", syncWeather);
 
 dom.mustVote.addEventListener("click", () => {
   mutate("更新必去投票", () => {
@@ -1655,10 +2088,16 @@ dom.endDateInput.addEventListener("input", syncGuideDatesFromInputs);
 
 dom.transportFilterForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  transportProviderItems = [];
   transportFilterApplied = true;
   renderTransport();
   refreshIcons();
+});
+
+dom.partySizeInput.addEventListener("change", () => {
+  if (!requireEdit("更新同行人数")) return;
+  mutate("更新同行人数", () => {
+    state.partySize = partySize();
+  });
 });
 
 dom.destinationInput.addEventListener("input", () => {
@@ -1812,6 +2251,12 @@ dom.copyReadonlyLinkBtn.addEventListener("click", async () => {
   }
 });
 
+dom.versionList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-version]");
+  if (!button) return;
+  restoreVersion(button.dataset.version);
+});
+
 dom.memberForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const saved = saveMemberProfile({
@@ -1872,6 +2317,7 @@ dom.ctripSpecBtn.addEventListener("click", async () => {
 
 dom.resetBtn.addEventListener("click", () => {
   if (!requireEdit("重置计划")) return;
+  saveVersionSnapshot("重置前版本");
   state = ensurePlanDates(buildKyotoPlan());
   activeDay = 0;
   activeStop = 0;
@@ -1889,6 +2335,8 @@ document.querySelectorAll(".sync-card").forEach((card) => {
     dom.importName.value = pendingProvider.includes("民宿") ? "民宿入住" : pendingProvider.includes("美团") ? "餐厅预约" : "外部记录";
     dom.importTime.value = pendingProvider.includes("民宿") ? "15:00" : "18:30";
     dom.importBudget.value = "";
+    dom.importPaid.value = "";
+    dom.importPayer.value = memberProfile?.name || "";
     dom.importAddress.value = "";
     dom.importNote.value = "";
     dom.importModal.classList.add("is-open");
@@ -1904,6 +2352,19 @@ document.querySelectorAll("[data-close-import]").forEach((button) => {
   });
 });
 
+dom.parseImportBtn.addEventListener("click", () => {
+  const parsed = parseExternalOrderText(dom.importNote.value);
+  if (parsed.title && (!dom.importName.value || dom.importName.value === "外部记录")) dom.importName.value = parsed.title;
+  if (parsed.time) dom.importTime.value = parsed.time;
+  if (parsed.budget) {
+    dom.importBudget.value = parsed.budget;
+    if (!dom.importPaid.value) dom.importPaid.value = parsed.budget;
+  }
+  if (parsed.address) dom.importAddress.value = parsed.address;
+  dom.syncStatus.innerHTML = `${icon("scan-text")}<span>已尝试从粘贴文本解析名称、时间、金额和地址，请检查后再导入。</span>`;
+  refreshIcons();
+});
+
 dom.importForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const title = dom.importName.value.trim() || "外部记录";
@@ -1915,7 +2376,9 @@ dom.importForm.addEventListener("submit", (event) => {
       address: dom.importAddress.value.trim() || "地址待确认",
       note: dom.importNote.value.trim() || `${pendingProvider}记录，后续可继续补充订单详情。`,
       tags: ["已导入", pendingProvider],
-      budget: Number(dom.importBudget.value || 0),
+      budget: numberValue(dom.importBudget.value),
+      paid: numberValue(dom.importPaid.value),
+      payer: dom.importPayer.value.trim(),
       image: pendingProvider.includes("民宿") ? "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80" : images.food,
       x: 78,
       y: 60,
@@ -1940,6 +2403,11 @@ async function boot() {
   }
   dom.ctripEndpointInput.value = ctripConfig.endpoint || "";
   dom.ctripTokenInput.value = ctripConfig.token || "";
+  dom.aiRouteEndpointInput.value = serviceConfig.aiEndpoint || "";
+  dom.aiRouteTokenInput.value = serviceConfig.aiToken || "";
+  dom.amapEndpointInput.value = serviceConfig.amapEndpoint || "";
+  dom.weatherEndpointInput.value = serviceConfig.weatherEndpoint || "";
+  renderServiceStatus();
   if (ctripConfig.endpoint) {
     dom.syncBadge.textContent = "已配置接口";
     setCtripStatus("已读取本机保存的携程后端代理地址，可测试连接或同步当天交通。", "plug-zap");
@@ -1950,6 +2418,7 @@ async function boot() {
   guideState.endDate = state.endDate || guideState.endDate;
   dom.destinationInput.value = guideState.destination;
   dom.originInput.value = guideState.origin;
+  dom.partySizeInput.value = state.partySize || 1;
   if (!dom.transportFrom.value) dom.transportFrom.value = guideState.origin;
   initSupabaseClient();
   render();

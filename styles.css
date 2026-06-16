@@ -327,6 +327,64 @@ button {
   font-size: 12px;
 }
 
+.budget-tools {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.budget-tools label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.budget-tools input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.budget-settlement,
+.version-list {
+  display: grid;
+  gap: 7px;
+}
+
+.budget-settlement span {
+  padding: 8px;
+  color: #34464f;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.version-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px;
+  color: var(--ink);
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.version-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -792,6 +850,40 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.connector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.connector-grid label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.connector-grid input {
+  width: 100%;
+  min-height: 39px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.connector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
 }
 
 .helper-text {
@@ -1587,6 +1679,7 @@ svg {
 
   .guide-layout,
   .guide-controls,
+  .connector-grid,
   .edit-form,
   .quick-add-form,
   .transport-summary,
