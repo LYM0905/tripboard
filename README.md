@@ -72,6 +72,36 @@ https://你的域名/?trip=某个id
 4. 前端只填写你的后端代理地址，例如 `https://your-domain.com/api/ctrip/transport`。
 5. 后端返回 `{ items: [...] }`，前端会把返回的机票/动车报价显示到当天交通列表。
 
+本项目已经生成了 Supabase Edge Function 模板：
+
+```text
+supabase/functions/ctrip-transport/index.ts
+```
+
+默认前端代理地址已经写在 `config.js`：
+
+```text
+https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/ctrip-transport
+```
+
+部署方式：
+
+```bash
+supabase login
+supabase link --project-ref juicyxqblnrmbhtuujez
+supabase functions deploy ctrip-transport
+```
+
+如果已经拿到 Trip.com/Ctrip 的真实接口权限，把密钥放到 Supabase 环境变量里：
+
+```bash
+supabase secrets set TRIPCOM_APP_KEY=你的AppKey
+supabase secrets set TRIPCOM_APP_SECRET=你的AppSecret
+supabase secrets set TRIPCOM_TRANSPORT_API_URL=官方给你的交通查询接口地址
+```
+
+当前函数在未配置真实 Trip.com 接口时会返回“代理示例”交通数据，用来验证前端和后端链路已经打通。
+
 前端发送给后端的请求格式：
 
 ```json

@@ -913,7 +913,13 @@ function saveCtripConfig() {
 
 function ctripHeaders() {
   const headers = { "Content-Type": "application/json" };
-  if (ctripConfig.token) headers.Authorization = `Bearer ${ctripConfig.token}`;
+  const appConfig = window.TRIPBOARD_CONFIG || {};
+  if (ctripConfig.token) {
+    headers.Authorization = `Bearer ${ctripConfig.token}`;
+  } else if (ctripConfig.endpoint.includes("supabase.co/functions/v1") && appConfig.supabaseAnonKey) {
+    headers.apikey = appConfig.supabaseAnonKey;
+    headers.Authorization = `Bearer ${appConfig.supabaseAnonKey}`;
+  }
   return headers;
 }
 
@@ -1631,6 +1637,12 @@ dom.importForm.addEventListener("submit", (event) => {
 
 async function boot() {
   dom.collabName.value = localStorage.getItem("tripboard-user-name") || "";
+  const appConfig = window.TRIPBOARD_CONFIG || {};
+  const isPlaceholderEndpoint = /example\.com\/api\/ctrip\/transport/.test(ctripConfig.endpoint || "");
+  if ((!ctripConfig.endpoint || isPlaceholderEndpoint) && appConfig.ctripProxyUrl) {
+    ctripConfig = { endpoint: appConfig.ctripProxyUrl, token: "" };
+    localStorage.setItem(CTRIP_CONFIG_KEY, JSON.stringify(ctripConfig));
+  }
   dom.ctripEndpointInput.value = ctripConfig.endpoint || "";
   dom.ctripTokenInput.value = ctripConfig.token || "";
   if (ctripConfig.endpoint) {
