@@ -458,6 +458,7 @@ const dom = {
   collabStatus: document.querySelector("#collabStatus"),
   createSharedTripBtn: document.querySelector("#createSharedTripBtn"),
   copySharedLinkBtn: document.querySelector("#copySharedLinkBtn"),
+  copyReadonlyLinkBtn: document.querySelector("#copyReadonlyLinkBtn"),
   budgetTotal: document.querySelector("#budgetTotal"),
   budgetMeter: document.querySelector("#budgetMeter"),
   budgetGrid: document.querySelector("#budgetGrid"),
@@ -465,6 +466,7 @@ const dom = {
   routeLabel: document.querySelector("#routeLabel"),
   dayTitle: document.querySelector("#dayTitle"),
   saveState: document.querySelector("#saveState"),
+  presenceText: document.querySelector("#presenceText"),
   dayPills: document.querySelector("#dayPills"),
   timeline: document.querySelector("#timeline"),
   candidateGrid: document.querySelector("#candidateGrid"),
@@ -547,6 +549,7 @@ const dom = {
   createChoiceCopy: document.querySelector("#createChoiceCopy"),
   recommendedPlanBtn: document.querySelector("#recommendedPlanBtn"),
   blankPlanBtn: document.querySelector("#blankPlanBtn"),
+  guideProgress: document.querySelector(".guide-progress"),
   syncBadge: document.querySelector("#syncBadge"),
   syncStatus: document.querySelector("#syncStatus"),
   ctripLoginBtn: document.querySelector("#ctripLoginBtn"),
@@ -574,7 +577,9 @@ let onlineMembers = [];
 const sessionId = crypto.randomUUID ? crypto.randomUUID() : uid();
 let supabaseClient = null;
 let realtimeChannel = null;
-let tripId = new URLSearchParams(window.location.search).get("trip") || localStorage.getItem("tripboard-current-trip-id") || "";
+const urlParams = new URLSearchParams(window.location.search);
+let tripId = urlParams.get("trip") || localStorage.getItem("tripboard-current-trip-id") || "";
+const isReadonlyMode = urlParams.get("mode") === "readonly";
 let isApplyingRemote = false;
 let lastRemoteUpdatedAt = "";
 const initialGuideDates = defaultGuideDates();
@@ -599,6 +604,10 @@ function loadState() {
 }
 
 async function saveState(label = "已保存到本地") {
+  if (!canEdit()) {
+    dom.saveState.textContent = "只读模式未保存修改";
+    return;
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   dom.saveState.textContent = label;
   if (!isApplyingRemote && supabaseClient && tripId) {
@@ -691,6 +700,59 @@ function renderMembers() {
       .join("") || `<div class="member-empty">填写姓名后加入协作，在线成员会显示在这里。</div>`;
 }
 
+function applyReadonlyUi() {
+  document.body.classList.toggle("readonly-mode", isReadonlyMode);
+  const writeControls = [
+    dom.createSharedTripBtn,
+    dom.addStopBtn,
+    dom.applyGuideBtn,
+    dom.recommendedPlanBtn,
+    dom.blankPlanBtn,
+    dom.optimizeRouteBtn,
+    dom.deleteStopBtn,
+    dom.moveUpBtn,
+    dom.moveDownBtn,
+    dom.favoriteBtn,
+    dom.mustVote,
+    dom.ctripSyncTransportBtn,
+    dom.resetBtn,
+  ];
+  writeControls.forEach((control) => {
+    if (control) control.disabled = isReadonlyMode;
+  });
+  [
+    dom.stopForm,
+    dom.quickAddForm,
+    dom.importForm,
+  ].forEach((form) => {
+    form?.querySelectorAll("input, textarea, select, button").forEach((control) => {
+      control.disabled = isReadonlyMode;
+    });
+  });
+  dom.commentForm?.querySelectorAll("input, button").forEach((control) => {
+    control.disabled = isReadonlyMode;
+  });
+  document.querySelectorAll(".guide-controls input, .guide-controls button, .choice-card").forEach((control) => {
+    control.disabled = isReadonlyMode;
+  });
+  dom.candidateGrid.querySelectorAll("button").forEach((button) => {
+    button.disabled = isReadonlyMode;
+  });
+  document.querySelectorAll(".sync-card").forEach((button) => {
+    button.disabled = isReadonlyMode;
+  });
+  dom.copySharedLinkBtn.textContent = isReadonlyMode ? "复制当前只读链接" : "复制编辑链接";
+  if (isReadonlyMode) {
+    dom.collabMode.textContent = "只读查看";
+    dom.saveState.textContent = "只读模式";
+    dom.presenceText.textContent = "你正在查看计划";
+    dom.guideProgress.textContent = "只读";
+  } else {
+    dom.presenceText.textContent = "你正在编辑计划";
+    dom.guideProgress.textContent = "可保存";
+  }
+}
+
 async function trackPresence() {
   if (!realtimeChannel || !memberProfile) {
     renderMembers();
@@ -703,7 +765,27 @@ function getShareUrl() {
   if (!tripId) return "";
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
+  url.searchParams.delete("mode");
   return url.toString();
+}
+
+function getReadonlyShareUrl() {
+  if (!tripId) return "";
+  const url = new URL(window.location.href);
+  url.searchParams.set("trip", tripId);
+  url.searchParams.set("mode", "readonly");
+  return url.toString();
+}
+
+function canEdit() {
+  return !isReadonlyMode;
+}
+
+function requireEdit(actionLabel = "编辑") {
+  if (canEdit()) return true;
+  dom.saveState.textContent = `只读模式不能${actionLabel}`;
+  dom.collabStatus.textContent = "当前是只读链接，可以查看计划和显示在线成员，但不能修改行程。";
+  return false;
 }
 
 function initSupabaseClient() {
@@ -714,12 +796,16 @@ function initSupabaseClient() {
     return;
   }
   supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-  dom.collabMode.textContent = tripId ? "云端协作" : "可创建共享";
-  dom.collabStatus.textContent = tripId ? `已连接计划：${tripId}` : "已配置云端，可创建共享计划。";
+  dom.collabMode.textContent = isReadonlyMode ? "只读查看" : tripId ? "云端协作" : "可创建共享";
+  dom.collabStatus.textContent = isReadonlyMode ? "当前是只读链接，可以查看计划和显示在线成员。" : tripId ? `已连接计划：${tripId}` : "已配置云端，可创建共享计划。";
 }
 
 async function pushRemoteState(label = "已同步云端") {
   if (!supabaseClient || !tripId) return;
+  if (!canEdit()) {
+    dom.collabStatus.textContent = "当前是只读链接，不能向云端写入计划。";
+    return;
+  }
   const payload = {
     id: tripId,
     data: state,
@@ -731,7 +817,7 @@ async function pushRemoteState(label = "已同步云端") {
     dom.collabStatus.textContent = `云端同步失败：${error.message}`;
     return;
   }
-  dom.collabMode.textContent = "云端协作";
+  dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
   dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
 }
 
@@ -749,11 +835,20 @@ async function loadRemoteState() {
     lastRemoteUpdatedAt = data.updated_at || "";
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     dom.saveState.textContent = `已载入共享计划`;
-    dom.collabStatus.textContent = data.updated_by ? `最近由 ${data.updated_by} 更新` : `已连接共享计划`;
+    dom.collabStatus.textContent = isReadonlyMode
+      ? data.updated_by
+        ? `只读查看，最近由 ${data.updated_by} 更新`
+        : "只读查看，已连接共享计划"
+      : data.updated_by
+        ? `最近由 ${data.updated_by} 更新`
+        : `已连接共享计划`;
     render();
     isApplyingRemote = false;
-  } else {
+  } else if (!isReadonlyMode) {
     await pushRemoteState("已创建共享计划");
+  } else {
+    dom.saveState.textContent = "只读模式";
+    dom.collabStatus.textContent = "这个只读链接暂时没有找到对应的共享计划，请向创建者确认链接。";
   }
 }
 
@@ -801,7 +896,7 @@ function subscribeRemoteState() {
     })
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        dom.collabMode.textContent = "实时同步";
+        dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "实时同步";
         trackPresence();
       }
     });
@@ -821,6 +916,7 @@ async function connectSharedTrip(id) {
 }
 
 async function createSharedTrip() {
+  if (!requireEdit("创建共享计划")) return;
   if (!supabaseClient) {
     dom.collabStatus.textContent = "请先配置 config.js 里的 Supabase URL 和 anon key。";
     return;
@@ -1080,6 +1176,7 @@ async function testCtripConnection() {
 }
 
 async function syncCtripTransport() {
+  if (!requireEdit("同步交通报价")) return;
   const data = await requestCtripTransport();
   if (!data) return;
   const route = defaultTransportRoute(currentDay());
@@ -1287,10 +1384,12 @@ function render() {
   renderActivities();
   renderGuideResult();
   renderMembers();
+  applyReadonlyUi();
   refreshIcons();
 }
 
 function mutate(label, action) {
+  if (!requireEdit(label)) return;
   action();
   logActivity(label);
   saveState(label);
@@ -1579,6 +1678,7 @@ function closeCreateChoice() {
 }
 
 function createRecommendedPlan() {
+  if (!requireEdit("生成推荐计划")) return;
   const destination = dom.destinationInput.value.trim() || "甘肃";
   const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
@@ -1612,6 +1712,7 @@ function createRecommendedPlan() {
 }
 
 function createBlankTemplate() {
+  if (!requireEdit("生成空白模板")) return;
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
   const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
@@ -1632,6 +1733,7 @@ function createBlankTemplate() {
 }
 
 dom.applyGuideBtn.addEventListener("click", () => {
+  if (!requireEdit("创建计划")) return;
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
   const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
@@ -1661,9 +1763,13 @@ dom.exportBtn.addEventListener("click", () => {
   link.download = `${state.name.replace(/\s+/g, "-")}.json`;
   link.click();
   URL.revokeObjectURL(url);
-  logActivity("导出计划 JSON");
-  saveState("已导出 JSON");
-  renderActivities();
+  if (!isReadonlyMode) {
+    logActivity("导出计划 JSON");
+    saveState("已导出 JSON");
+    renderActivities();
+  } else {
+    dom.saveState.textContent = "已导出 JSON";
+  }
 });
 
 dom.shareBtn.addEventListener("click", async () => {
@@ -1683,10 +1789,24 @@ dom.copySharedLinkBtn.addEventListener("click", async () => {
     dom.collabStatus.textContent = "请先创建共享计划，再复制链接。";
     return;
   }
-  const url = getShareUrl();
+  const url = isReadonlyMode ? getReadonlyShareUrl() : getShareUrl();
   try {
     await navigator.clipboard.writeText(url);
-    dom.collabStatus.textContent = "共享链接已复制。";
+    dom.collabStatus.textContent = isReadonlyMode ? "只读链接已复制。" : "编辑链接已复制。";
+  } catch {
+    dom.collabStatus.textContent = url;
+  }
+});
+
+dom.copyReadonlyLinkBtn.addEventListener("click", async () => {
+  if (!tripId) {
+    dom.collabStatus.textContent = "请先创建共享计划，再复制只读链接。";
+    return;
+  }
+  const url = getReadonlyShareUrl();
+  try {
+    await navigator.clipboard.writeText(url);
+    dom.collabStatus.textContent = "只读链接已复制，打开后只能查看不能编辑。";
   } catch {
     dom.collabStatus.textContent = url;
   }
@@ -1751,6 +1871,7 @@ dom.ctripSpecBtn.addEventListener("click", async () => {
 });
 
 dom.resetBtn.addEventListener("click", () => {
+  if (!requireEdit("重置计划")) return;
   state = ensurePlanDates(buildKyotoPlan());
   activeDay = 0;
   activeStop = 0;
@@ -1761,6 +1882,7 @@ dom.resetBtn.addEventListener("click", () => {
 
 document.querySelectorAll(".sync-card").forEach((card) => {
   card.addEventListener("click", () => {
+    if (!requireEdit("导入外部记录")) return;
     pendingProvider = card.dataset.provider;
     dom.importTitle.textContent = `从${pendingProvider}导入`;
     dom.importCopy.textContent = "这里不会读取你的账号，只把你录入或粘贴的订单信息写入当天行程。";

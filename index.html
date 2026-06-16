@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260616-live-members" />
+    <link rel="stylesheet" href="styles.css?v=20260616-readonly-links" />
   </head>
   <body>
     <div class="app-shell">
@@ -46,7 +46,8 @@
           <div class="member-list" id="memberList" aria-label="在线成员列表"></div>
           <div class="collab-actions">
             <button class="text-btn" id="createSharedTripBtn"><i data-lucide="cloud-upload"></i>创建共享计划</button>
-            <button class="text-btn" id="copySharedLinkBtn"><i data-lucide="link"></i>复制链接</button>
+            <button class="text-btn" id="copySharedLinkBtn"><i data-lucide="link"></i>复制编辑链接</button>
+            <button class="text-btn" id="copyReadonlyLinkBtn"><i data-lucide="eye"></i>复制只读链接</button>
           </div>
           <p class="helper-text" id="collabStatus">未配置云端时，计划只保存在当前浏览器。</p>
         </section>
@@ -448,7 +449,7 @@ Response: { "items": [{ "type": "flight", "code": "MU1234", "from": "上海", "t
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260616-live-members"></script>
-    <script src="script.js?v=20260616-live-members"></script>
+    <script src="config.js?v=20260616-readonly-links"></script>
+    <script src="script.js?v=20260616-readonly-links"></script>
   </body>
 </html>

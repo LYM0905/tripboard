@@ -409,6 +409,27 @@ button {
   border: 1px solid rgba(178, 59, 59, 0.28);
 }
 
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+button:disabled {
+  box-shadow: none;
+}
+
+.readonly-mode .save-state {
+  color: var(--green);
+  font-weight: 800;
+}
+
+.readonly-mode .collab-panel {
+  border-color: rgba(46, 100, 85, 0.34);
+}
+
 .day-summary {
   justify-content: space-between;
   padding: 13px 14px;
