@@ -217,6 +217,27 @@
             </label>
             <button class="primary-btn" type="submit"><i data-lucide="list-filter"></i>筛选</button>
           </form>
+          <div class="transport-manual">
+            <div class="official-links">
+              <a class="text-btn" id="openCtripSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>携程查询</a>
+              <a class="text-btn" id="openTripSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Trip.com 查询</a>
+              <a class="text-btn" id="openRailSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>12306 查询</a>
+            </div>
+            <form class="manual-quote-form" id="manualQuoteForm">
+              <label>
+                类型
+                <select id="manualQuoteType">
+                  <option value="flight">机票</option>
+                  <option value="train">动车/高铁</option>
+                </select>
+              </label>
+              <label>班次/航班<input id="manualQuoteCode" placeholder="例如：MU1234 / G318" required /></label>
+              <label>出发<input id="manualQuoteDepart" type="time" /></label>
+              <label>到达<input id="manualQuoteArrive" type="time" /></label>
+              <label>价格<input id="manualQuotePrice" type="number" min="0" step="1" placeholder="860" required /></label>
+              <button class="primary-btn" type="submit"><i data-lucide="plus"></i>保存报价</button>
+            </form>
+          </div>
           <div class="transport-list" id="transportList"></div>
         </section>
 

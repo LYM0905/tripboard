@@ -568,6 +568,15 @@ const dom = {
   transportStartTime: document.querySelector("#transportStartTime"),
   transportEndTime: document.querySelector("#transportEndTime"),
   transportList: document.querySelector("#transportList"),
+  openCtripSearchLink: document.querySelector("#openCtripSearchLink"),
+  openTripSearchLink: document.querySelector("#openTripSearchLink"),
+  openRailSearchLink: document.querySelector("#openRailSearchLink"),
+  manualQuoteForm: document.querySelector("#manualQuoteForm"),
+  manualQuoteType: document.querySelector("#manualQuoteType"),
+  manualQuoteCode: document.querySelector("#manualQuoteCode"),
+  manualQuoteDepart: document.querySelector("#manualQuoteDepart"),
+  manualQuoteArrive: document.querySelector("#manualQuoteArrive"),
+  manualQuotePrice: document.querySelector("#manualQuotePrice"),
   amapLookupBtn: document.querySelector("#amapLookupBtn"),
   fieldAmapLink: document.querySelector("#fieldAmapLink"),
   exportBtn: document.querySelector("#exportBtn"),
@@ -866,6 +875,7 @@ function applyReadonlyUi() {
     dom.stopForm,
     dom.quickAddForm,
     dom.importForm,
+    dom.manualQuoteForm,
   ].forEach((form) => {
     form?.querySelectorAll("input, textarea, select, button").forEach((control) => {
       control.disabled = isReadonlyMode;
@@ -1343,6 +1353,33 @@ function normalizeTransportItem(item, index, fallbackRoute) {
   };
 }
 
+function officialTransportLinks(route, day) {
+  const date = day?.date || "";
+  const from = encodeURIComponent(route.from || "");
+  const to = encodeURIComponent(route.to || "");
+  const query = encodeURIComponent(`${route.from} 到 ${route.to} ${date} 机票 火车票`);
+  return {
+    ctrip: `https://www.ctrip.com/search2/?word=${query}`,
+    trip: `https://www.trip.com/search?keyword=${query}`,
+    rail: `https://www.12306.cn/index/`,
+  };
+}
+
+function durationFromTimes(depart, arrive) {
+  const start = timeToMinutes(depart);
+  const end = timeToMinutes(arrive);
+  if (start === null || end === null) return 0;
+  return Math.max(0, end >= start ? end - start : end + 24 * 60 - start);
+}
+
+function manualTransportQuotes() {
+  return state.transportQuotes || [];
+}
+
+function currentManualQuotes(day) {
+  return manualTransportQuotes().filter((item) => item.date === day?.date || (!item.date && item.dayId === day?.id));
+}
+
 function parseExternalOrderText(text) {
   const source = String(text || "");
   const amountMatch = source.match(/(?:¥|￥|金额|房费|总价|合计|支付)[^\d]{0,6}(\d+(?:\.\d+)?)/);
@@ -1377,18 +1414,26 @@ function renderTransport() {
   const day = currentDay();
   ensurePlanOrigin(state);
   const route = defaultTransportRoute(day);
-  const options = transportProviderItems.length ? transportProviderItems : buildTransportOptions(day, activeDay);
+  const manualQuotes = currentManualQuotes(day);
+  const baseOptions = transportProviderItems.length ? transportProviderItems : buildTransportOptions(day, activeDay);
+  const options = [...manualQuotes, ...baseOptions];
   const filtered = options.filter(matchesTransportFilter);
   const visible = transportFilterApplied ? filtered : filtered.slice(0, 4);
   if (!dom.transportFrom.value) dom.transportFrom.value = route.from;
   if (!dom.transportTo.value) dom.transportTo.value = route.to;
+  const links = officialTransportLinks(route, day);
+  dom.openCtripSearchLink.href = links.ctrip;
+  dom.openTripSearchLink.href = links.trip;
+  dom.openRailSearchLink.href = links.rail;
 
   dom.flightAvgPrice.textContent = money(averagePrice(options, "flight"));
   dom.trainAvgPrice.textContent = money(averagePrice(options, "train"));
   const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
-  dom.transportProviderStatus.textContent = transportProviderItems.length ? (isDemoProxy ? "代理示例" : "真实接口") : "本地示例";
+  dom.transportProviderStatus.textContent = manualQuotes.length ? "手动报价" : transportProviderItems.length ? (isDemoProxy ? "代理示例" : "真实接口") : "本地示例";
   dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} · ${route.from} 到 ${route.to}，${
-    transportProviderItems.length
+    manualQuotes.length
+      ? `已保存 ${manualQuotes.length} 条手动报价；也可以继续打开官方页面查询。`
+      : transportProviderItems.length
       ? isDemoProxy
         ? "后端已连通，但当前仍是代理示例数据。"
         : "当前显示后端真实接口返回的报价。"
@@ -2091,6 +2136,39 @@ dom.transportFilterForm.addEventListener("submit", (event) => {
   transportFilterApplied = true;
   renderTransport();
   refreshIcons();
+});
+
+dom.manualQuoteForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const code = dom.manualQuoteCode.value.trim();
+  const price = numberValue(dom.manualQuotePrice.value);
+  if (!code || !price) return;
+  const day = currentDay();
+  const route = defaultTransportRoute(day);
+  mutate(`保存交通报价「${code}」`, () => {
+    state.transportQuotes = [
+      {
+        id: uid(),
+        dayId: day.id,
+        date: day.date || "",
+        type: dom.manualQuoteType.value,
+        code,
+        from: dom.transportFrom.value.trim() || route.from,
+        to: dom.transportTo.value.trim() || route.to,
+        depart: dom.manualQuoteDepart.value || "--:--",
+        arrive: dom.manualQuoteArrive.value || "--:--",
+        duration: durationFromTimes(dom.manualQuoteDepart.value, dom.manualQuoteArrive.value),
+        price,
+        source: "手动保存",
+      },
+      ...manualTransportQuotes(),
+    ].slice(0, 40);
+    transportFilterApplied = true;
+    dom.manualQuoteCode.value = "";
+    dom.manualQuoteDepart.value = "";
+    dom.manualQuoteArrive.value = "";
+    dom.manualQuotePrice.value = "";
+  });
 });
 
 dom.partySizeInput.addEventListener("change", () => {

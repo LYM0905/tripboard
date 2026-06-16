@@ -732,7 +732,8 @@ button:disabled {
   align-items: end;
 }
 
-.transport-controls label {
+.transport-controls label,
+.manual-quote-form label {
   display: grid;
   gap: 6px;
   min-width: 0;
@@ -742,7 +743,9 @@ button:disabled {
 }
 
 .transport-controls input,
-.transport-controls select {
+.transport-controls select,
+.manual-quote-form input,
+.manual-quote-form select {
   width: 100%;
   min-width: 0;
   min-height: 39px;
@@ -752,6 +755,34 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 8px;
   outline: 0;
+}
+
+.transport-manual {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.official-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.official-links .text-btn {
+  min-height: 36px;
+  text-decoration: none;
+}
+
+.manual-quote-form {
+  display: grid;
+  grid-template-columns: 0.75fr 1.2fr repeat(3, minmax(96px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
 }
 
 .transport-list {
@@ -1684,6 +1715,7 @@ svg {
   .quick-add-form,
   .transport-summary,
   .transport-controls,
+  .manual-quote-form,
   .choice-grid {
     grid-template-columns: 1fr;
   }
