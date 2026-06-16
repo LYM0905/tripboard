@@ -1382,6 +1382,64 @@ button:disabled {
   padding: 0;
 }
 
+.goal-outline {
+  display: grid;
+  gap: 8px;
+}
+
+.goal-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 9px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.goal-check {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.goal-item p {
+  min-width: 0;
+  margin: 0;
+}
+
+.goal-item strong,
+.goal-item small {
+  display: block;
+}
+
+.goal-item strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.goal-item small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.goal-item.is-done .goal-check {
+  color: var(--green);
+  background: var(--green-2);
+}
+
+.goal-item.is-partial .goal-check {
+  color: #9a6a16;
+  background: #fff4d6;
+}
+
 .sync-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1668,6 +1726,7 @@ svg {
 
   .activity-panel,
   .sync-panel,
+  .goal-outline-panel,
   .comments-panel,
   .transport-panel {
     grid-column: 1 / -1;
