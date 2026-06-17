@@ -4831,15 +4831,17 @@ async function syncWeather() {
   try {
     const forecast = await requestWeatherForecast();
     let applied = 0;
+    const weatherPatches = [];
     state.days.forEach((day, index) => {
       const match = weatherForDay(forecast.days, day, index);
       if (!match) return;
       day.weather = match.text || match.weather || match.summary || day.weather;
+      weatherPatches.push({ id: day.id, weather: day.weather });
       applied += 1;
     });
     logActivity(`同步天气 ${applied} 天`);
     if (applied) {
-      await syncDayMetasToDoc("local-weather-sync");
+      await Promise.all(weatherPatches.map((patch) => patchDayMetaInDoc(patch.id, { weather: patch.weather }, "local-weather-sync-patch")));
       await syncPlanMetaToDoc("local-weather-sync-meta");
     }
     await saveState("已同步天气");
@@ -6393,7 +6395,9 @@ dom.amapRouteBtn.addEventListener("click", async () => {
       updatedAt: new Date().toISOString(),
     };
     logActivity("高德规划当天路线");
-    await syncDayMetasToDoc("local-amap-route-day");
+    if (!(await patchDayMetaInDoc(day.id, { amapRoute: day.amapRoute }, "local-amap-route-day-patch"))) {
+      await syncDayMetasToDoc("local-amap-route-day-fallback");
+    }
     if (!(await reorderStopListInDoc(day.id, day.stops, "local-amap-route-stops", { patchFields: ["address", "lng", "lat", "amapKeyword"] }))) {
       await syncStopListToDoc(day.id, "local-amap-route-stops-fallback");
     }
