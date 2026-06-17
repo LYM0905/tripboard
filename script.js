@@ -1802,6 +1802,20 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   }, 900);
 }
 
+async function saveCollaborativePlanChange(label = "计划结构协作内容已实时同步") {
+  clearTimeout(collabPlanSaveTimer);
+  collabPlanSaveTimer = null;
+  await saveState(label);
+}
+
+async function saveCollaborativeTextChange(label = "地点协作内容已实时同步") {
+  clearTimeout(collabTextSaveTimer);
+  collabTextSaveTimer = null;
+  clearTimeout(collabPlanSaveTimer);
+  collabPlanSaveTimer = null;
+  await saveState(label);
+}
+
 function currentPlanYjsState() {
   if (!collabPlanDoc || !yjsModule) return state.planYjs || "";
   try {
@@ -2410,17 +2424,21 @@ async function updateCandidateInDoc(candidateId, patch = {}) {
   );
 }
 
-async function addCollaborativeActivity(text) {
+async function addCollaborativeActivity(activityInput) {
   if (!canEdit() || isReadonlyMode || !tripId) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabActivitiesArray || isApplyingCollabPlanRemote) return false;
+  const input = typeof activityInput === "string" ? { text: activityInput } : activityInput || {};
   const activity = normalizeActivities([{
-    text,
-    createdBy: getCollabName(),
-    createdAt: new Date().toISOString(),
-    at: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+    ...input,
+    text: input.text,
+    createdBy: input.createdBy || getCollabName(),
+    createdAt: input.createdAt || new Date().toISOString(),
+    at: input.at || new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
   }])[0];
   if (!activity) return true;
+  const existingIds = new Set(readActivitiesFromDoc().map((item) => item.id));
+  if (existingIds.has(activity.id)) return true;
   collabPlanDoc.transact(() => {
     collabActivitiesArray.insert(0, [activity]);
     if (collabActivitiesArray.length > 20) {
@@ -3635,17 +3653,22 @@ async function saveState(label = "已保存到本地") {
 }
 
 function logActivity(text, options = {}) {
-  const localActivity = {
+  const localActivity = normalizeActivities([{
     id: uid(),
     text,
     at: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
     createdAt: new Date().toISOString(),
     createdBy: getCollabName(),
-  };
+  }])[0];
+  if (!localActivity) return Promise.resolve(false);
   state.activities = normalizeActivities([localActivity, ...(state.activities || [])]).slice(0, 6);
   if (options.broadcast !== false && tripId && canEdit() && !isReadonlyMode) {
-    addCollaborativeActivity(text).catch((error) => console.warn("Collaborative activity failed", error));
+    return addCollaborativeActivity(localActivity).catch((error) => {
+      console.warn("Collaborative activity failed", error);
+      return false;
+    });
   }
+  return Promise.resolve(false);
 }
 
 function getCollabName() {
@@ -5887,8 +5910,9 @@ dom.addCandidateBtn.addEventListener("click", async () => {
     };
     if (await updateCandidateInDoc(editingCandidateId, patch)) {
       persistCurrentPlanFromDoc("备选池协作内容已实时同步");
-      logActivity(`更新备选池「${draft.title}」`);
+      await logActivity(`更新备选池「${draft.title}」`);
       clearQuickPlaceForm();
+      await saveCollaborativePlanChange(`更新备选「${draft.title}」`);
       dom.saveState.textContent = `已更新备选「${draft.title}」`;
       refreshRealtimePlanViews();
       return;
@@ -5902,8 +5926,9 @@ dom.addCandidateBtn.addEventListener("click", async () => {
   }
   if (await addCollaborativeCandidate(draft)) {
     persistCurrentPlanFromDoc("备选池协作内容已实时同步");
-    logActivity(`加入备选池「${draft.title}」`);
+    await logActivity(`加入备选池「${draft.title}」`);
     clearQuickPlaceForm();
+    await saveCollaborativePlanChange(`加入备选池「${draft.title}」`);
     dom.saveState.textContent = `已加入备选池「${draft.title}」`;
     refreshRealtimePlanViews();
     return;
@@ -6329,7 +6354,11 @@ dom.mustVote.addEventListener("click", async () => {
   const actorId = collabActorId();
   const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
   const nextVoteValues = toggleVoteValues(currentValues, actorId);
-  if (await syncCollabStructValuesToDoc(nextVoteValues, "local-vote-toggle")) return;
+  if (await syncCollabStructValuesToDoc(nextVoteValues, "local-vote-toggle")) {
+    await syncStopSnapshotToPlanDoc(stop.id, "local-vote-toggle-snapshot");
+    await saveCollaborativeTextChange("更新必去投票");
+    return;
+  }
   if (!mutate("更新必去投票", () => {
     const fallbackStop = currentStop();
     const fallbackValues = toggleVoteValues(fallbackStop, actorId);
@@ -6346,7 +6375,11 @@ dom.favoriteBtn.addEventListener("click", async () => {
   if (!requireEdit("更新收藏")) return;
   const stop = currentStop();
   const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
-  if (await syncCollabStructValuesToDoc({ favorite: !Boolean(currentValues.favorite) }, "local-favorite-toggle")) return;
+  if (await syncCollabStructValuesToDoc({ favorite: !Boolean(currentValues.favorite) }, "local-favorite-toggle")) {
+    await syncStopSnapshotToPlanDoc(stop.id, "local-favorite-toggle-snapshot");
+    await saveCollaborativeTextChange("更新收藏");
+    return;
+  }
   if (!mutate("更新收藏", () => {
     currentStop().favorite = !currentStop().favorite;
   }, { save: false, render: false })) return;
@@ -6366,8 +6399,9 @@ dom.commentForm.addEventListener("submit", async (event) => {
     dom.commentInput.value = "";
     renderStopComments(stop);
     dom.commentCount.textContent = stop.comments.length;
-    logActivity(`评论「${stop.title}」`);
+    await logActivity(`评论「${stop.title}」`);
     await syncStopSnapshotToPlanDoc(stop.id, "local-comment-snapshot");
+    await saveCollaborativeTextChange(`评论「${stop.title}」`);
     dom.saveState.textContent = `已评论「${stop.title}」`;
     return;
   }
@@ -6393,8 +6427,9 @@ dom.commentList.addEventListener("click", async (event) => {
     stop.comments = normalizeComments((stop.comments || []).filter((item) => item.id !== commentId));
     renderStopComments(stop);
     dom.commentCount.textContent = stop.comments.length;
-    logActivity(`删除评论「${stop.title}」`);
+    await logActivity(`删除评论「${stop.title}」`);
     await syncStopSnapshotToPlanDoc(stop.id, "local-comment-delete-snapshot");
+    await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
     dom.saveState.textContent = `已删除「${stop.title}」的评论`;
     return;
   }
@@ -6438,6 +6473,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     if (!candidate || !requireEdit("移除备选地点")) return;
     if (await deleteCandidateFromDoc(candidateId)) {
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
+      await saveCollaborativePlanChange(`移除备选「${candidate.title}」`);
       dom.saveState.textContent = `已移除备选「${candidate.title}」`;
       return;
     }
@@ -6545,6 +6581,7 @@ dom.transportList.addEventListener("click", async (event) => {
   if (await deleteTransportQuoteFromDoc(quoteId)) {
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
+    await saveCollaborativePlanChange(`删除报价「${quote.code}」`);
     dom.saveState.textContent = `已删除报价「${quote.code}」`;
     return;
   }
@@ -6577,9 +6614,10 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
     }
     if (await updateTransportQuoteInDoc(editingTransportQuoteId, quote)) {
       persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
-      logActivity(`更新交通报价「${code}」`);
+      await logActivity(`更新交通报价「${code}」`);
       transportFilterApplied = true;
       clearManualQuoteForm();
+      await saveCollaborativePlanChange(`更新交通报价「${code}」`);
       dom.saveState.textContent = `已更新交通报价「${code}」`;
       refreshRealtimePlanViews();
       return;
@@ -6594,9 +6632,10 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
   }
   if (await addCollaborativeTransportQuote(quote)) {
     persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
-    logActivity(`保存交通报价「${code}」`);
+    await logActivity(`保存交通报价「${code}」`);
     transportFilterApplied = true;
     clearManualQuoteForm();
+    await saveCollaborativePlanChange(`保存交通报价「${code}」`);
     dom.saveState.textContent = `已保存交通报价「${code}」`;
     refreshRealtimePlanViews();
     return;
@@ -6614,7 +6653,10 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
 
 dom.partySizeInput.addEventListener("change", async () => {
   if (!requireEdit("更新同行人数")) return;
-  if (await syncPlanSettingToDoc("partySize", dom.partySizeInput.value)) return;
+  if (await syncPlanSettingToDoc("partySize", dom.partySizeInput.value)) {
+    await saveCollaborativePlanChange("更新同行人数");
+    return;
+  }
   mutate("更新同行人数", () => {
     state.partySize = partySize();
   }, { requireUnlocked: false });
@@ -6622,7 +6664,10 @@ dom.partySizeInput.addEventListener("change", async () => {
 
 dom.budgetLimitInput.addEventListener("change", async () => {
   if (!requireEdit("更新预算上限")) return;
-  if (await syncPlanSettingToDoc("budgetLimit", dom.budgetLimitInput.value)) return;
+  if (await syncPlanSettingToDoc("budgetLimit", dom.budgetLimitInput.value)) {
+    await saveCollaborativePlanChange("更新预算上限");
+    return;
+  }
   mutate("更新预算上限", () => {
     state.budgetLimit = numberValue(dom.budgetLimitInput.value);
   }, { requireUnlocked: false });
