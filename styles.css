@@ -1952,7 +1952,7 @@ button:disabled {
 
 .comment-item {
   display: grid;
-  grid-template-columns: 30px 1fr;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   gap: 9px;
   align-items: start;
   color: #34464f;
@@ -1966,6 +1966,11 @@ button:disabled {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.comment-item .icon-btn {
+  width: 30px;
+  min-height: 30px;
 }
 
 .comment-form {
