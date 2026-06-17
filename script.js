@@ -1812,6 +1812,48 @@ function currentPlanYjsState() {
   }
 }
 
+async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划结构协作快照") {
+  if (!planYjs) return false;
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return false;
+  }
+  const previousPlanDoc = collabPlanDoc;
+  const previousRefs = {
+    dayMetas: collabDayMetasArray,
+    stopLists: collabStopListsMap,
+    stopTextStates: collabStopTextStatesMap,
+    transportQuotes: collabTransportQuotesArray,
+    candidates: collabCandidatesArray,
+    activities: collabActivitiesArray,
+    settings: collabSettingsMap,
+  };
+  const nextDoc = new Y.Doc();
+  try {
+    Y.applyUpdate(nextDoc, base64ToBytes(planYjs), "restore");
+    collabPlanDoc = nextDoc;
+    attachCollabPlanRefs();
+    persistCurrentPlanFromDoc(label);
+    state.planYjs = planYjs;
+    return true;
+  } catch (error) {
+    console.warn("Plan Yjs replacement could not be applied", error);
+    return false;
+  } finally {
+    collabPlanDoc = previousPlanDoc;
+    collabDayMetasArray = previousRefs.dayMetas;
+    collabStopListsMap = previousRefs.stopLists;
+    collabStopTextStatesMap = previousRefs.stopTextStates;
+    collabTransportQuotesArray = previousRefs.transportQuotes;
+    collabCandidatesArray = previousRefs.candidates;
+    collabActivitiesArray = previousRefs.activities;
+    collabSettingsMap = previousRefs.settings;
+    nextDoc.destroy();
+  }
+}
+
 function clearPlanYjsState(plan = state) {
   if (plan && Object.prototype.hasOwnProperty.call(plan, "planYjs")) delete plan.planYjs;
   return plan;
@@ -2156,14 +2198,17 @@ function broadcastDaysReordered() {
   });
 }
 
-function broadcastPlanReplaced(reason = "更新整份计划") {
+async function broadcastPlanReplaced(reason = "更新整份计划") {
   if (!realtimeChannel || !tripId || !state?.days?.length) return;
+  await bindCollabPlanDoc();
+  const planYjs = currentPlanYjsState();
   realtimeChannel.send({
     type: "broadcast",
     event: "plan-replaced",
     payload: {
       tripId,
       state: clone(state),
+      planYjs,
       reason,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
@@ -2923,11 +2968,18 @@ function applyRemoteDaysReordered(payload = {}) {
   render();
 }
 
-function applyRemotePlanReplaced(payload = {}) {
-  if (!payload.state?.days?.length || payload.tripId !== tripId) return;
+async function applyRemotePlanReplaced(payload = {}) {
+  if (payload.tripId !== tripId || (!payload.planYjs && !payload.state?.days?.length)) return;
   const activeDayId = currentDay()?.id || "";
   const activeStopId = currentStop()?.id || "";
-  state = ensurePlanDates(clone(payload.state));
+  let appliedYjs = false;
+  if (payload.planYjs) {
+    appliedYjs = await applyPlanYjsStateToCurrentPlan(payload.planYjs, `${payload.name || "协作者"} 更新了整份计划`);
+  }
+  if (!appliedYjs && payload.state?.days?.length) {
+    state = ensurePlanDates(clone(payload.state));
+  }
+  if (!state?.days?.length) return;
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   if (activeStopId && currentDay()?.stops?.length) {
     const nextStopIndex = currentDay().stops.findIndex((stop) => stop.id === activeStopId);
@@ -2940,8 +2992,9 @@ function applyRemotePlanReplaced(payload = {}) {
   destroyCollabTextDoc();
   destroyCollabPlanDoc();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  bindCollabPlanDoc();
   logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`, { broadcast: false });
-  dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了整份计划`;
+  dom.collabStatus.textContent = appliedYjs ? `${payload.name || "协作者"} 通过协作快照更新了整份计划` : `${payload.name || "协作者"} 更新了整份计划`;
   render();
 }
 
@@ -3565,7 +3618,7 @@ async function restoreVersion(versionId) {
   await replacePlanCollabDoc("local-version-restore");
   logActivity(`恢复历史版本：${entry.reason || "旧版本"}`);
   await saveState("已恢复历史版本");
-  broadcastPlanReplaced("恢复历史版本");
+  await broadcastPlanReplaced("恢复历史版本");
   render();
 }
 
@@ -4122,7 +4175,9 @@ function subscribeRemoteState() {
     })
     .on("broadcast", { event: "plan-replaced" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemotePlanReplaced(payload);
+      applyRemotePlanReplaced(payload).catch((error) => {
+        dom.collabStatus.textContent = `应用整份计划协作快照失败：${error.message}`;
+      });
     })
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
@@ -6584,7 +6639,7 @@ async function createRecommendedPlan() {
   guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
-  mutate(`生成${destination}${days}天计划`, () => {
+  if (!mutate(`生成${destination}${days}天计划`, () => {
     if (destination.includes("甘肃")) {
       state = buildGansuPlan(days, guideState);
     } else {
@@ -6607,9 +6662,11 @@ async function createRecommendedPlan() {
     dom.transportTo.value = "";
     transportFilterApplied = false;
     clearPlanYjsState();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   await replacePlanCollabDoc("local-recommended-plan");
-  broadcastPlanReplaced("生成推荐计划");
+  await saveState("已生成推荐计划");
+  await broadcastPlanReplaced("生成推荐计划");
+  render();
   closeCreateChoice();
 }
 
@@ -6621,7 +6678,7 @@ async function createBlankTemplate() {
   guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
-  mutate(`创建${destination}${days}天空白模板`, () => {
+  if (!mutate(`创建${destination}${days}天空白模板`, () => {
     state = buildBlankPlan(destination, days, guideState);
     applyPlanDates(state, guideState.startDate, guideState.endDate);
     state.origin = origin;
@@ -6631,9 +6688,11 @@ async function createBlankTemplate() {
     dom.transportTo.value = "";
     transportFilterApplied = false;
     clearPlanYjsState();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   await replacePlanCollabDoc("local-blank-plan");
-  broadcastPlanReplaced("生成空白模板");
+  await saveState("已生成空白模板");
+  await broadcastPlanReplaced("生成空白模板");
+  render();
   closeCreateChoice();
 }
 
@@ -6851,8 +6910,8 @@ dom.resetBtn.addEventListener("click", async () => {
   transportFilterApplied = false;
   await replacePlanCollabDoc("local-reset-plan");
   await saveState("已重置示例");
+  await broadcastPlanReplaced("重置示例计划");
   render();
-  broadcastPlanReplaced("重置示例计划");
 });
 
 document.querySelectorAll(".sync-card").forEach((card) => {
