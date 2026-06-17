@@ -2627,7 +2627,7 @@ function applyRemoteStopCreated(payload = {}) {
   if (!day) return;
   day.stops = [...(day.stops || []), clone(payload.stop)];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`);
+  logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, { broadcast: false });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了「${payload.stop.title || "地点"}」`;
   render();
 }
@@ -2648,7 +2648,7 @@ function applyRemoteStopDeleted(payload = {}) {
   if (dayIndex === activeDay) clearCurrentAmapRoute();
   destroyCollabTextDoc();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`);
+  logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, { broadcast: false });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了「${payload.title || "地点"}」`;
   render();
 }
@@ -2669,7 +2669,7 @@ function applyRemoteStopsReordered(payload = {}) {
   }
   if (dayIndex === activeDay) clearCurrentAmapRoute();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 调整地点顺序`);
+  logActivity(`${payload.name || "协作者"} 调整地点顺序`, { broadcast: false });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了地点顺序`;
   render();
 }
@@ -2692,7 +2692,7 @@ function applyRemoteDayUpdated(payload = {}) {
   guideState.startDate = state.startDate || guideState.startDate;
   guideState.endDate = state.endDate || guideState.endDate;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 更新当天设置`);
+  logActivity(`${payload.name || "协作者"} 更新当天设置`, { broadcast: false });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了 ${state.days[index].label}`;
   render();
 }
@@ -2708,7 +2708,7 @@ function applyRemoteDayCreated(payload = {}) {
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   activeStop = Math.min(activeStop, currentDay()?.stops?.length - 1 || 0);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`);
+  logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, { broadcast: false });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了 ${payload.day.title || "一天"}`;
   render();
 }
@@ -2729,7 +2729,7 @@ function applyRemoteDayDeleted(payload = {}) {
     activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`);
+  logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, { broadcast: false });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了 ${payload.title || "一天"}`;
   render();
 }
@@ -2746,7 +2746,7 @@ function applyRemoteDaysReordered(payload = {}) {
   resequencePlanDays();
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 调整日期顺序`);
+  logActivity(`${payload.name || "协作者"} 调整日期顺序`, { broadcast: false });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了日期顺序`;
   render();
 }
@@ -2768,7 +2768,7 @@ function applyRemotePlanReplaced(payload = {}) {
   destroyCollabTextDoc();
   destroyCollabPlanDoc();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`);
+  logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`, { broadcast: false });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了整份计划`;
   render();
 }
@@ -3391,7 +3391,7 @@ async function saveState(label = "已保存到本地") {
   }
 }
 
-function logActivity(text) {
+function logActivity(text, options = {}) {
   const localActivity = {
     id: uid(),
     text,
@@ -3400,7 +3400,7 @@ function logActivity(text) {
     createdBy: getCollabName(),
   };
   state.activities = normalizeActivities([localActivity, ...(state.activities || [])]).slice(0, 6);
-  if (tripId && canEdit() && !isReadonlyMode) {
+  if (options.broadcast !== false && tripId && canEdit() && !isReadonlyMode) {
     addCollaborativeActivity(text).catch((error) => console.warn("Collaborative activity failed", error));
   }
 }
