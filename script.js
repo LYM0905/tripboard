@@ -2847,7 +2847,7 @@ async function addCollaborativeComment(text) {
   collabTextDoc.transact(() => {
     collabCommentsArray.push([comment]);
   }, "local-comment-input");
-  return true;
+  return comment;
 }
 
 async function applyRemotePlan(remotePlan, meta = {}) {
@@ -5907,8 +5907,16 @@ dom.commentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = dom.commentInput.value.trim();
   if (!text) return;
-  if (await addCollaborativeComment(text)) {
+  const collaborativeComment = await addCollaborativeComment(text);
+  if (collaborativeComment) {
+    const stop = currentStop();
+    stop.comments = normalizeComments([...(stop.comments || []), collaborativeComment]);
     dom.commentInput.value = "";
+    renderStopComments(stop);
+    dom.commentCount.textContent = stop.comments.length;
+    logActivity(`评论「${stop.title}」`);
+    await syncStopSnapshotToPlanDoc(stop.id, "local-comment-snapshot");
+    dom.saveState.textContent = `已评论「${stop.title}」`;
     return;
   }
   mutate(`评论「${currentStop().title}」`, () => {
