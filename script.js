@@ -7,6 +7,13 @@ const VERSION_PREFIX = "tripboard-version-history:";
 const MAX_VERSION_HISTORY = 12;
 const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
 const YJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/yjs@13.6.27/+esm";
+const COLLAB_TEXT_FIELDS = [
+  { field: "title", domKey: "fieldTitle", label: "名称" },
+  { field: "type", domKey: "fieldType", label: "类型" },
+  { field: "address", domKey: "fieldAddress", label: "地址" },
+  { field: "amapKeyword", domKey: "fieldAmapKeyword", label: "高德关键词" },
+  { field: "note", domKey: "fieldNote", label: "备注" },
+];
 
 const images = {
   kyoto:
@@ -266,6 +273,7 @@ function makeStop({
   address = "待确认",
   note = "补充交通、预订和同行意见。",
   noteYjs = "",
+  textYjs = "",
   tags = ["草稿"],
   budget = 0,
   paid = 0,
@@ -288,6 +296,7 @@ function makeStop({
     address,
     note,
     noteYjs,
+    textYjs,
     tags: normalizeTags(tags),
     budget: Number(budget || 0),
     paid: Number(paid || 0),
@@ -627,6 +636,7 @@ function mergeStopFields(localStop = {}, remoteStop = {}, baseStop = {}) {
     "address",
     "note",
     "noteYjs",
+    "textYjs",
     "budget",
     "paid",
     "payer",
@@ -737,23 +747,25 @@ function setNoteCollabStatus(message) {
   if (dom.noteCollabStatus) dom.noteCollabStatus.textContent = message;
 }
 
-function currentNoteRoomId(stopId = currentStop()?.id) {
-  return tripId && stopId ? `note:${tripId}:${stopId}` : "";
+function currentTextRoomId(stopId = currentStop()?.id) {
+  return tripId && stopId ? `text:${tripId}:${stopId}` : "";
 }
 
-function stableNoteClientId(value) {
+function stableTextClientId(value) {
   let hash = 2166136261;
-  String(value || "tripboard-note").split("").forEach((char) => {
+  String(value || "tripboard-text").split("").forEach((char) => {
     hash ^= char.charCodeAt(0);
     hash = Math.imul(hash, 16777619);
   });
   return Math.abs(hash) || 1;
 }
 
-function buildInitialNoteUpdate(Y, stop) {
+function buildInitialTextUpdate(Y, stop) {
   const seedDoc = new Y.Doc();
-  seedDoc.clientID = stableNoteClientId(`${tripId}:${stop.id}`);
-  seedDoc.getText("note").insert(0, stop.note || "");
+  seedDoc.clientID = stableTextClientId(`${tripId}:${stop.id}`);
+  COLLAB_TEXT_FIELDS.forEach(({ field }) => {
+    seedDoc.getText(field).insert(0, stop[field] || "");
+  });
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -769,7 +781,7 @@ async function ensureYjs() {
       })
       .catch((error) => {
         console.warn("Yjs load failed", error);
-        setNoteCollabStatus("备注逐字协作加载失败，仍可随计划保存");
+        setNoteCollabStatus("文本逐字协作加载失败，仍可随计划保存");
         yjsReadyPromise = null;
         throw error;
       });
@@ -777,34 +789,44 @@ async function ensureYjs() {
   return yjsReadyPromise;
 }
 
-function persistCurrentNoteFromDoc(label = "备注已实时同步") {
-  if (!noteText || !noteDocStopId) return;
-  const stop = state.days.flatMap((day) => day.stops || []).find((item) => item.id === noteDocStopId);
+function persistCurrentTextFromDoc(label = "文本已实时同步") {
+  if (!collabTextDoc || !collabTextStopId) return;
+  const stop = state.days.flatMap((day) => day.stops || []).find((item) => item.id === collabTextStopId);
   if (!stop) return;
-  const nextValue = noteText.toString();
-  const nextYjs = yjsModule && noteDoc ? bytesToBase64(yjsModule.encodeStateAsUpdate(noteDoc)) : stop.noteYjs || "";
-  const changed = stop.note !== nextValue || stop.noteYjs !== nextYjs;
+  const nextValues = {};
+  COLLAB_TEXT_FIELDS.forEach(({ field }) => {
+    nextValues[field] = collabTextFields[field]?.toString() || "";
+  });
+  const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabTextDoc)) : stop.textYjs || stop.noteYjs || "";
+  const changed = COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== nextValues[field]) || stop.textYjs !== nextYjs;
   if (!changed) return;
-  stop.note = nextValue;
+  COLLAB_TEXT_FIELDS.forEach(({ field }) => {
+    stop[field] = nextValues[field];
+  });
+  stop.textYjs = nextYjs;
   stop.noteYjs = nextYjs;
-  dom.placeNote.textContent = nextValue;
+  dom.placeType.textContent = stop.type || "Place";
+  dom.placeTitle.textContent = stop.title || "未命名地点";
+  dom.placeAddress.textContent = stop.address || "地址待确认";
+  dom.placeNote.textContent = stop.note || "";
+  dom.commentTitle.textContent = stop.title || "当前地点";
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   setNoteCollabStatus(label);
-  clearTimeout(noteSaveTimer);
-  noteSaveTimer = setTimeout(() => {
+  clearTimeout(collabTextSaveTimer);
+  collabTextSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    pushRemoteState("备注已实时同步");
+    pushRemoteState("文本已实时同步");
   }, 900);
 }
 
-function broadcastNoteUpdate(update) {
-  if (!realtimeChannel || !noteDocStopId || isApplyingNoteRemote) return;
+function broadcastTextUpdate(update) {
+  if (!realtimeChannel || !collabTextStopId || isApplyingCollabTextRemote) return;
   realtimeChannel.send({
     type: "broadcast",
-    event: "note-yjs-update",
+    event: "stop-text-yjs-update",
     payload: {
-      roomId: currentNoteRoomId(noteDocStopId),
-      stopId: noteDocStopId,
+      roomId: currentTextRoomId(collabTextStopId),
+      stopId: collabTextStopId,
       update: bytesToBase64(update),
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
@@ -813,94 +835,107 @@ function broadcastNoteUpdate(update) {
   });
 }
 
-function destroyNoteDoc() {
-  clearTimeout(noteSaveTimer);
-  noteSaveTimer = null;
-  noteDocStopId = "";
-  noteText = null;
-  if (noteDoc) {
-    noteDoc.destroy();
-    noteDoc = null;
+function destroyCollabTextDoc() {
+  clearTimeout(collabTextSaveTimer);
+  collabTextSaveTimer = null;
+  collabTextStopId = "";
+  collabTextFields = {};
+  if (collabTextDoc) {
+    collabTextDoc.destroy();
+    collabTextDoc = null;
   }
 }
 
-async function bindNoteCollabDoc() {
+async function bindCollabTextDoc() {
   const stop = currentStop();
-  if (!stop?.id || noteDocStopId === stop.id) return;
-  const requestId = noteBindRequestId + 1;
-  noteBindRequestId = requestId;
-  destroyNoteDoc();
+  if (!stop?.id || collabTextStopId === stop.id) return;
+  const requestId = collabTextBindRequestId + 1;
+  collabTextBindRequestId = requestId;
+  destroyCollabTextDoc();
   if (!tripId || isReadonlyMode) {
-    setNoteCollabStatus(tripId ? "备注会随计划保存" : "创建共享计划后可逐字协作");
+    setNoteCollabStatus(tripId ? "文本会随计划保存" : "创建共享计划后可逐字协作");
     return;
   }
-  setNoteCollabStatus("备注逐字协作加载中...");
+  setNoteCollabStatus("文本逐字协作加载中...");
   let Y;
   try {
     Y = await ensureYjs();
   } catch {
     return;
   }
-  if (requestId !== noteBindRequestId || currentStop()?.id !== stop.id) return;
-  noteDocStopId = stop.id;
-  noteDoc = new Y.Doc();
-  noteText = noteDoc.getText("note");
+  if (requestId !== collabTextBindRequestId || currentStop()?.id !== stop.id) return;
+  collabTextStopId = stop.id;
+  collabTextDoc = new Y.Doc();
   let restored = false;
-  if (stop.noteYjs) {
+  if (stop.textYjs) {
     try {
-      Y.applyUpdate(noteDoc, base64ToBytes(stop.noteYjs), "restore");
+      Y.applyUpdate(collabTextDoc, base64ToBytes(stop.textYjs), "restore");
       restored = true;
     } catch (error) {
-      console.warn("Stored Yjs note state could not be restored", error);
+      console.warn("Stored Yjs text state could not be restored", error);
     }
-  } else if (stop.note) {
-    Y.applyUpdate(noteDoc, buildInitialNoteUpdate(Y, stop), "restore");
+  } else if (stop.noteYjs) {
+    try {
+      const legacyDoc = new Y.Doc();
+      Y.applyUpdate(legacyDoc, base64ToBytes(stop.noteYjs), "restore");
+      const legacyNote = legacyDoc.getText("note").toString();
+      legacyDoc.destroy();
+      Y.applyUpdate(collabTextDoc, buildInitialTextUpdate(Y, { ...stop, note: legacyNote || stop.note }), "restore");
+      restored = true;
+    } catch (error) {
+      console.warn("Legacy Yjs note state could not be migrated", error);
+    }
+  } else {
+    Y.applyUpdate(collabTextDoc, buildInitialTextUpdate(Y, stop), "restore");
     restored = true;
   }
-  const restoredValue = restored ? noteText.toString() : stop.note || "";
-  if (dom.fieldNote.value !== restoredValue) dom.fieldNote.value = restoredValue;
-  noteDoc.on("update", (update, origin) => {
+  COLLAB_TEXT_FIELDS.forEach(({ field }) => {
+    collabTextFields[field] = collabTextDoc.getText(field);
+  });
+  COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
+    const value = restored ? collabTextFields[field].toString() : stop[field] || "";
+    if (dom[domKey] && dom[domKey].value !== value) dom[domKey].value = value;
+  });
+  collabTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentNoteFromDoc("收到协作者备注更新");
+      persistCurrentTextFromDoc("收到协作者文本更新");
       return;
     }
-    broadcastNoteUpdate(update);
-    persistCurrentNoteFromDoc("备注逐字同步中");
+    broadcastTextUpdate(update);
+    persistCurrentTextFromDoc("文本逐字同步中");
   });
-  if (restored && stop.note !== restoredValue) {
-    persistCurrentNoteFromDoc("已载入备注协作状态");
+  if (restored && COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== collabTextFields[field].toString())) {
+    persistCurrentTextFromDoc("已载入文本协作状态");
   }
-  setNoteCollabStatus("备注逐字协作已开启");
+  setNoteCollabStatus("文本逐字协作已开启");
 }
 
-async function applyRemoteNoteUpdate(payload = {}) {
-  if (!payload.update || payload.roomId !== currentNoteRoomId()) return;
-  if (!noteDoc || !noteText || noteDocStopId !== payload.stopId) await bindNoteCollabDoc();
-  if (!noteDoc) return;
+async function applyRemoteTextUpdate(payload = {}) {
+  if (!payload.update || payload.roomId !== currentTextRoomId()) return;
+  if (!collabTextDoc || !Object.keys(collabTextFields).length || collabTextStopId !== payload.stopId) await bindCollabTextDoc();
+  if (!collabTextDoc) return;
   let Y;
   try {
     Y = await ensureYjs();
   } catch {
     return;
   }
-  isApplyingNoteRemote = true;
+  isApplyingCollabTextRemote = true;
   try {
-    Y.applyUpdate(noteDoc, base64ToBytes(payload.update), "remote");
-    const nextValue = noteText.toString();
-    if (dom.fieldNote.value !== nextValue) dom.fieldNote.value = nextValue;
-    setNoteCollabStatus(`${payload.name || "协作者"} 正在同步备注`);
+    Y.applyUpdate(collabTextDoc, base64ToBytes(payload.update), "remote");
+    COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
+      const nextValue = collabTextFields[field]?.toString() || "";
+      if (dom[domKey] && dom[domKey].value !== nextValue) dom[domKey].value = nextValue;
+    });
+    setNoteCollabStatus(`${payload.name || "协作者"} 正在同步文本`);
   } finally {
-    isApplyingNoteRemote = false;
+    isApplyingCollabTextRemote = false;
   }
 }
 
-async function syncFieldNoteToDoc() {
-  if (!canEdit() || isReadonlyMode) return;
-  await bindNoteCollabDoc();
-  if (!noteText || isApplyingNoteRemote) return;
-  const nextValue = dom.fieldNote.value;
-  const currentValue = noteText.toString();
-  if (currentValue === nextValue) return;
+function applyTextDiff(yText, nextValue) {
+  const currentValue = yText.toString();
+  if (currentValue === nextValue) return false;
   let prefixLength = 0;
   const maxPrefix = Math.min(currentValue.length, nextValue.length);
   while (prefixLength < maxPrefix && currentValue[prefixLength] === nextValue[prefixLength]) {
@@ -916,9 +951,18 @@ async function syncFieldNoteToDoc() {
   }
   const deleteLength = currentValue.length - prefixLength - suffixLength;
   const insertText = nextValue.slice(prefixLength, nextValue.length - suffixLength);
-  noteDoc.transact(() => {
-    if (deleteLength > 0) noteText.delete(prefixLength, deleteLength);
-    if (insertText) noteText.insert(prefixLength, insertText);
+  if (deleteLength > 0) yText.delete(prefixLength, deleteLength);
+  if (insertText) yText.insert(prefixLength, insertText);
+  return true;
+}
+
+async function syncCollabTextFieldToDoc(field, value) {
+  if (!canEdit() || isReadonlyMode) return;
+  await bindCollabTextDoc();
+  const yText = collabTextFields[field];
+  if (!collabTextDoc || !yText || isApplyingCollabTextRemote) return;
+  collabTextDoc.transact(() => {
+    applyTextDiff(yText, value);
   }, "local-input");
 }
 
@@ -926,12 +970,13 @@ function applyRemotePlan(remotePlan, meta = {}) {
   isApplyingRemote = true;
   const activeStopId = currentStop()?.id || "";
   const remoteActiveStop = activeStopId ? remotePlan.days?.flatMap((day) => day.stops || []).find((stop) => stop.id === activeStopId) : null;
-  const currentNoteState = activeStopId === noteDocStopId ? currentStop()?.noteYjs || "" : "";
+  const currentTextState = activeStopId === collabTextStopId ? currentStop()?.textYjs || currentStop()?.noteYjs || "" : "";
   state = ensurePlanDates(clone(remotePlan));
   lastSyncedState = clone(state);
   lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
-  if (remoteActiveStop?.noteYjs && remoteActiveStop.noteYjs !== currentNoteState) {
-    destroyNoteDoc();
+  const remoteTextState = remoteActiveStop?.textYjs || remoteActiveStop?.noteYjs || "";
+  if (remoteTextState && remoteTextState !== currentTextState) {
+    destroyCollabTextDoc();
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   isApplyingRemote = false;
@@ -1201,14 +1246,14 @@ let pendingConflict = null;
 let isResolvingConflict = false;
 let editLockEnabled = true;
 let remoteVersionHistoryEnabled = true;
-let noteDoc = null;
-let noteText = null;
-let noteDocStopId = "";
-let isApplyingNoteRemote = false;
-let noteSaveTimer = null;
+let collabTextDoc = null;
+let collabTextFields = {};
+let collabTextStopId = "";
+let isApplyingCollabTextRemote = false;
+let collabTextSaveTimer = null;
 let yjsModule = null;
 let yjsReadyPromise = null;
-let noteBindRequestId = 0;
+let collabTextBindRequestId = 0;
 const initialGuideDates = defaultGuideDates();
 const guideState = {
   destination: "甘肃",
@@ -1542,11 +1587,11 @@ function renderEditorLockState() {
       control.disabled = isReadonlyMode || locked;
     });
   });
-  if (dom.fieldNote) {
-    dom.fieldNote.disabled = isReadonlyMode;
-  }
+  COLLAB_TEXT_FIELDS.forEach(({ domKey }) => {
+    if (dom[domKey]) dom[domKey].disabled = isReadonlyMode;
+  });
   if (locked && dom.noteCollabStatus && !isReadonlyMode) {
-    dom.noteCollabStatus.textContent = "结构字段已锁定，备注仍可多人逐字协作";
+    dom.noteCollabStatus.textContent = "结构字段已锁定，名称、类型、地址、高德关键词和备注仍可多人逐字协作";
   }
   [
     dom.amapLookupBtn,
@@ -1733,9 +1778,9 @@ function subscribeRemoteState() {
         handleRemotePlanUpdate(next);
       },
     )
-    .on("broadcast", { event: "note-yjs-update" }, ({ payload }) => {
+    .on("broadcast", { event: "stop-text-yjs-update" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemoteNoteUpdate(payload);
+      applyRemoteTextUpdate(payload);
     })
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
@@ -1755,7 +1800,7 @@ function subscribeRemoteState() {
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
         dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "实时同步";
-        bindNoteCollabDoc();
+        bindCollabTextDoc();
         trackPresence();
       }
     });
@@ -2714,13 +2759,16 @@ function renderDetail() {
   dom.commentTitle.textContent = stop.title;
 
   dom.fieldTime.value = stop.time || "";
-  dom.fieldTitle.value = stop.title || "";
-  dom.fieldType.value = stop.type || "";
+  if (collabTextStopId !== stop.id || !collabTextDoc) {
+    dom.fieldTitle.value = stop.title || "";
+    dom.fieldType.value = stop.type || "";
+    dom.fieldAddress.value = stop.address || "";
+    dom.fieldAmapKeyword.value = stop.amapKeyword || `${state.destination || ""} ${stop.title}`.trim();
+    dom.fieldNote.value = stop.note || "";
+  }
   dom.fieldBudget.value = stop.budget || "";
   dom.fieldPaid.value = stop.paid || "";
   dom.fieldPayer.value = stop.payer || "";
-  dom.fieldAddress.value = stop.address || "";
-  dom.fieldAmapKeyword.value = stop.amapKeyword || `${state.destination || ""} ${stop.title}`.trim();
   dom.fieldLng.value = stop.lng || "";
   dom.fieldLat.value = stop.lat || "";
   dom.fieldImage.value = stop.image || "";
@@ -2728,9 +2776,6 @@ function renderDetail() {
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
   dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
   dom.fieldTags.value = (stop.tags || []).join(", ");
-  if (noteDocStopId !== stop.id || !noteText) {
-    dom.fieldNote.value = stop.note || "";
-  }
 
   dom.commentList.innerHTML = (stop.comments || [])
     .map((comment) => `<div class="comment-item"><span class="avatar a2">${comment.author || "我"}</span><p>${comment.text}</p></div>`)
@@ -2789,7 +2834,7 @@ function render() {
   renderVersionHistory();
   applyReadonlyUi();
   renderEditorLockState();
-  bindNoteCollabDoc();
+  bindCollabTextDoc();
   refreshIcons();
 }
 
@@ -2837,25 +2882,28 @@ dom.stopForm.addEventListener("submit", (event) => {
   event.preventDefault();
   mutate(`保存「${dom.fieldTitle.value || "地点"}」`, () => {
     const stop = currentStop();
+    const collabValue = (field, domKey) => (collabTextStopId === stop.id && collabTextFields[field] ? collabTextFields[field].toString() : dom[domKey].value.trim());
     stop.time = dom.fieldTime.value.trim();
-    stop.title = dom.fieldTitle.value.trim() || "未命名地点";
-    stop.type = dom.fieldType.value.trim() || "Place";
+    stop.title = collabValue("title", "fieldTitle") || "未命名地点";
+    stop.type = collabValue("type", "fieldType") || "Place";
     stop.budget = numberValue(dom.fieldBudget.value);
     stop.paid = numberValue(dom.fieldPaid.value);
     stop.payer = dom.fieldPayer.value.trim();
-    stop.address = dom.fieldAddress.value.trim();
-    stop.amapKeyword = dom.fieldAmapKeyword.value.trim();
+    stop.address = collabValue("address", "fieldAddress");
+    stop.amapKeyword = collabValue("amapKeyword", "fieldAmapKeyword");
     stop.lng = dom.fieldLng.value.trim();
     stop.lat = dom.fieldLat.value.trim();
     stop.image = dom.fieldImage.value.trim() || stop.image || images.city;
     stop.tags = normalizeTags(dom.fieldTags.value);
-    stop.note = noteDocStopId === stop.id && noteText ? noteText.toString() : dom.fieldNote.value.trim();
+    stop.note = collabValue("note", "fieldNote");
     clearCurrentAmapRoute();
   });
 });
 
-dom.fieldNote.addEventListener("input", () => {
-  syncFieldNoteToDoc();
+COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
+  dom[domKey]?.addEventListener("input", () => {
+    syncCollabTextFieldToDoc(field, dom[domKey].value);
+  });
 });
 
 dom.addStopBtn.addEventListener("click", () => {
