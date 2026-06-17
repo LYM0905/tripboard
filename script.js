@@ -29,6 +29,17 @@ const COLLAB_STRUCT_FIELDS = [
   { field: "userVoted", type: "boolean" },
   { field: "favorite", type: "boolean" },
 ];
+const PLAN_SETTING_FIELDS = [
+  { field: "name", type: "string" },
+  { field: "destination", type: "string" },
+  { field: "origin", type: "string" },
+  { field: "dateRange", type: "string" },
+  { field: "startDate", type: "string" },
+  { field: "endDate", type: "string" },
+  { field: "cover", type: "string" },
+  { field: "partySize", type: "integer" },
+  { field: "budgetLimit", type: "number" },
+];
 
 const images = {
   kyoto:
@@ -283,6 +294,32 @@ function applyPlanMeta(meta = {}) {
   ["name", "destination", "origin", "dateRange", "startDate", "endDate", "budgetLimit", "partySize", "cover"].forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(meta, field)) state[field] = clone(meta[field]);
   });
+}
+
+function planSettingValue(plan, { field, type }) {
+  if (type === "integer") return Math.max(1, Number.parseInt(plan?.[field] || 1, 10) || 1);
+  if (type === "number") return numberValue(plan?.[field]);
+  return String(plan?.[field] || "").trim();
+}
+
+function normalizePlanSettingValue(field, value) {
+  const meta = PLAN_SETTING_FIELDS.find((item) => item.field === field);
+  if (!meta) return clone(value);
+  if (meta.type === "integer") return Math.max(1, Number.parseInt(value || 1, 10) || 1);
+  if (meta.type === "number") return numberValue(value);
+  return String(value || "").trim();
+}
+
+function syncGuideStateFromPlan() {
+  guideState.destination = state.destination || guideState.destination;
+  guideState.origin = state.origin || guideState.origin;
+  guideState.startDate = state.startDate || guideState.startDate;
+  guideState.endDate = state.endDate || guideState.endDate;
+  if (dom.destinationInput) dom.destinationInput.value = guideState.destination;
+  if (dom.originInput) dom.originInput.value = guideState.origin;
+  if (dom.startDateInput) dom.startDateInput.value = guideState.startDate;
+  if (dom.endDateInput) dom.endDateInput.value = guideState.endDate;
+  if (dom.transportFrom && !dom.transportFrom.value) dom.transportFrom.value = guideState.origin;
 }
 
 function defaultGuideDates() {
@@ -1041,8 +1078,9 @@ function buildInitialPlanUpdate(Y, plan) {
   const candidates = normalizeCandidateStops(plan.candidates || []);
   if (candidates.length) candidateArray.insert(0, candidates);
   const settingsMap = seedDoc.getMap("settings");
-  settingsMap.set("partySize", Math.max(1, Number.parseInt(plan.partySize || 1, 10) || 1));
-  settingsMap.set("budgetLimit", numberValue(plan.budgetLimit || 10000));
+  PLAN_SETTING_FIELDS.forEach((meta) => {
+    settingsMap.set(meta.field, planSettingValue(plan, meta));
+  });
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -1111,10 +1149,15 @@ function readCandidatesFromDoc() {
 }
 
 function readSettingsFromDoc() {
-  return {
-    partySize: Math.max(1, Number.parseInt(collabSettingsMap?.get("partySize") || state.partySize || 1, 10) || 1),
-    budgetLimit: numberValue(collabSettingsMap?.get("budgetLimit") || state.budgetLimit || 10000),
-  };
+  const values = {};
+  PLAN_SETTING_FIELDS.forEach((meta) => {
+    const value = collabSettingsMap?.has(meta.field) ? collabSettingsMap.get(meta.field) : state[meta.field];
+    values[meta.field] = normalizePlanSettingValue(meta.field, value);
+  });
+  values.partySize = Math.max(1, Number.parseInt(values.partySize || state.partySize || 1, 10) || 1);
+  values.budgetLimit = numberValue(values.budgetLimit || state.budgetLimit || 10000);
+  if (!values.dateRange && values.startDate && values.endDate) values.dateRange = dateRangeText(values.startDate, values.endDate);
+  return values;
 }
 
 function refreshRealtimePlanViews() {
@@ -1132,13 +1175,16 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const nextSettings = readSettingsFromDoc();
   const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
   const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
-  const settingsChanged = numberValue(state.budgetLimit || 10000) !== nextSettings.budgetLimit || Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1) !== nextSettings.partySize;
+  const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
   const changed = quotesChanged || candidatesChanged || settingsChanged;
   if (!changed) return;
   state.transportQuotes = nextQuotes;
   state.candidates = nextCandidates;
-  state.partySize = nextSettings.partySize;
-  state.budgetLimit = nextSettings.budgetLimit;
+  PLAN_SETTING_FIELDS.forEach((meta) => {
+    state[meta.field] = clone(nextSettings[meta.field]);
+  });
+  if (!state.dateRange && state.startDate && state.endDate) state.dateRange = dateRangeText(state.startDate, state.endDate);
+  syncGuideStateFromPlan();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   dom.collabStatus.textContent = label;
   refreshRealtimePlanViews();
@@ -1485,16 +1531,17 @@ async function bindCollabPlanDoc() {
   collabCandidatesArray = collabPlanDoc.getArray("candidates");
   collabSettingsMap = collabPlanDoc.getMap("settings");
   collabPlanDoc.transact(() => {
-    if (!collabSettingsMap.has("partySize")) collabSettingsMap.set("partySize", Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1));
-    if (!collabSettingsMap.has("budgetLimit")) collabSettingsMap.set("budgetLimit", numberValue(state.budgetLimit || 10000));
+    PLAN_SETTING_FIELDS.forEach((meta) => {
+      if (!collabSettingsMap.has(meta.field)) collabSettingsMap.set(meta.field, planSettingValue(state, meta));
+    });
   }, "restore");
   collabPlanDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentPlanFromDoc("收到协作者交通报价更新");
+      persistCurrentPlanFromDoc("收到协作者计划结构更新");
       return;
     }
     broadcastPlanYjsUpdate(update);
-    persistCurrentPlanFromDoc("交通报价协作内容实时同步中");
+    persistCurrentPlanFromDoc("计划结构协作内容实时同步中");
   });
   persistCurrentPlanFromDoc("已载入计划结构协作状态");
   renderTransport();
@@ -1533,11 +1580,26 @@ async function syncPlanSettingToDoc(field, value) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabSettingsMap || isApplyingCollabPlanRemote) return false;
-  const nextValue = field === "partySize" ? Math.max(1, Number.parseInt(value || 1, 10) || 1) : numberValue(value);
+  const nextValue = normalizePlanSettingValue(field, value);
   if (sameSerialized(collabSettingsMap.get(field), nextValue)) return true;
   collabPlanDoc.transact(() => {
     collabSettingsMap.set(field, nextValue);
   }, "local-setting");
+  return true;
+}
+
+async function syncPlanMetaToDoc(origin = "local-plan-meta") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabSettingsMap || isApplyingCollabPlanRemote) return false;
+  const entries = PLAN_SETTING_FIELDS.map((meta) => [meta.field, planSettingValue(state, meta)]);
+  const changed = entries.some(([field, value]) => !sameSerialized(collabSettingsMap.get(field), value));
+  if (!changed) return true;
+  collabPlanDoc.transact(() => {
+    entries.forEach(([field, value]) => {
+      collabSettingsMap.set(field, clone(value));
+    });
+  }, origin);
   return true;
 }
 
@@ -1822,11 +1884,9 @@ function applyRemotePlanReplaced(payload = {}) {
     activeDay = Math.min(activeDay, state.days.length - 1);
     activeStop = 0;
   }
-  guideState.destination = state.destination || guideState.destination;
-  guideState.origin = state.origin || guideState.origin;
-  guideState.startDate = state.startDate || guideState.startDate;
-  guideState.endDate = state.endDate || guideState.endDate;
+  syncGuideStateFromPlan();
   destroyCollabTextDoc();
+  destroyCollabPlanDoc();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`);
   dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了整份计划`;
@@ -1918,6 +1978,7 @@ function applyRemotePlan(remotePlan, meta = {}) {
   const currentTransportQuotes = normalizeTransportQuotes(state.transportQuotes || []);
   const currentCandidates = normalizeCandidateStops(state.candidates || []);
   const currentSettings = {
+    ...currentPlanMeta(),
     partySize: Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1),
     budgetLimit: numberValue(state.budgetLimit || 10000),
   };
@@ -1932,6 +1993,7 @@ function applyRemotePlan(remotePlan, meta = {}) {
     !sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || [])) ||
     !sameSerialized(currentCandidates, normalizeCandidateStops(state.candidates || [])) ||
     !sameSerialized(currentSettings, {
+      ...currentPlanMeta(),
       partySize: Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1),
       budgetLimit: numberValue(state.budgetLimit || 10000),
     })
@@ -4035,7 +4097,7 @@ dom.mapCanvas.addEventListener("click", (event) => {
   trackPresence();
 });
 
-dom.dayForm.addEventListener("submit", (event) => {
+dom.dayForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let updatedDay = null;
   mutate("保存当天设置", () => {
@@ -4055,7 +4117,10 @@ dom.dayForm.addEventListener("submit", (event) => {
     }
     updatedDay = clone(currentDay());
   }, { requireUnlocked: false });
-  if (updatedDay) broadcastDayUpdated(updatedDay);
+  if (updatedDay) {
+    await syncPlanMetaToDoc("local-day-date-meta");
+    broadcastDayUpdated(updatedDay);
+  }
 });
 
 dom.addDayBtn.addEventListener("click", () => {
@@ -4815,7 +4880,7 @@ function closeCreateChoice() {
   dom.createChoiceModal.setAttribute("aria-hidden", "true");
 }
 
-function createRecommendedPlan() {
+async function createRecommendedPlan() {
   if (!requireEdit("生成推荐计划")) return;
   const destination = dom.destinationInput.value.trim() || "甘肃";
   const origin = dom.originInput.value.trim() || "上海";
@@ -4846,11 +4911,13 @@ function createRecommendedPlan() {
     dom.transportTo.value = "";
     transportFilterApplied = false;
   }, { requireUnlocked: false });
+  destroyCollabPlanDoc();
+  await syncPlanMetaToDoc("local-recommended-plan-meta");
   broadcastPlanReplaced("生成推荐计划");
   closeCreateChoice();
 }
 
-function createBlankTemplate() {
+async function createBlankTemplate() {
   if (!requireEdit("生成空白模板")) return;
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
   const origin = dom.originInput.value.trim() || "上海";
@@ -4868,6 +4935,8 @@ function createBlankTemplate() {
     dom.transportTo.value = "";
     transportFilterApplied = false;
   }, { requireUnlocked: false });
+  destroyCollabPlanDoc();
+  await syncPlanMetaToDoc("local-blank-plan-meta");
   broadcastPlanReplaced("生成空白模板");
   closeCreateChoice();
 }
@@ -5027,7 +5096,7 @@ dom.ctripSpecBtn.addEventListener("click", async () => {
   }
 });
 
-dom.resetBtn.addEventListener("click", () => {
+dom.resetBtn.addEventListener("click", async () => {
   if (!requireEdit("重置计划")) return;
   saveVersionSnapshot("重置前版本");
   state = ensurePlanDates(buildKyotoPlan());
@@ -5036,6 +5105,8 @@ dom.resetBtn.addEventListener("click", () => {
   transportFilterApplied = false;
   saveState("已重置示例");
   render();
+  destroyCollabPlanDoc();
+  await syncPlanMetaToDoc("local-reset-plan-meta");
   broadcastPlanReplaced("重置示例计划");
 });
 
@@ -5193,14 +5264,8 @@ async function boot() {
     dom.syncBadge.textContent = "已配置接口";
     setCtripStatus("已读取本机保存的 Google Flights 航班代理地址。配置 Supabase 密钥后可测试连接并同步航班。", "plug-zap");
   }
-  guideState.destination = state.destination || guideState.destination;
-  guideState.origin = state.origin || guideState.origin;
-  guideState.startDate = state.startDate || guideState.startDate;
-  guideState.endDate = state.endDate || guideState.endDate;
-  dom.destinationInput.value = guideState.destination;
-  dom.originInput.value = guideState.origin;
+  syncGuideStateFromPlan();
   dom.partySizeInput.value = state.partySize || 1;
-  if (!dom.transportFrom.value) dom.transportFrom.value = guideState.origin;
   initSupabaseClient();
   render();
   renderMembers();
