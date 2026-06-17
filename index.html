@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-amap-weather" />
+    <link rel="stylesheet" href="styles.css?v=20260617-amap-sdk" />
   </head>
   <body>
     <div class="app-shell">
@@ -368,6 +368,14 @@
               <input id="amapRouteEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/amap-route-plan" />
             </label>
             <label>
+              高德 JS Key
+              <input id="amapJsKeyInput" type="password" placeholder="Web 端 JS API Key" autocomplete="off" />
+            </label>
+            <label>
+              JS 安全密钥
+              <input id="amapSecurityCodeInput" type="password" placeholder="securityJsCode" autocomplete="off" />
+            </label>
+            <label>
               天气代理
               <input id="weatherEndpointInput" type="url" placeholder="可选；不填则使用 Open-Meteo" />
             </label>
@@ -404,6 +412,7 @@
           <div class="map-toolbar">
             <span><i data-lucide="route"></i><span id="routeDistance">7.6 km</span></span>
             <span><i data-lucide="clock-3"></i><span id="routeDuration">58 min</span></span>
+            <span><i data-lucide="map-pinned"></i><span id="mapProviderStatus">坐标预览</span></span>
           </div>
           <div class="map-canvas" id="mapCanvas" aria-label="行程地图"></div>
         </section>
@@ -611,7 +620,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-amap-weather"></script>
-    <script src="script.js?v=20260617-amap-weather"></script>
+    <script src="config.js?v=20260617-amap-sdk"></script>
+    <script src="script.js?v=20260617-amap-sdk"></script>
   </body>
 </html>

@@ -383,6 +383,165 @@ async function lookupAmapPlace(keyword) {
   };
 }
 
+function hasAmapJsConfig() {
+  return Boolean(String(serviceConfig.amapJsKey || "").trim());
+}
+
+function clearAmapOverlay() {
+  amapMapMarkers.forEach((marker) => marker.setMap(null));
+  amapMapPolylines.forEach((polyline) => polyline.setMap(null));
+  amapMapMarkers = [];
+  amapMapPolylines = [];
+}
+
+function coordinateForAmap(stop) {
+  const lng = Number(stop?.lng);
+  const lat = Number(stop?.lat);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+  return [lng, lat];
+}
+
+function legPathCoordinates(day, leg) {
+  if (Array.isArray(leg?.path) && leg.path.length >= 2) {
+    const path = leg.path
+      .map((point) => (Array.isArray(point) ? point : [point?.lng, point?.lat]).map(Number))
+      .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+    if (path.length >= 2) return path;
+  }
+  const fromIndex = day.stops.findIndex((stop) => stop.title === leg?.from);
+  const toIndex = day.stops.findIndex((stop) => stop.title === leg?.to);
+  const from = coordinateForAmap(day.stops[fromIndex]);
+  const to = coordinateForAmap(day.stops[toIndex]);
+  return from && to ? [from, to] : [];
+}
+
+function loadAmapSdk() {
+  if (!hasAmapJsConfig()) return Promise.reject(new Error("未配置高德 JS Key"));
+  const key = serviceConfig.amapJsKey.trim();
+  if (window.AMap && amapLoadedKey === key) return Promise.resolve(window.AMap);
+  if (amapLoaderPromise && amapLoadedKey === key) return amapLoaderPromise;
+  if (serviceConfig.amapSecurityCode) {
+    window._AMapSecurityConfig = {
+      securityJsCode: serviceConfig.amapSecurityCode.trim(),
+    };
+  }
+  amapLoadedKey = key;
+  amapLoaderPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector("script[data-amap-loader]");
+    if (existing) existing.remove();
+    const script = document.createElement("script");
+    script.dataset.amapLoader = "true";
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(key)}&plugin=AMap.Scale,AMap.ToolBar`;
+    script.async = true;
+    script.onload = () => {
+      if (window.AMap) resolve(window.AMap);
+      else reject(new Error("高德 JS SDK 加载后未找到 AMap。"));
+    };
+    script.onerror = () => reject(new Error("高德 JS SDK 加载失败，请检查 Web 端 JS Key 和安全密钥。"));
+    document.head.appendChild(script);
+  });
+  return amapLoaderPromise;
+}
+
+function renderFallbackMap(day) {
+  if (!dom.mapCanvas) return;
+  dom.mapCanvas.classList.remove("is-amap");
+  dom.mapCanvas.innerHTML = `<div class="route-line"></div>`;
+  if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = hasAmapJsConfig() ? "SDK 待加载" : "坐标预览";
+  day.stops.forEach((stop, index) => {
+    const pin = document.createElement("button");
+    pin.className = `map-pin ${index === activeStop ? "is-active" : ""}`;
+    pin.style.left = `${stop.x}%`;
+    pin.style.top = `${stop.y}%`;
+    pin.setAttribute("aria-label", stop.title);
+    pin.dataset.stop = index;
+    pin.innerHTML = `<span>${index + 1}</span>`;
+    dom.mapCanvas.appendChild(pin);
+  });
+}
+
+async function renderAmapSdkMap(day) {
+  const AMap = await loadAmapSdk();
+  const points = day.stops.map(coordinateForAmap);
+  const validPoints = points.filter(Boolean);
+  if (!validPoints.length) {
+    if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = "高德地图 · 待定位";
+    return;
+  }
+  dom.mapCanvas.classList.add("is-amap");
+  if (!amapMap) {
+    dom.mapCanvas.innerHTML = "";
+    amapMap = new AMap.Map(dom.mapCanvas, {
+      zoom: validPoints.length === 1 ? 13 : 10,
+      viewMode: "2D",
+      resizeEnable: true,
+      center: validPoints[0],
+    });
+    amapMap.addControl(new AMap.Scale());
+    amapMap.addControl(new AMap.ToolBar({ position: "RB" }));
+  }
+  clearAmapOverlay();
+  day.stops.forEach((stop, index) => {
+    const position = points[index];
+    if (!position) return;
+    const marker = new AMap.Marker({
+      position,
+      title: stop.title,
+      label: {
+        content: `${index + 1}. ${stop.title}`,
+        direction: "top",
+      },
+    });
+    marker.on("click", () => {
+      activeStop = index;
+      render();
+    });
+    amapMap.add(marker);
+    amapMapMarkers.push(marker);
+  });
+  const routeLegs = Array.isArray(day.amapRoute?.legs) ? day.amapRoute.legs : [];
+  routeLegs.forEach((leg) => {
+    const path = legPathCoordinates(day, leg);
+    if (path.length < 2) return;
+    const polyline = new AMap.Polyline({
+      path,
+      strokeColor: "#24735c",
+      strokeWeight: 6,
+      strokeOpacity: 0.82,
+      lineJoin: "round",
+    });
+    amapMap.add(polyline);
+    amapMapPolylines.push(polyline);
+  });
+  if (!amapMapPolylines.length && validPoints.length >= 2) {
+    const polyline = new AMap.Polyline({
+      path: validPoints,
+      strokeColor: "#dd6b4f",
+      strokeWeight: 5,
+      strokeStyle: "dashed",
+      strokeOpacity: 0.72,
+    });
+    amapMap.add(polyline);
+    amapMapPolylines.push(polyline);
+  }
+  amapMap.setFitView([...amapMapMarkers, ...amapMapPolylines], false, [32, 32, 32, 32]);
+  if (dom.mapProviderStatus) {
+    dom.mapProviderStatus.textContent = day.amapRoute?.legs?.length ? "高德地图 · 路线" : "高德地图 · 标记";
+  }
+}
+
+function scheduleAmapRender(day) {
+  if (amapRenderQueued) return;
+  amapRenderQueued = true;
+  window.requestAnimationFrame(() => {
+    amapRenderQueued = false;
+    renderAmapSdkMap(day).catch((error) => {
+      if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = `地图未启用`;
+      console.warn("Amap SDK render failed", error);
+    });
+  });
+}
+
 async function requestAmapRoute(day, mode = "walking") {
   if (!serviceConfig.amapRouteEndpoint) {
     throw new Error("请先配置高德路线代理。");
@@ -2268,6 +2427,7 @@ const dom = {
   candidateGrid: document.querySelector("#candidateGrid"),
   routeDistance: document.querySelector("#routeDistance"),
   routeDuration: document.querySelector("#routeDuration"),
+  mapProviderStatus: document.querySelector("#mapProviderStatus"),
   mapCanvas: document.querySelector("#mapCanvas"),
   placePhoto: document.querySelector("#placePhoto"),
   placeType: document.querySelector("#placeType"),
@@ -2397,6 +2557,8 @@ const dom = {
   aiRouteTokenInput: document.querySelector("#aiRouteTokenInput"),
   amapEndpointInput: document.querySelector("#amapEndpointInput"),
   amapRouteEndpointInput: document.querySelector("#amapRouteEndpointInput"),
+  amapJsKeyInput: document.querySelector("#amapJsKeyInput"),
+  amapSecurityCodeInput: document.querySelector("#amapSecurityCodeInput"),
   weatherEndpointInput: document.querySelector("#weatherEndpointInput"),
   saveServiceConfigBtn: document.querySelector("#saveServiceConfigBtn"),
   syncWeatherBtn: document.querySelector("#syncWeatherBtn"),
@@ -2416,11 +2578,13 @@ let multiOriginComparisons = [];
 let ctripConfig = safeJsonParse(localStorage.getItem(CTRIP_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
 let externalImportConfig = safeJsonParse(localStorage.getItem(EXTERNAL_IMPORT_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
 let lastParsedImport = null;
-let serviceConfig = safeJsonParse(localStorage.getItem(SERVICE_CONFIG_KEY), { aiEndpoint: "", aiToken: "", amapEndpoint: "", amapRouteEndpoint: "", weatherEndpoint: "" }) || {
+let serviceConfig = safeJsonParse(localStorage.getItem(SERVICE_CONFIG_KEY), { aiEndpoint: "", aiToken: "", amapEndpoint: "", amapRouteEndpoint: "", amapJsKey: "", amapSecurityCode: "", weatherEndpoint: "" }) || {
   aiEndpoint: "",
   aiToken: "",
   amapEndpoint: "",
   amapRouteEndpoint: "",
+  amapJsKey: "",
+  amapSecurityCode: "",
   weatherEndpoint: "",
 };
 let memberProfile = safeJsonParse(sessionStorage.getItem(MEMBER_PROFILE_KEY), null);
@@ -2463,6 +2627,12 @@ let presenceTrackTimer = null;
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
+let amapMap = null;
+let amapMapMarkers = [];
+let amapMapPolylines = [];
+let amapLoaderPromise = null;
+let amapLoadedKey = "";
+let amapRenderQueued = false;
 const initialGuideDates = defaultGuideDates();
 const guideState = {
   destination: "甘肃",
@@ -3348,10 +3518,20 @@ function saveServiceConfig() {
     aiToken: dom.aiRouteTokenInput.value.trim(),
     amapEndpoint: dom.amapEndpointInput.value.trim(),
     amapRouteEndpoint: dom.amapRouteEndpointInput.value.trim(),
+    amapJsKey: dom.amapJsKeyInput.value.trim(),
+    amapSecurityCode: dom.amapSecurityCodeInput.value.trim(),
     weatherEndpoint: dom.weatherEndpointInput.value.trim(),
   };
   localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+  if (!serviceConfig.amapJsKey && amapMap) {
+    clearAmapOverlay();
+    amapMap.destroy();
+    amapMap = null;
+    amapLoadedKey = "";
+    amapLoaderPromise = null;
+  }
   renderServiceStatus();
+  renderMap();
 }
 
 function serviceHeaders(token, endpoint = "") {
@@ -3370,6 +3550,7 @@ function renderServiceStatus() {
     serviceConfig.aiEndpoint && "AI",
     serviceConfig.amapEndpoint && "高德地点",
     serviceConfig.amapRouteEndpoint && "高德路线",
+    serviceConfig.amapJsKey && "高德地图",
     serviceConfig.weatherEndpoint && "天气代理",
   ].filter(Boolean);
   dom.serviceConfigStatus.textContent = connected.length ? `已配置 ${connected.join(" / ")}` : "本地兜底";
@@ -4205,17 +4386,8 @@ function renderTimeline() {
 
 function renderMap() {
   const day = currentDay();
-  dom.mapCanvas.innerHTML = `<div class="route-line"></div>`;
-  day.stops.forEach((stop, index) => {
-    const pin = document.createElement("button");
-    pin.className = `map-pin ${index === activeStop ? "is-active" : ""}`;
-    pin.style.left = `${stop.x}%`;
-    pin.style.top = `${stop.y}%`;
-    pin.setAttribute("aria-label", stop.title);
-    pin.dataset.stop = index;
-    pin.innerHTML = `<span>${index + 1}</span>`;
-    dom.mapCanvas.appendChild(pin);
-  });
+  renderFallbackMap(day);
+  if (hasAmapJsConfig()) scheduleAmapRender(day);
 }
 
 function renderDetail() {
@@ -5634,6 +5806,8 @@ async function boot() {
   dom.aiRouteTokenInput.value = serviceConfig.aiToken || "";
   dom.amapEndpointInput.value = serviceConfig.amapEndpoint || "";
   dom.amapRouteEndpointInput.value = serviceConfig.amapRouteEndpoint || "";
+  dom.amapJsKeyInput.value = serviceConfig.amapJsKey || "";
+  dom.amapSecurityCodeInput.value = serviceConfig.amapSecurityCode || "";
   dom.weatherEndpointInput.value = serviceConfig.weatherEndpoint || "";
   renderServiceStatus();
   if (ctripConfig.endpoint) {

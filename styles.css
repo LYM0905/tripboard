@@ -1569,6 +1569,15 @@ button:disabled {
   border-radius: 8px;
 }
 
+.map-canvas.is-amap {
+  background: #e8f0ec;
+}
+
+.map-canvas.is-amap .amap-logo,
+.map-canvas.is-amap .amap-copyright {
+  display: block;
+}
+
 .route-line {
   position: absolute;
   inset: 31px 52px 44px 48px;
