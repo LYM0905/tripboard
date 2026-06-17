@@ -981,7 +981,26 @@ function mergeComments(localComments = [], remoteComments = []) {
 }
 
 function mergeDayBlocks(localBlocks = [], remoteBlocks = []) {
-  return normalizeDayBlocks(mergeUniqueList(localBlocks || [], remoteBlocks || [], "block")).slice(0, 80);
+  const localNormalized = normalizeDayBlocks(localBlocks || []);
+  const remoteNormalized = normalizeDayBlocks(remoteBlocks || []);
+  const remoteById = new Map(remoteNormalized.map((block) => [block.id, block]));
+  const localIds = new Set(localNormalized.map((block) => block.id));
+  const merged = localNormalized.map((block) => {
+    const remoteBlock = remoteById.get(block.id);
+    if (!remoteBlock) return block;
+    return normalizeDayBlock({
+      ...remoteBlock,
+      ...block,
+      done: block.done || remoteBlock.done,
+      comments: mergeComments(block.comments || [], remoteBlock.comments || []),
+      updatedAt: block.updatedAt || remoteBlock.updatedAt,
+      updatedBy: block.updatedBy || remoteBlock.updatedBy,
+    });
+  });
+  remoteNormalized.forEach((block) => {
+    if (!localIds.has(block.id)) merged.push(block);
+  });
+  return normalizeDayBlocks(merged).slice(0, 80);
 }
 
 function mergeScalarField(baseValue, localValue, remoteValue) {
@@ -1776,6 +1795,7 @@ function normalizeDayBlock(block = {}) {
     type,
     text,
     done: Boolean(block.done),
+    comments: normalizeComments(block.comments || []),
     createdBy: block.createdBy || "",
     createdAt: block.createdAt || new Date().toISOString(),
     updatedBy: block.updatedBy || "",
@@ -3012,33 +3032,67 @@ function dayBlockIcon(type = "todo") {
   return "check-square";
 }
 
+function renderDayBlockComments(block) {
+  const rendered = renderCommentThreads(block.comments || [], {
+    filter: blockCommentFilters[block.id] || "all",
+    filterAttr: "data-block-comment-filter",
+    replyAttr: "data-reply-block-comment",
+    resolveAttr: "data-toggle-block-comment-resolved",
+    deleteAttr: "data-delete-block-comment",
+    emptyPrefix: "还没有块级评论。",
+  });
+  blockCommentFilters[block.id] = rendered.filter;
+  return `<div class="day-block-comments" data-block-comments="${escapeHtml(block.id)}">${rendered.html}</div>`;
+}
+
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
   const blocks = normalizeDayBlocks(day.blocks || []);
   const disabledAttr = isReadonlyMode ? " disabled" : "";
+  const blockIds = new Set(blocks.map((block) => block.id));
+  Object.keys(blockCommentFilters).forEach((blockId) => {
+    if (!blockIds.has(blockId)) delete blockCommentFilters[blockId];
+  });
+  if (blockReplyingCommentId && !blocks.some((block) => normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId))) {
+    blockReplyingCommentId = "";
+  }
   if (dom.dayBlocksStatus) {
     const openCount = blocks.filter((block) => block.type === "todo" && !block.done).length;
-    dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办` : "可添加块";
+    const commentCount = blocks.reduce((sum, block) => sum + commentRootsAndReplies(block.comments || []).roots.length, 0);
+    dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办 · ${commentCount} 条评论` : "可添加块";
   }
   dom.dayBlockList.innerHTML = blocks.length
     ? blocks
         .map((block, index) => {
           const doneClass = block.done ? " is-done" : "";
+          const comments = normalizeComments(block.comments || []);
+          const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
+          const commentPanelId = `block-comments-${block.id}`;
           const meta = block.updatedBy || block.createdBy
             ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
             : dayBlockTypeLabel(block.type);
           const upDisabled = isReadonlyMode || index === 0 ? " disabled" : "";
           const downDisabled = isReadonlyMode || index === blocks.length - 1 ? " disabled" : "";
+          const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
+          const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
           return `
             <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}">
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <input class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" value="${escapeHtml(block.text)}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr} />
               <span class="day-block-meta">${escapeHtml(meta)}</span>
+              <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
               <span class="day-block-order">
                 <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
                 <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
               </span>
               <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
+              <div class="day-block-comment-panel" id="${escapeHtml(commentPanelId)}">
+                ${renderDayBlockComments(block)}
+                <form class="comment-form day-block-comment-form" data-block-comment-form="${escapeHtml(block.id)}">
+                  <input data-block-comment-input="${escapeHtml(block.id)}" placeholder="${escapeHtml(placeholder)}"${disabledAttr} />
+                  <button class="primary-btn" type="submit" aria-label="${replyTarget ? "回复块级评论" : "添加块级评论"}"${disabledAttr}>${icon(replyTarget ? "reply" : "send")}</button>
+                </form>
+              </div>
             </article>
           `;
         })
@@ -3901,6 +3955,134 @@ async function deleteDayBlockFromDoc(dayId, blockId, origin = "local-day-block-d
     blockArray.delete(index, 1);
   }, origin);
   return true;
+}
+
+async function updateDayBlockCommentsInDoc(dayId, blockId, comments = [], origin = "local-day-block-comments") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const items = blockArray.toArray();
+  const index = items.findIndex((block) => block?.id === blockId);
+  if (index < 0) return false;
+  const next = normalizeDayBlock({
+    ...items[index],
+    comments: normalizeComments(comments),
+    updatedBy: getCollabName(),
+    updatedAt: new Date().toISOString(),
+  });
+  if (!next) return false;
+  if (sameSerialized(normalizeDayBlock(items[index]), next)) return true;
+  collabPlanDoc.transact(() => {
+    const latestItems = blockArray.toArray();
+    const latestIndex = latestItems.findIndex((block) => block?.id === blockId);
+    if (latestIndex < 0) return;
+    const latest = normalizeDayBlock({
+      ...latestItems[latestIndex],
+      comments: normalizeComments(comments),
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!latest || sameSerialized(normalizeDayBlock(latestItems[latestIndex]), latest)) return;
+    blockArray.delete(latestIndex, 1);
+    blockArray.insert(latestIndex, [latest]);
+  }, origin);
+  return next;
+}
+
+async function addDayBlockCommentToDoc(dayId, blockId, text, parentId = "", origin = "local-day-block-comment") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const items = blockArray.toArray();
+  const index = items.findIndex((block) => block?.id === blockId);
+  if (index < 0) return false;
+  const block = normalizeDayBlock(items[index]);
+  if (!block) return false;
+  const parent = parentId ? normalizeComments(block.comments || []).find((comment) => comment.id === parentId && !comment.parentId) : null;
+  if (parentId && !parent) return false;
+  const comment = normalizeCommentEntry({
+    id: uid(),
+    parentId: parent?.id || "",
+    author: getCollabName(),
+    text: String(text || "").trim(),
+    at: new Date().toISOString(),
+  });
+  if (!comment) return true;
+  let didInsert = false;
+  collabPlanDoc.transact(() => {
+    const latestItems = blockArray.toArray();
+    const latestIndex = latestItems.findIndex((item) => item?.id === blockId);
+    if (latestIndex < 0) return;
+    const latestBlock = normalizeDayBlock(latestItems[latestIndex]);
+    if (!latestBlock) return;
+    const latestParent = comment.parentId ? normalizeComments(latestBlock.comments || []).find((item) => item.id === comment.parentId && !item.parentId) : null;
+    if (comment.parentId && !latestParent) return;
+    const latest = normalizeDayBlock({
+      ...latestBlock,
+      comments: normalizeComments([...(latestBlock.comments || []), comment]),
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!latest) return;
+    blockArray.delete(latestIndex, 1);
+    blockArray.insert(latestIndex, [latest]);
+    didInsert = true;
+  }, origin);
+  return didInsert ? comment : false;
+}
+
+async function updateDayBlockCommentInDoc(dayId, blockId, commentId, patch = {}, origin = "local-day-block-comment-update") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId || !commentId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  let didUpdate = false;
+  collabPlanDoc.transact(() => {
+    const latestItems = blockArray.toArray();
+    const latestIndex = latestItems.findIndex((item) => item?.id === blockId);
+    if (latestIndex < 0) return;
+    const latestBlock = normalizeDayBlock(latestItems[latestIndex]);
+    if (!latestBlock) return;
+    const nextComments = commentsWithUpdatedComment(latestBlock.comments || [], commentId, patch);
+    if (sameSerialized(normalizeComments(latestBlock.comments || []), nextComments)) return;
+    const next = normalizeDayBlock({
+      ...latestBlock,
+      comments: nextComments,
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!next) return;
+    blockArray.delete(latestIndex, 1);
+    blockArray.insert(latestIndex, [next]);
+    didUpdate = true;
+  }, origin);
+  return didUpdate;
+}
+
+async function deleteDayBlockCommentFromDoc(dayId, blockId, commentId, origin = "local-day-block-comment-delete") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId || !commentId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  let didDelete = false;
+  collabPlanDoc.transact(() => {
+    const latestItems = blockArray.toArray();
+    const latestIndex = latestItems.findIndex((item) => item?.id === blockId);
+    if (latestIndex < 0) return;
+    const latestBlock = normalizeDayBlock(latestItems[latestIndex]);
+    if (!latestBlock) return;
+    const nextComments = commentsWithoutThread(latestBlock.comments || [], commentId);
+    if (sameSerialized(normalizeComments(latestBlock.comments || []), nextComments)) return;
+    const next = normalizeDayBlock({
+      ...latestBlock,
+      comments: nextComments,
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!next) return;
+    blockArray.delete(latestIndex, 1);
+    blockArray.insert(latestIndex, [next]);
+    didDelete = true;
+  }, origin);
+  return didDelete;
 }
 
 async function moveDayBlockInDoc(dayId, blockId, direction = "down", origin = "local-day-block-reorder") {
@@ -5171,6 +5353,8 @@ let isApplyingCollabPlanRemote = false;
 let collabPlanBindRequestId = 0;
 let dayFieldSyncTimer = null;
 let dayBlockEditTimer = null;
+let blockReplyingCommentId = "";
+let blockCommentFilters = {};
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
@@ -8568,6 +8752,24 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
 dom.dayBlockList?.addEventListener("click", async (event) => {
   const day = currentDay();
   if (!day) return;
+  const filterBlockCommentButton = event.target.closest("[data-block-comment-filter]");
+  if (filterBlockCommentButton) {
+    event.preventDefault();
+    const blockElement = filterBlockCommentButton.closest("[data-day-block]");
+    const blockId = blockElement?.dataset.dayBlock || "";
+    if (!blockId) return;
+    blockCommentFilters[blockId] = filterBlockCommentButton.dataset.blockCommentFilter || "all";
+    renderDayBlocks(day);
+    return;
+  }
+  const focusBlockCommentButton = event.target.closest("[data-toggle-block-comments]");
+  if (focusBlockCommentButton) {
+    event.preventDefault();
+    const blockId = focusBlockCommentButton.dataset.toggleBlockComments || "";
+    const input = blockId ? dom.dayBlockList.querySelector(`[data-block-comment-input="${escapeHtml(blockId)}"]`) : null;
+    input?.focus();
+    return;
+  }
   const toggleButton = event.target.closest("[data-toggle-day-block]");
   if (toggleButton) {
     event.preventDefault();
@@ -8587,6 +8789,67 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback");
     await saveState("已更新协作块");
+    render();
+    return;
+  }
+  const replyBlockCommentButton = event.target.closest("[data-reply-block-comment]");
+  if (replyBlockCommentButton) {
+    event.preventDefault();
+    const commentId = replyBlockCommentButton.dataset.replyBlockComment;
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId && !comment.parentId));
+    const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId && !item.parentId);
+    if (!block || !comment || !requireEdit("回复块级评论")) return;
+    blockReplyingCommentId = comment.id;
+    renderDayBlocks(day);
+    const input = dom.dayBlockList.querySelector(`[data-block-comment-input="${escapeHtml(block.id)}"]`);
+    input?.focus();
+    return;
+  }
+  const resolveBlockCommentButton = event.target.closest("[data-toggle-block-comment-resolved]");
+  if (resolveBlockCommentButton) {
+    event.preventDefault();
+    const commentId = resolveBlockCommentButton.dataset.toggleBlockCommentResolved;
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId && !comment.parentId));
+    const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId && !item.parentId);
+    if (!block || !comment || !requireEdit("更新块级评论")) return;
+    const patch = comment.resolved
+      ? { resolved: false }
+      : { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: getCollabName() };
+    if (await updateDayBlockCommentInDoc(day.id, block.id, commentId, patch, "local-day-block-comment-resolve")) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      renderDayBlocks(day);
+      await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`);
+      await saveCollaborativePlanChange("已更新块级评论");
+      return;
+    }
+    if (!mutate("更新块级评论", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch) } : item)));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-resolve-fallback");
+    await saveState("已更新块级评论");
+    render();
+    return;
+  }
+  const deleteBlockCommentButton = event.target.closest("[data-delete-block-comment]");
+  if (deleteBlockCommentButton) {
+    event.preventDefault();
+    const commentId = deleteBlockCommentButton.dataset.deleteBlockComment;
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId));
+    const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId);
+    if (!block || !comment || !requireEdit("删除块级评论")) return;
+    if (await deleteDayBlockCommentFromDoc(day.id, block.id, commentId, "local-day-block-comment-delete")) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      if (blockReplyingCommentId === commentId || !normalizeComments(currentDay()?.blocks?.find((item) => item.id === block.id)?.comments || []).some((item) => item.id === blockReplyingCommentId)) blockReplyingCommentId = "";
+      renderDayBlocks(day);
+      await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`);
+      await saveCollaborativePlanChange("已删除块级评论");
+      return;
+    }
+    if (!mutate("删除块级评论", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId) } : item)));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-delete-fallback");
+    await saveState("已删除块级评论");
     render();
     return;
   }
@@ -8635,6 +8898,55 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     await saveState("已删除协作块");
     render();
   }
+});
+
+dom.dayBlockList?.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-block-comment-form]");
+  if (!form) return;
+  event.preventDefault();
+  const day = currentDay();
+  const blockId = form.dataset.blockCommentForm || "";
+  const input = form.querySelector("[data-block-comment-input]");
+  const text = input?.value?.trim() || "";
+  const block = normalizeDayBlocks(day?.blocks || []).find((item) => item.id === blockId);
+  if (!day || !block || !text || !requireEdit(blockReplyingCommentId ? "回复块级评论" : "添加块级评论")) return;
+  const parentId = blockReplyingCommentId && normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId)
+    ? blockReplyingCommentId
+    : "";
+  const collaborativeComment = await addDayBlockCommentToDoc(day.id, block.id, text, parentId, parentId ? "local-day-block-comment-reply" : "local-day-block-comment-add");
+  if (collaborativeComment) {
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+      item.id === block.id
+        ? { ...item, comments: normalizeComments([...(item.comments || []), collaborativeComment]), updatedBy: getCollabName(), updatedAt: new Date().toISOString() }
+        : item
+    )));
+    if (input) input.value = "";
+    blockReplyingCommentId = "";
+    renderDayBlocks(day);
+    await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`);
+    await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
+    return;
+  }
+  const fallbackComment = normalizeCommentEntry({
+    id: uid(),
+    parentId,
+    author: getCollabName(),
+    text,
+    at: new Date().toISOString(),
+  });
+  if (!fallbackComment) return;
+  if (!mutate(parentId ? "回复块级评论" : "添加块级评论", () => {
+    currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (
+      item.id === block.id
+        ? { ...item, comments: normalizeComments([...(item.comments || []), fallbackComment]) }
+        : item
+    )));
+    if (input) input.value = "";
+    blockReplyingCommentId = "";
+  }, { requireUnlocked: false, save: false, render: false })) return;
+  await syncDayBlocksToDoc(currentDay().id, parentId ? "local-day-block-comment-reply-fallback" : "local-day-block-comment-add-fallback");
+  await saveState(parentId ? "已回复块级评论" : "已添加块级评论");
+  render();
 });
 
 dom.dayBlockList?.addEventListener("input", (event) => {
