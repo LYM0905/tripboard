@@ -19,6 +19,12 @@ const COLLAB_TEXT_FIELDS = [
   { field: "note", domKey: "fieldNote", label: "备注", presenceId: "fieldNotePresence" },
 ];
 const COLLAB_TEXT_FIELD_BY_FIELD = new Map(COLLAB_TEXT_FIELDS.map((item) => [item.field, item]));
+const COLLAB_DAY_TEXT_FIELDS = [
+  { field: "title", domKey: "fieldDayTitle", label: "当天标题" },
+  { field: "route", domKey: "fieldDayRoute", label: "当天路线" },
+  { field: "weather", domKey: "fieldDayWeather", label: "天气" },
+  { field: "transport", domKey: "fieldDayTransport", label: "交通" },
+];
 const COLLAB_STRUCT_FIELDS = [
   { field: "time", domKey: "fieldTime", type: "string" },
   { field: "budget", domKey: "fieldBudget", type: "number" },
@@ -1297,6 +1303,10 @@ function currentTextRoomId(stopId = currentStop()?.id) {
   return tripId && stopId ? `text:${tripId}:${stopId}` : "";
 }
 
+function currentDayTextRoomId(dayId = currentDay()?.id) {
+  return tripId && dayId ? `day-text:${tripId}:${dayId}` : "";
+}
+
 function findStopLocation(stopId) {
   if (!stopId) return null;
   for (let dayIndex = 0; dayIndex < (state.days || []).length; dayIndex += 1) {
@@ -1328,6 +1338,17 @@ function buildInitialTextUpdate(Y, stop) {
   });
   const commentArray = seedDoc.getArray("comments");
   commentArray.insert(0, normalizeComments(stop.comments || []));
+  const update = Y.encodeStateAsUpdate(seedDoc);
+  seedDoc.destroy();
+  return update;
+}
+
+function buildInitialDayTextUpdate(Y, day) {
+  const seedDoc = new Y.Doc();
+  seedDoc.clientID = stableTextClientId(`${tripId}:day:${day.id}`);
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
+    seedDoc.getText(field).insert(0, day[field] || "");
+  });
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -1395,6 +1416,17 @@ function normalizeStopTextStateEntries(entries = []) {
   return states;
 }
 
+function normalizeDayTextStateEntries(entries = []) {
+  const states = {};
+  entries
+    .filter(([dayId, textState]) => dayId && textState)
+    .sort(([left], [right]) => String(left).localeCompare(String(right)))
+    .forEach(([dayId, textState]) => {
+      states[String(dayId)] = String(textState || "");
+    });
+  return states;
+}
+
 function stopTextStateSnapshotFromDays(days = [], Y = null) {
   const entries = [];
   (days || []).forEach((day) => {
@@ -1404,6 +1436,15 @@ function stopTextStateSnapshotFromDays(days = [], Y = null) {
     });
   });
   return normalizeStopTextStateEntries(entries);
+}
+
+function dayTextStateSnapshotFromDays(days = [], Y = null) {
+  const entries = [];
+  (days || []).forEach((day) => {
+    const textState = day?.dayTextYjs || day?.textYjs || (Y && day?.id ? bytesToBase64(buildInitialDayTextUpdate(Y, day)) : "");
+    if (day?.id && textState) entries.push([day.id, textState]);
+  });
+  return normalizeDayTextStateEntries(entries);
 }
 
 function currentPlanRoomId() {
@@ -1611,6 +1652,10 @@ function buildInitialPlanUpdate(Y, plan) {
   const dayArray = seedDoc.getArray("dayMetas");
   const dayMetas = normalizeDayMetas(plan.days || []);
   if (dayMetas.length) dayArray.insert(0, dayMetas);
+  const dayTextStatesMap = seedDoc.getMap("dayTextStates");
+  Object.entries(dayTextStateSnapshotFromDays(plan.days || [], Y)).forEach(([dayId, textState]) => {
+    dayTextStatesMap.set(dayId, textState);
+  });
   const stopListsMap = seedDoc.getMap("stopLists");
   (plan.days || []).forEach((day) => {
     if (!day?.id) return;
@@ -1702,6 +1747,71 @@ function persistCurrentTextFromDoc(label = "地点协作内容已实时同步") 
   }, 900);
 }
 
+function persistCurrentDayTextFromDoc(label = "当天文本协作内容已实时同步") {
+  if (!collabDayTextDoc || !collabDayTextDayId) return;
+  const day = state.days.find((item) => item.id === collabDayTextDayId);
+  if (!day) return;
+  const nextValues = dayTextValuesFromDoc();
+  const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabDayTextDoc)) : day.textYjs || day.dayTextYjs || "";
+  const textChanged = COLLAB_DAY_TEXT_FIELDS.some(({ field }) => day[field] !== nextValues[field]);
+  const yjsChanged = day.textYjs !== nextYjs || day.dayTextYjs !== nextYjs;
+  if (!textChanged && !yjsChanged) return;
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
+    day[field] = nextValues[field];
+  });
+  day.textYjs = nextYjs;
+  day.dayTextYjs = nextYjs;
+  if (collabPlanDoc && !isApplyingCollabPlanRemote && (collabDayTextStatesMap || collabDayMetasArray)) {
+    const planOrigin = isApplyingCollabDayTextRemote ? "remote" : "local-day-text-state";
+    collabPlanDoc?.transact(() => {
+      if (collabDayTextStatesMap && collabDayTextStatesMap.get(day.id) !== nextYjs) {
+        collabDayTextStatesMap.set(day.id, nextYjs);
+      }
+      if (collabDayMetasArray) {
+        const latestItems = collabDayMetasArray.toArray();
+        const latestIndex = latestItems.findIndex((item) => item?.id === day.id);
+        if (latestIndex >= 0) {
+          const latest = normalizeDayMetas([latestItems[latestIndex]])[0];
+          const merged = normalizeDayMetas([{
+            ...latest,
+            id: day.id,
+            label: latest.label || day.label,
+            ...nextValues,
+          }])[0];
+          if (!sameSerialized(latest, merged)) {
+            collabDayMetasArray.delete(latestIndex, 1);
+            collabDayMetasArray.insert(latestIndex, [merged]);
+          }
+        }
+      }
+    }, planOrigin);
+  } else {
+    patchDayMetaInDoc(day.id, nextValues, "local-day-text-meta-patch").catch((error) => {
+      console.warn("Day text meta patch failed", error);
+    });
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (collabDayTextDayId === day.id) {
+    COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
+      if (dom[domKey] && dom[domKey].value !== nextValues[field]) dom[domKey].value = nextValues[field];
+    });
+  }
+  dom.dayEditorStatus.textContent = tripId ? "逐字协作中" : "本地保存";
+  dom.collabStatus.textContent = label;
+  if (textChanged) {
+    renderShell();
+    renderDays();
+    renderDaySummary();
+    renderAmapRouteReport(currentDay()?.amapRoute || null);
+    refreshIcons();
+  }
+  clearTimeout(collabDayTextSaveTimer);
+  collabDayTextSaveTimer = setTimeout(() => {
+    if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
+    saveCollaborativePlanChange("当天文本协作内容已实时同步");
+  }, 900);
+}
+
 function readTransportQuotesFromDoc() {
   return normalizeTransportQuotes(collabTransportQuotesArray ? collabTransportQuotesArray.toArray() : state.transportQuotes || []);
 }
@@ -1728,6 +1838,11 @@ function readStopListsFromDoc() {
 function readStopTextStatesFromDoc() {
   if (!collabStopTextStatesMap) return stopTextStateSnapshotFromDays(state.days || [], yjsModule);
   return normalizeStopTextStateEntries(Array.from(collabStopTextStatesMap.entries()));
+}
+
+function readDayTextStatesFromDoc() {
+  if (!collabDayTextStatesMap) return dayTextStateSnapshotFromDays(state.days || [], yjsModule);
+  return normalizeDayTextStateEntries(Array.from(collabDayTextStatesMap.entries()));
 }
 
 function readCandidatesFromDoc() {
@@ -1880,6 +1995,27 @@ function applyStopTextStatesToState(textStates = {}) {
   return changed;
 }
 
+function applyDayTextStatesToState(textStates = {}) {
+  let changed = false;
+  state.days.forEach((day) => {
+    const textState = textStates[day.id];
+    if (!textState) return;
+    if (day.textYjs !== textState || day.dayTextYjs !== textState) {
+      day.textYjs = textState;
+      day.dayTextYjs = textState;
+      changed = true;
+    }
+    const nextValues = dayValuesFromTextState(textState, day);
+    COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
+      if (day[field] !== nextValues[field]) {
+        day[field] = nextValues[field];
+        changed = true;
+      }
+    });
+  });
+  return changed;
+}
+
 function stopListOrderSnapshot(stopLists = {}) {
   const snapshot = {};
   Object.entries(stopLists || {}).forEach(([dayId, stops]) => {
@@ -1902,8 +2038,9 @@ function refreshRealtimePlanViews() {
 }
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步") {
-  if (!collabPlanDoc || !collabDayMetasArray || !collabStopListsMap || !collabStopTextStatesMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
+  if (!collabPlanDoc || !collabDayMetasArray || !collabDayTextStatesMap || !collabStopListsMap || !collabStopTextStatesMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
   const nextDayMetas = readDayMetasFromDoc();
+  const nextDayTextStates = readDayTextStatesFromDoc();
   const nextStopLists = readStopListsFromDoc();
   const nextStopTextStates = readStopTextStatesFromDoc();
   const nextQuotes = readTransportQuotesFromDoc();
@@ -1911,6 +2048,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const nextActivities = readActivitiesFromDoc();
   const nextSettings = readSettingsFromDoc();
   const dayMetasChanged = !sameSerialized(normalizeDayMetas(state.days || []), nextDayMetas);
+  const dayTextStatesChanged = !sameSerialized(dayTextStateSnapshotFromDays(state.days || [], yjsModule), nextDayTextStates);
   const stopListsChanged = !sameSerialized(normalizeStopListsFromDays(state.days || []), nextStopLists);
   const stopTextStatesChanged = !sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), nextStopTextStates);
   const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
@@ -1919,10 +2057,11 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
   const nextPlanYjs = currentPlanYjsState();
   const planYjsChanged = Boolean(nextPlanYjs && state.planYjs !== nextPlanYjs);
-  const changed = dayMetasChanged || stopListsChanged || stopTextStatesChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
+  const changed = dayMetasChanged || dayTextStatesChanged || stopListsChanged || stopTextStatesChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
   if (!changed) return;
-  const visibleChanged = dayMetasChanged || stopListsChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
+  const visibleChanged = dayMetasChanged || dayTextStatesChanged || stopListsChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
+  if (dayTextStatesChanged) applyDayTextStatesToState(nextDayTextStates);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
   if (stopTextStatesChanged) applyStopTextStatesToState(nextStopTextStates);
   state.transportQuotes = nextQuotes;
@@ -1979,6 +2118,7 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
   const previousPlanDoc = collabPlanDoc;
   const previousRefs = {
     dayMetas: collabDayMetasArray,
+    dayTextStates: collabDayTextStatesMap,
     stopLists: collabStopListsMap,
     stopTextStates: collabStopTextStatesMap,
     transportQuotes: collabTransportQuotesArray,
@@ -2000,6 +2140,7 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
   } finally {
     collabPlanDoc = previousPlanDoc;
     collabDayMetasArray = previousRefs.dayMetas;
+    collabDayTextStatesMap = previousRefs.dayTextStates;
     collabStopListsMap = previousRefs.stopLists;
     collabStopTextStatesMap = previousRefs.stopTextStates;
     collabTransportQuotesArray = previousRefs.transportQuotes;
@@ -2017,6 +2158,7 @@ function clearPlanYjsState(plan = state) {
 
 function attachCollabPlanRefs() {
   collabDayMetasArray = collabPlanDoc.getArray("dayMetas");
+  collabDayTextStatesMap = collabPlanDoc.getMap("dayTextStates");
   collabStopListsMap = collabPlanDoc.getMap("stopLists");
   collabStopTextStatesMap = collabPlanDoc.getMap("stopTextStates");
   collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
@@ -2040,6 +2182,9 @@ function seedMissingPlanDocContent(Y) {
     Object.entries(stopTextStateSnapshotFromDays(state.days || [], Y)).forEach(([stopId, textState]) => {
       if (!collabStopTextStatesMap.has(stopId)) collabStopTextStatesMap.set(stopId, textState);
     });
+    Object.entries(dayTextStateSnapshotFromDays(state.days || [], Y)).forEach(([dayId, textState]) => {
+      if (!collabDayTextStatesMap.has(dayId)) collabDayTextStatesMap.set(dayId, textState);
+    });
     (state.days || []).forEach((day) => {
       if (!day?.id) return;
       const stopArray = collabStopListsMap.get(day.id);
@@ -2060,6 +2205,7 @@ function seedMissingPlanDocContent(Y) {
 function planDocMatchesCurrentState() {
   return (
     sameSerialized(normalizeDayMetas(state.days || []), readDayMetasFromDoc()) &&
+    sameSerialized(dayTextStateSnapshotFromDays(state.days || [], yjsModule), readDayTextStatesFromDoc()) &&
     sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(readStopListsFromDoc())) &&
     sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), readStopTextStatesFromDoc()) &&
     sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), readTransportQuotesFromDoc()) &&
@@ -2093,6 +2239,22 @@ function broadcastTextUpdate(update) {
     payload: {
       roomId: currentTextRoomId(collabTextStopId),
       stopId: collabTextStopId,
+      update: bytesToBase64(update),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function broadcastDayTextUpdate(update) {
+  if (!realtimeChannel || !collabDayTextDayId || isApplyingCollabDayTextRemote) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "day-text-yjs-update",
+    payload: {
+      roomId: currentDayTextRoomId(collabDayTextDayId),
+      dayId: collabDayTextDayId,
       update: bytesToBase64(update),
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
@@ -2165,6 +2327,34 @@ function normalizeComments(comments = []) {
 
 function readCommentsFromDoc() {
   return normalizeComments(collabCommentsArray ? collabCommentsArray.toArray() : []);
+}
+
+function dayTextValuesFromDoc(doc = collabDayTextDoc, fields = collabDayTextFields) {
+  const values = {};
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
+    values[field] = fields[field]?.toString?.() ?? doc?.getText?.(field)?.toString?.() ?? "";
+  });
+  return values;
+}
+
+function dayValuesFromTextState(textState = "", fallbackDay = {}) {
+  const values = {};
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
+    values[field] = String(fallbackDay?.[field] || "");
+  });
+  if (!textState || !yjsModule) return values;
+  const tempDoc = new yjsModule.Doc();
+  try {
+    yjsModule.applyUpdate(tempDoc, base64ToBytes(textState), "read");
+    COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
+      values[field] = tempDoc.getText(field).toString();
+    });
+  } catch (error) {
+    console.warn("Stored day Yjs text state could not be read", error);
+  } finally {
+    tempDoc.destroy();
+  }
+  return values;
 }
 
 function renderStopComments(stop) {
@@ -2400,11 +2590,23 @@ function destroyCollabTextDoc() {
   }
 }
 
+function destroyCollabDayTextDoc() {
+  clearTimeout(collabDayTextSaveTimer);
+  collabDayTextSaveTimer = null;
+  collabDayTextDayId = "";
+  collabDayTextFields = {};
+  if (collabDayTextDoc) {
+    collabDayTextDoc.destroy();
+    collabDayTextDoc = null;
+  }
+}
+
 function destroyCollabPlanDoc() {
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = null;
   collabPlanTripId = "";
   collabDayMetasArray = null;
+  collabDayTextStatesMap = null;
   collabStopListsMap = null;
   collabStopTextStatesMap = null;
   collabTransportQuotesArray = null;
@@ -2704,9 +2906,18 @@ async function syncDayMetasToDoc(origin = "local-day-metas") {
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabDayMetasArray || isApplyingCollabPlanRemote) return false;
   const nextDayMetas = normalizeDayMetas(state.days || []);
-  if (sameSerialized(readDayMetasFromDoc(), nextDayMetas)) return true;
+  const nextDayTextStates = dayTextStateSnapshotFromDays(state.days || [], yjsModule);
+  if (sameSerialized(readDayMetasFromDoc(), nextDayMetas) && sameSerialized(readDayTextStatesFromDoc(), nextDayTextStates)) return true;
   collabPlanDoc.transact(() => {
     syncYArrayById(collabDayMetasArray, nextDayMetas, (day) => normalizeDayMetas([day])[0]);
+    if (collabDayTextStatesMap) {
+      Array.from(collabDayTextStatesMap.keys()).forEach((dayId) => {
+        if (!Object.prototype.hasOwnProperty.call(nextDayTextStates, dayId)) collabDayTextStatesMap.delete(dayId);
+      });
+      Object.entries(nextDayTextStates).forEach(([dayId, textState]) => {
+        if (collabDayTextStatesMap.get(dayId) !== textState) collabDayTextStatesMap.set(dayId, textState);
+      });
+    }
   }, origin);
   return true;
 }
@@ -2719,8 +2930,10 @@ async function addDayMetaToDoc(day, index = -1, origin = "local-day-create") {
   if (!normalized) return true;
   const existingItems = collabDayMetasArray.toArray();
   if (existingItems.some((item) => item?.id === normalized.id)) return true;
+  const textState = dayTextStateSnapshotFromDays([day], yjsModule)[day.id] || "";
   collabPlanDoc.transact(() => {
     collabDayMetasArray.insert(Math.max(0, Math.min(index, collabDayMetasArray.length)), [normalized]);
+    if (textState) collabDayTextStatesMap?.set(day.id, textState);
   }, origin);
   return true;
 }
@@ -2923,6 +3136,7 @@ async function deleteDayFromDoc(dayId, origin = "local-day-delete") {
   const dayMetaIndex = collabDayMetasArray.toArray().findIndex((day) => day?.id === dayId);
   collabPlanDoc.transact(() => {
     if (dayMetaIndex >= 0) collabDayMetasArray.delete(dayMetaIndex, 1);
+    collabDayTextStatesMap?.delete(dayId);
     collabStopListsMap.delete(dayId);
     existingStopIds.forEach((stopId) => collabStopTextStatesMap?.delete(stopId));
   }, origin);
@@ -2999,6 +3213,7 @@ async function syncActivitiesToDoc(origin = "local-activities") {
 async function replacePlanCollabDoc(origin = "local-plan-replace") {
   if (!canEdit() || isReadonlyMode) return false;
   clearPlanYjsState();
+  destroyCollabDayTextDoc();
   destroyCollabPlanDoc();
   await bindCollabPlanDoc();
   await syncDayMetasToDoc(`${origin}-days`);
@@ -3095,6 +3310,62 @@ async function bindCollabTextDoc() {
   setNoteCollabStatus("文本、结构字段与评论协作已开启");
 }
 
+async function bindCollabDayTextDoc() {
+  const day = currentDay();
+  if (!day?.id || collabDayTextDayId === day.id) return;
+  const requestId = collabDayTextBindRequestId + 1;
+  collabDayTextBindRequestId = requestId;
+  destroyCollabDayTextDoc();
+  if (!tripId || isReadonlyMode) {
+    if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = tripId ? "随计划保存" : "本地保存";
+    return;
+  }
+  if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = "逐字协作加载中";
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return;
+  }
+  await bindCollabPlanDoc();
+  if (requestId !== collabDayTextBindRequestId || currentDay()?.id !== day.id) return;
+  collabDayTextDayId = day.id;
+  collabDayTextDoc = new Y.Doc();
+  let restored = false;
+  const storedTextState = day.dayTextYjs || day.textYjs || collabDayTextStatesMap?.get(day.id) || "";
+  if (storedTextState) {
+    try {
+      Y.applyUpdate(collabDayTextDoc, base64ToBytes(storedTextState), "restore");
+      restored = true;
+    } catch (error) {
+      console.warn("Stored Yjs day text state could not be restored", error);
+    }
+  }
+  if (!restored) {
+    Y.applyUpdate(collabDayTextDoc, buildInitialDayTextUpdate(Y, day), "restore");
+    restored = true;
+  }
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
+    collabDayTextFields[field] = collabDayTextDoc.getText(field);
+  });
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
+    const value = restored ? collabDayTextFields[field].toString() : day[field] || "";
+    if (dom[domKey] && dom[domKey].value !== value) dom[domKey].value = value;
+  });
+  collabDayTextDoc.on("update", (update, origin) => {
+    if (origin === "remote") {
+      persistCurrentDayTextFromDoc("收到协作者当天文本更新");
+      return;
+    }
+    broadcastDayTextUpdate(update);
+    persistCurrentDayTextFromDoc("当天文本协作内容实时同步中");
+  });
+  if (restored && COLLAB_DAY_TEXT_FIELDS.some(({ field }) => day[field] !== collabDayTextFields[field].toString())) {
+    persistCurrentDayTextFromDoc("已载入当天文本协作状态");
+  }
+  if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = "逐字协作已开启";
+}
+
 async function applyRemoteTextUpdate(payload = {}) {
   if (!payload.update || payload.roomId !== currentTextRoomId()) return;
   if (!collabTextDoc || !Object.keys(collabTextFields).length || collabTextStopId !== payload.stopId) await bindCollabTextDoc();
@@ -3122,6 +3393,29 @@ async function applyRemoteTextUpdate(payload = {}) {
     setNoteCollabStatus(`${payload.name || "协作者"} 正在同步地点协作内容`);
   } finally {
     isApplyingCollabTextRemote = false;
+  }
+}
+
+async function applyRemoteDayTextUpdate(payload = {}) {
+  if (!payload.update || payload.roomId !== currentDayTextRoomId()) return;
+  if (!collabDayTextDoc || !Object.keys(collabDayTextFields).length || collabDayTextDayId !== payload.dayId) await bindCollabDayTextDoc();
+  if (!collabDayTextDoc || collabDayTextDayId !== payload.dayId) return;
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return;
+  }
+  isApplyingCollabDayTextRemote = true;
+  try {
+    Y.applyUpdate(collabDayTextDoc, base64ToBytes(payload.update), "remote");
+    COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
+      const nextValue = collabDayTextFields[field]?.toString() || "";
+      if (dom[domKey] && dom[domKey].value !== nextValue) dom[domKey].value = nextValue;
+    });
+    if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = `${payload.name || "协作者"} 正在同步`;
+  } finally {
+    isApplyingCollabDayTextRemote = false;
   }
 }
 
@@ -3414,6 +3708,7 @@ async function applyRemotePlanReplaced(payload = {}) {
   }
   syncGuideStateFromPlan();
   destroyCollabTextDoc();
+  destroyCollabDayTextDoc();
   destroyCollabPlanDoc();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   bindCollabPlanDoc();
@@ -3453,6 +3748,16 @@ async function syncCollabTextFieldToDoc(field, value) {
   collabTextDoc.transact(() => {
     applyTextDiff(yText, value);
   }, "local-input");
+}
+
+async function syncCollabDayTextFieldToDoc(field, value) {
+  if (!canEdit() || isReadonlyMode) return;
+  await bindCollabDayTextDoc();
+  const yText = collabDayTextFields[field];
+  if (!collabDayTextDoc || !yText || isApplyingCollabDayTextRemote) return;
+  collabDayTextDoc.transact(() => {
+    applyTextDiff(yText, value);
+  }, "local-day-text-input");
 }
 
 async function syncCollabStructFieldToDoc(meta) {
@@ -3532,6 +3837,7 @@ async function applyRemotePlan(remotePlan, meta = {}) {
   if (remoteTextState && remoteTextState !== currentTextState) {
     destroyCollabTextDoc();
   }
+  destroyCollabDayTextDoc();
   if (
     !sameSerialized(currentDayMetas, normalizeDayMetas(state.days || [])) ||
     !sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || [])) ||
@@ -3862,8 +4168,14 @@ let collabCommentsArray = null;
 let collabTextStopId = "";
 let isApplyingCollabTextRemote = false;
 let collabTextSaveTimer = null;
+let collabDayTextDoc = null;
+let collabDayTextFields = {};
+let collabDayTextDayId = "";
+let isApplyingCollabDayTextRemote = false;
+let collabDayTextSaveTimer = null;
 let collabPlanDoc = null;
 let collabDayMetasArray = null;
+let collabDayTextStatesMap = null;
 let collabStopListsMap = null;
 let collabStopTextStatesMap = null;
 let collabTransportQuotesArray = null;
@@ -3879,6 +4191,7 @@ let presenceTrackTimer = null;
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
+let collabDayTextBindRequestId = 0;
 let amapMap = null;
 let amapMapMarkers = [];
 let amapMapPolylines = [];
@@ -4565,6 +4878,10 @@ function subscribeRemoteState() {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteTextUpdate(payload);
     })
+    .on("broadcast", { event: "day-text-yjs-update" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteDayTextUpdate(payload);
+    })
     .on("broadcast", { event: "plan-yjs-update" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemotePlanYjsUpdate(payload);
@@ -4643,6 +4960,7 @@ function subscribeRemoteState() {
       if (status === "SUBSCRIBED") {
         dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "实时同步";
         bindCollabTextDoc();
+        bindCollabDayTextDoc();
         flushPendingPlanUpdates("实时通道恢复后重放离线协作更新").catch((error) => {
           dom.collabStatus.textContent = `重放离线协作更新失败：${error.message}`;
         });
@@ -5819,10 +6137,12 @@ function renderDayEditor() {
   const day = currentDay();
   if (!day) return;
   dom.fieldDayDate.value = day.date || "";
-  dom.fieldDayTitle.value = day.title || "";
-  dom.fieldDayRoute.value = day.route || "";
-  dom.fieldDayWeather.value = day.weather || "";
-  dom.fieldDayTransport.value = day.transport || "";
+  if (collabDayTextDayId !== day.id || !collabDayTextDoc) {
+    dom.fieldDayTitle.value = day.title || "";
+    dom.fieldDayRoute.value = day.route || "";
+    dom.fieldDayWeather.value = day.weather || "";
+    dom.fieldDayTransport.value = day.transport || "";
+  }
   dom.dayEditorStatus.textContent = isReadonlyMode ? "只读" : tripId ? "实时协作" : "本地保存";
   dom.moveDayUpBtn.disabled = isReadonlyMode || activeDay === 0;
   dom.moveDayDownBtn.disabled = isReadonlyMode || activeDay >= state.days.length - 1;
@@ -5830,12 +6150,17 @@ function renderDayEditor() {
 }
 
 function dayEditorDraftValues(day = currentDay()) {
+  const collabValues = collabDayTextDayId === day?.id && collabDayTextDoc ? dayTextValuesFromDoc() : null;
+  const textValue = (field, domKey, fallback = "") => {
+    if (collabValues && Object.prototype.hasOwnProperty.call(collabValues, field)) return collabValues[field];
+    return dom[domKey].value.trim() || fallback;
+  };
   return {
     date: dom.fieldDayDate.value || day.date || "",
-    title: dom.fieldDayTitle.value.trim() || day.title || day.label,
-    route: dom.fieldDayRoute.value.trim() || "待填写路线",
-    weather: dom.fieldDayWeather.value.trim() || "天气待确认",
-    transport: dom.fieldDayTransport.value.trim() || "交通待规划",
+    title: textValue("title", "fieldDayTitle", day.title || day.label) || day.label,
+    route: textValue("route", "fieldDayRoute", "待填写路线") || "待填写路线",
+    weather: textValue("weather", "fieldDayWeather", "天气待确认") || "天气待确认",
+    transport: textValue("transport", "fieldDayTransport", "交通待规划") || "交通待规划",
   };
 }
 
@@ -5997,6 +6322,7 @@ function render() {
   renderEditorLockState();
   bindCollabPlanDoc();
   bindCollabTextDoc();
+  bindCollabDayTextDoc();
   refreshIcons();
 }
 
@@ -6140,17 +6466,21 @@ async function syncDayEditorDraftChange({ silent = false } = {}) {
   }
 }
 
-[dom.fieldDayDate, dom.fieldDayTitle, dom.fieldDayRoute, dom.fieldDayWeather, dom.fieldDayTransport].forEach((control) => {
-  control?.addEventListener("change", syncDayEditorDraftChange);
+dom.fieldDayDate?.addEventListener("change", syncDayEditorDraftChange);
+
+COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
+  dom[domKey]?.addEventListener("change", syncDayEditorDraftChange);
 });
 
-[dom.fieldDayTitle, dom.fieldDayRoute, dom.fieldDayWeather, dom.fieldDayTransport].forEach((control) => {
+COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
+  const control = dom[domKey];
   control?.addEventListener("input", () => {
     if (!canEdit() || isReadonlyMode) return;
+    syncCollabDayTextFieldToDoc(field, control.value);
     clearTimeout(dayFieldSyncTimer);
     dayFieldSyncTimer = setTimeout(() => {
       syncDayEditorDraftChange({ silent: true });
-    }, 500);
+    }, 1200);
   });
 });
 
