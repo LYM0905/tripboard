@@ -5447,6 +5447,8 @@ dom.addCandidateBtn.addEventListener("click", async () => {
   });
   if (!draft || !requireEdit("加入备选池")) return;
   if (await addCollaborativeCandidate(draft)) {
+    persistCurrentPlanFromDoc("备选池协作内容已实时同步");
+    logActivity(`加入备选池「${draft.title}」`);
     dom.quickPlaceName.value = "";
     dom.quickAmapKeyword.value = "";
     dom.quickTime.value = "";
@@ -5454,6 +5456,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
     dom.quickAddress.value = "";
     quickAmapPlace = null;
     dom.saveState.textContent = `已加入备选池「${draft.title}」`;
+    refreshRealtimePlanViews();
     return;
   }
   mutate(`加入备选池「${draft.title}」`, () => {
@@ -6044,11 +6047,15 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
     source: "手动保存",
   };
   if (await addCollaborativeTransportQuote(quote)) {
+    persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
+    logActivity(`保存交通报价「${code}」`);
     transportFilterApplied = true;
     dom.manualQuoteCode.value = "";
     dom.manualQuoteDepart.value = "";
     dom.manualQuoteArrive.value = "";
     dom.manualQuotePrice.value = "";
+    dom.saveState.textContent = `已保存交通报价「${code}」`;
+    refreshRealtimePlanViews();
     return;
   }
   mutate(`保存交通报价「${code}」`, () => {
