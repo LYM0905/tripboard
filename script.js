@@ -2782,6 +2782,21 @@ async function deleteStopFromDoc(dayId, stopId, origin = "local-stop-delete") {
   return true;
 }
 
+async function deleteDayFromDoc(dayId, origin = "local-day-delete") {
+  if (!canEdit() || isReadonlyMode || !dayId) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabDayMetasArray || !collabStopListsMap || isApplyingCollabPlanRemote) return false;
+  const existingStops = collabStopListsMap.get(dayId)?.toArray?.() || [];
+  const existingStopIds = existingStops.map((stop) => stop?.id).filter(Boolean);
+  const dayMetaIndex = collabDayMetasArray.toArray().findIndex((day) => day?.id === dayId);
+  collabPlanDoc.transact(() => {
+    if (dayMetaIndex >= 0) collabDayMetasArray.delete(dayMetaIndex, 1);
+    collabStopListsMap.delete(dayId);
+    existingStopIds.forEach((stopId) => collabStopTextStatesMap?.delete(stopId));
+  }, origin);
+  return true;
+}
+
 async function syncStopListsToDoc(origin = "local-stop-lists") {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
@@ -6039,8 +6054,10 @@ dom.deleteDayBtn.addEventListener("click", async () => {
     destroyCollabTextDoc();
     reflowPlanDates();
   }, { requireUnlocked: false, save: false, render: false })) return;
-  await syncDayMetasToDoc("local-day-delete");
-  await syncStopListsToDoc("local-day-delete-stops");
+  if (!(await deleteDayFromDoc(deletedDay.id, "local-day-delete"))) {
+    await syncDayMetasToDoc("local-day-delete-fallback");
+    await syncStopListsToDoc("local-day-delete-stops-fallback");
+  }
   await syncPlanMetaToDoc("local-day-delete-meta");
   await saveState(label);
   broadcastDayDeleted(deletedDay);
@@ -6059,7 +6076,6 @@ dom.moveDayUpBtn.addEventListener("click", async () => {
   }, { requireUnlocked: false, save: false, render: false })) return;
   if (changed) {
     await syncDayMetasToDoc("local-day-reorder");
-    await syncStopListsToDoc("local-day-reorder-stops");
     await syncPlanMetaToDoc("local-day-reorder-meta");
     await saveState("上移当天");
     broadcastDaysReordered();
@@ -6079,7 +6095,6 @@ dom.moveDayDownBtn.addEventListener("click", async () => {
   }, { requireUnlocked: false, save: false, render: false })) return;
   if (changed) {
     await syncDayMetasToDoc("local-day-reorder");
-    await syncStopListsToDoc("local-day-reorder-stops");
     await syncPlanMetaToDoc("local-day-reorder-meta");
     await saveState("下移当天");
     broadcastDaysReordered();
