@@ -1042,6 +1042,22 @@ function broadcastTextSelection() {
   });
 }
 
+function broadcastStopCreated(dayId, stop) {
+  if (!realtimeChannel || !tripId || !stop?.id) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "stop-created",
+    payload: {
+      tripId,
+      dayId,
+      stop: clone(stop),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
 function destroyCollabTextDoc() {
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = null;
@@ -1164,6 +1180,21 @@ async function applyRemoteTextUpdate(payload = {}) {
   } finally {
     isApplyingCollabTextRemote = false;
   }
+}
+
+function applyRemoteStopCreated(payload = {}) {
+  if (!payload.stop?.id || payload.tripId !== tripId) return;
+  if (state.days.some((day) => (day.stops || []).some((stop) => stop.id === payload.stop.id))) return;
+  const day =
+    state.days.find((item) => item.id === payload.dayId) ||
+    state.days.find((item) => item.date && item.date === payload.dayDate) ||
+    currentDay();
+  if (!day) return;
+  day.stops = [...(day.stops || []), clone(payload.stop)];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`);
+  dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了「${payload.stop.title || "地点"}」`;
+  render();
 }
 
 function applyTextDiff(yText, nextValue) {
@@ -2076,6 +2107,10 @@ function subscribeRemoteState() {
       upsertOnlineMember(payload);
       renderMembers();
       renderEditorLockState();
+    })
+    .on("broadcast", { event: "stop-created" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteStopCreated(payload);
     })
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
@@ -3220,22 +3255,25 @@ COLLAB_STRUCT_FIELDS.forEach((meta) => {
 });
 
 dom.addStopBtn.addEventListener("click", () => {
+  let createdStop = null;
+  let createdDayId = "";
   mutate("新增地点", () => {
     const day = currentDay();
-    day.stops.push(
-      makeStop({
-        time: "18:00",
-        title: "新地点",
-        note: "在右侧编辑名称、地址、预算和备注。",
-        tags: ["草稿"],
-        budget: 0,
-        x: 70,
-        y: 32,
-      }),
-    );
+    createdStop = makeStop({
+      time: "18:00",
+      title: "新地点",
+      note: "在右侧编辑名称、地址、预算和备注。",
+      tags: ["草稿"],
+      budget: 0,
+      x: 70,
+      y: 32,
+    });
+    createdDayId = day.id;
+    day.stops.push(createdStop);
     activeStop = day.stops.length - 1;
     clearCurrentAmapRoute();
   }, { requireUnlocked: false });
+  if (createdStop) broadcastStopCreated(createdDayId, createdStop);
 });
 
 dom.quickAddForm.addEventListener("submit", (event) => {
@@ -3244,25 +3282,27 @@ dom.quickAddForm.addEventListener("submit", (event) => {
   if (!name) return;
   const keyword = dom.quickAmapKeyword.value.trim() || `${state.destination || ""} ${name}`.trim();
   const locatedPlace = quickAmapPlace && (quickAmapPlace.keyword === keyword || quickAmapPlace.title === name) ? quickAmapPlace : null;
+  let createdStop = null;
+  let createdDayId = "";
   mutate(`加入景点「${name}」`, () => {
     const day = currentDay();
-    day.stops.push(
-      makeStop({
-        time: dom.quickTime.value.trim() || "10:00",
-        title: name,
-        type: "Scenic",
-        address: dom.quickAddress.value.trim() || locatedPlace?.address || keyword,
-        note: `从快速录入加入。高德关键词：${keyword}`,
-        tags: ["自定义", "待优化"],
-        budget: Number(dom.quickBudget.value || 0),
-        amapKeyword: keyword,
-        lng: locatedPlace?.lng || "",
-        lat: locatedPlace?.lat || "",
-        x: 30 + ((day.stops.length * 17) % 52),
-        y: 28 + ((day.stops.length * 13) % 42),
-        image: state.cover || images.city,
-      }),
-    );
+    createdStop = makeStop({
+      time: dom.quickTime.value.trim() || "10:00",
+      title: name,
+      type: "Scenic",
+      address: dom.quickAddress.value.trim() || locatedPlace?.address || keyword,
+      note: `从快速录入加入。高德关键词：${keyword}`,
+      tags: ["自定义", "待优化"],
+      budget: Number(dom.quickBudget.value || 0),
+      amapKeyword: keyword,
+      lng: locatedPlace?.lng || "",
+      lat: locatedPlace?.lat || "",
+      x: 30 + ((day.stops.length * 17) % 52),
+      y: 28 + ((day.stops.length * 13) % 42),
+      image: state.cover || images.city,
+    });
+    createdDayId = day.id;
+    day.stops.push(createdStop);
     activeStop = day.stops.length - 1;
     clearCurrentAmapRoute();
     dom.quickPlaceName.value = "";
@@ -3272,6 +3312,7 @@ dom.quickAddForm.addEventListener("submit", (event) => {
     dom.quickAddress.value = "";
     quickAmapPlace = null;
   }, { requireUnlocked: false });
+  if (createdStop) broadcastStopCreated(createdDayId, createdStop);
 });
 
 dom.openAmapBtn.addEventListener("click", async () => {
@@ -3691,10 +3732,14 @@ dom.candidateGrid.addEventListener("click", (event) => {
   if (!button) return;
   const candidate = clone(state.candidates[Number(button.dataset.candidate)]);
   candidate.id = uid();
+  let createdDayId = "";
   mutate(`加入备选「${candidate.title}」`, () => {
-    currentDay().stops.push(candidate);
+    const day = currentDay();
+    createdDayId = day.id;
+    day.stops.push(candidate);
     activeStop = currentDay().stops.length - 1;
   });
+  broadcastStopCreated(createdDayId, candidate);
 });
 
 document.querySelectorAll("[data-guide-group]").forEach((group) => {
@@ -4098,8 +4143,9 @@ dom.importForm.addEventListener("submit", (event) => {
   ].filter(Boolean);
   const rawNote = dom.importNote.value.trim();
   const note = [metadataLines.join("\n"), rawNote].filter(Boolean).join("\n\n");
+  let createdStop = null;
   mutate(`导入${pendingProvider}记录`, () => {
-    const stop = makeStop({
+    createdStop = makeStop({
       time: dom.importTime.value.trim() || "18:30",
       title,
       type: category,
@@ -4113,7 +4159,7 @@ dom.importForm.addEventListener("submit", (event) => {
       x: 78,
       y: 60,
     });
-    targetDay.stops.push(stop);
+    targetDay.stops.push(createdStop);
     activeDay = targetDayIndex;
     activeStop = targetDay.stops.length - 1;
     dom.syncBadge.textContent = "已导入";
@@ -4121,6 +4167,7 @@ dom.importForm.addEventListener("submit", (event) => {
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
   }, { requireUnlocked: false });
+  if (createdStop) broadcastStopCreated(targetDay.id, createdStop);
 });
 
 async function boot() {
