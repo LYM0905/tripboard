@@ -2412,6 +2412,42 @@ async function syncStopListsToDoc(origin = "local-stop-lists") {
   return true;
 }
 
+async function syncTransportQuotesToDoc(origin = "local-transport-quotes") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabTransportQuotesArray || isApplyingCollabPlanRemote) return false;
+  const nextQuotes = normalizeTransportQuotes(state.transportQuotes || []);
+  if (sameSerialized(readTransportQuotesFromDoc(), nextQuotes)) return true;
+  collabPlanDoc.transact(() => {
+    syncYArrayById(collabTransportQuotesArray, nextQuotes, (quote) => normalizeTransportQuotes([quote])[0]);
+  }, origin);
+  return true;
+}
+
+async function syncCandidatesToDoc(origin = "local-candidates") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabCandidatesArray || isApplyingCollabPlanRemote) return false;
+  const nextCandidates = normalizeCandidateStops(state.candidates || []);
+  if (sameSerialized(readCandidatesFromDoc(), nextCandidates)) return true;
+  collabPlanDoc.transact(() => {
+    syncYArrayById(collabCandidatesArray, nextCandidates, (candidate) => normalizeCandidateStops([candidate])[0]);
+  }, origin);
+  return true;
+}
+
+async function syncActivitiesToDoc(origin = "local-activities") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabActivitiesArray || isApplyingCollabPlanRemote) return false;
+  const nextActivities = normalizeActivities(state.activities || []);
+  if (sameSerialized(readActivitiesFromDoc(), nextActivities)) return true;
+  collabPlanDoc.transact(() => {
+    syncYArrayById(collabActivitiesArray, nextActivities, (activity) => normalizeActivities([activity])[0]);
+  }, origin);
+  return true;
+}
+
 async function replacePlanCollabDoc(origin = "local-plan-replace") {
   if (!canEdit() || isReadonlyMode) return false;
   clearPlanYjsState();
@@ -2419,6 +2455,9 @@ async function replacePlanCollabDoc(origin = "local-plan-replace") {
   await bindCollabPlanDoc();
   await syncDayMetasToDoc(`${origin}-days`);
   await syncStopListsToDoc(`${origin}-stops`);
+  await syncTransportQuotesToDoc(`${origin}-quotes`);
+  await syncCandidatesToDoc(`${origin}-candidates`);
+  await syncActivitiesToDoc(`${origin}-activities`);
   await syncPlanMetaToDoc(`${origin}-meta`);
   return true;
 }
@@ -5334,6 +5373,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
     dom.quickAddress.value = "";
     quickAmapPlace = null;
   }, { requireUnlocked: false });
+  await syncCandidatesToDoc("local-candidate-fallback");
 });
 
 dom.openAmapBtn.addEventListener("click", async () => {
@@ -5884,6 +5924,7 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
     dom.manualQuoteArrive.value = "";
     dom.manualQuotePrice.value = "";
   }, { requireUnlocked: false });
+  await syncTransportQuotesToDoc("local-transport-quote-fallback");
 });
 
 dom.partySizeInput.addEventListener("change", async () => {
