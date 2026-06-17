@@ -1490,6 +1490,9 @@ async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
   const pushed = await pushRemoteState(`${reason}：已同步 ${applied} 条离线协作更新`, { skipPendingFlush: true });
   if (pushed) {
     clearPendingPlanUpdatesById(replayedIds);
+    if (collabTextDoc && collabTextStopId) {
+      persistCurrentTextFromDoc(`${reason}：当前地点文本协作快照已同步`);
+    }
     dom.collabStatus.textContent = `${reason}：${applied} 条离线协作更新已同步到云端。`;
   }
   return pushed;
@@ -1689,7 +1692,13 @@ function persistCurrentTextFromDoc(label = "地点协作内容已实时同步") 
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    pushRemoteState("地点协作内容已实时同步");
+    pushRemoteState("地点协作内容已实时同步").then((pushed) => {
+      if (pushed) return;
+      const pendingCount = pendingPlanUpdates().length;
+      if (pendingCount) {
+        setNoteCollabStatus(`文本协作已暂存 ${pendingCount} 条结构更新，恢复网络后会自动同步`);
+      }
+    });
   }, 900);
 }
 
