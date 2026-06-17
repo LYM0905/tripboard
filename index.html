@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-live-plan-candidates" />
+    <link rel="stylesheet" href="styles.css?v=20260617-live-plan-settings" />
   </head>
   <body>
     <div class="app-shell">
@@ -78,6 +78,10 @@
             <label>
               同行人数
               <input id="partySizeInput" type="number" min="1" step="1" value="1" />
+            </label>
+            <label>
+              预算上限
+              <input id="budgetLimitInput" type="number" min="0" step="100" value="10000" />
             </label>
             <div class="budget-settlement" id="budgetSettlement"></div>
           </div>
@@ -599,7 +603,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-live-plan-candidates"></script>
-    <script src="script.js?v=20260617-live-plan-candidates"></script>
+    <script src="config.js?v=20260617-live-plan-settings"></script>
+    <script src="script.js?v=20260617-live-plan-settings"></script>
   </body>
 </html>
