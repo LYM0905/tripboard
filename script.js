@@ -1635,6 +1635,49 @@ function readCandidatesFromDoc() {
   return normalizeCandidateStops(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || []);
 }
 
+function mergedTransportQuotesWithPatch(mode, quote = null, quoteId = "") {
+  const latest = readTransportQuotesFromDoc();
+  if (mode === "delete") return latest.filter((item) => item.id !== quoteId);
+  if (mode === "update") {
+    const targetId = quoteId || quote?.id || "";
+    let found = false;
+    const updated = latest.map((item) => {
+      if (item.id !== targetId) return item;
+      found = true;
+      return normalizeTransportQuotes([{ ...item, ...quote, id: item.id }])[0];
+    });
+    const inserted = found ? updated : [normalizeTransportQuotes([{ ...quote, id: targetId || quote?.id || uid() }])[0], ...updated];
+    return normalizeTransportQuotes(inserted).slice(0, 80);
+  }
+  const normalized = normalizeTransportQuotes([quote])[0];
+  if (!normalized) return latest;
+  const existingIds = new Set(latest.map((item) => item.id));
+  const existingKeys = new Set(latest.map(transportOptionIdentity));
+  if (existingIds.has(normalized.id) || existingKeys.has(transportOptionIdentity(normalized))) return latest;
+  return normalizeTransportQuotes([normalized, ...latest]).slice(0, 80);
+}
+
+function mergedCandidatesWithPatch(mode, candidate = null, candidateId = "") {
+  const latest = readCandidatesFromDoc();
+  if (mode === "delete") return latest.filter((item) => item.id !== candidateId);
+  if (mode === "update") {
+    const targetId = candidateId || candidate?.id || "";
+    let found = false;
+    const updated = latest.map((item) => {
+      if (item.id !== targetId) return item;
+      found = true;
+      return normalizeCandidateStops([{ ...item, ...candidate, id: item.id }])[0];
+    });
+    const inserted = found ? updated : [normalizeCandidateStops([{ ...candidate, id: targetId || candidate?.id || uid() }])[0], ...updated];
+    return normalizeCandidateStops(inserted).slice(0, 80);
+  }
+  const normalized = normalizeCandidateStops([candidate])[0];
+  if (!normalized) return latest;
+  const existingIds = new Set(latest.map((item) => item.id));
+  if (existingIds.has(normalized.id)) return latest;
+  return normalizeCandidateStops([normalized, ...latest]).slice(0, 80);
+}
+
 function readActivitiesFromDoc() {
   return normalizeActivities(collabActivitiesArray ? collabActivitiesArray.toArray() : state.activities || []);
 }
@@ -4850,6 +4893,20 @@ function quoteDraftFromManualForm(existing = {}) {
   };
 }
 
+function manualQuotePatchFromForm() {
+  const route = defaultTransportRoute(currentDay());
+  return {
+    type: dom.manualQuoteType.value,
+    code: dom.manualQuoteCode.value.trim(),
+    from: dom.transportFrom.value.trim() || route.from,
+    to: dom.transportTo.value.trim() || route.to,
+    depart: dom.manualQuoteDepart.value || "--:--",
+    arrive: dom.manualQuoteArrive.value || "--:--",
+    duration: durationFromTimes(dom.manualQuoteDepart.value, dom.manualQuoteArrive.value),
+    price: numberValue(dom.manualQuotePrice.value),
+  };
+}
+
 function setCandidateEditing(candidate = null) {
   editingCandidateId = candidate?.id || "";
   if (candidate) {
@@ -6004,6 +6061,7 @@ dom.moveDayDownBtn.addEventListener("click", async () => {
 dom.stopForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let dayId = currentDay()?.id || "";
+  let savedStopId = currentStop()?.id || "";
   const label = `保存「${dom.fieldTitle.value || "地点"}」`;
   if (!mutate(label, () => {
     const stop = currentStop();
@@ -6023,10 +6081,13 @@ dom.stopForm.addEventListener("submit", async (event) => {
     stop.image = structValue("image", () => dom.fieldImage.value.trim()) || stop.image || images.city;
     stop.tags = structValue("tags", () => normalizeTags(dom.fieldTags.value));
     stop.note = collabValue("note", "fieldNote");
+    savedStopId = stop.id;
     dayId = currentDay()?.id || dayId;
     clearCurrentAmapRoute();
   }, { save: false, render: false })) return;
-  await syncStopListToDoc(dayId, "local-stop-detail-save");
+  if (!(await syncStopSnapshotToPlanDoc(savedStopId, "local-stop-detail-save"))) {
+    await syncStopListToDoc(dayId, "local-stop-detail-save-fallback");
+  }
   await saveState(label);
   render();
 });
@@ -6148,7 +6209,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
       return;
     }
     mutate(`更新备选「${draft.title}」`, () => {
-      state.candidates = normalizeCandidateStops((state.candidates || []).map((item) => (item.id === editingCandidateId ? { ...item, ...patch } : item)));
+      state.candidates = mergedCandidatesWithPatch("update", patch, editingCandidateId);
       clearQuickPlaceForm();
     }, { requireUnlocked: false });
     await syncCandidatesToDoc("local-candidate-update-fallback");
@@ -6164,7 +6225,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
     return;
   }
   mutate(`加入备选池「${draft.title}」`, () => {
-    state.candidates = [draft, ...(state.candidates || [])].slice(0, 80);
+    state.candidates = mergedCandidatesWithPatch("add", draft);
     clearQuickPlaceForm();
   }, { requireUnlocked: false });
   await syncCandidatesToDoc("local-candidate-fallback");
@@ -6708,7 +6769,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
       return;
     }
     mutate(`移除备选「${candidate.title}」`, () => {
-      state.candidates = (state.candidates || []).filter((item) => item.id !== candidateId);
+      state.candidates = mergedCandidatesWithPatch("delete", null, candidateId);
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
     }, { requireUnlocked: false });
     await syncCandidatesToDoc("local-candidate-delete-fallback");
@@ -6816,7 +6877,7 @@ dom.transportList.addEventListener("click", async (event) => {
     return;
   }
   mutate(`删除报价「${quote.code}」`, () => {
-    state.transportQuotes = (state.transportQuotes || []).filter((item) => item.id !== quoteId);
+    state.transportQuotes = mergedTransportQuotesWithPatch("delete", null, quoteId);
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
   }, { requireUnlocked: false });
@@ -6853,7 +6914,7 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
       return;
     }
     mutate(`更新交通报价「${code}」`, () => {
-      state.transportQuotes = normalizeTransportQuotes((state.transportQuotes || []).map((item) => (item.id === editingTransportQuoteId ? { ...item, ...quote } : item)));
+      state.transportQuotes = mergedTransportQuotesWithPatch("update", manualQuotePatchFromForm(), editingTransportQuoteId);
       transportFilterApplied = true;
       clearManualQuoteForm();
     }, { requireUnlocked: false });
@@ -6871,10 +6932,7 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
     return;
   }
   mutate(`保存交通报价「${code}」`, () => {
-    state.transportQuotes = [
-      quote,
-      ...manualTransportQuotes(),
-    ].slice(0, 40);
+    state.transportQuotes = mergedTransportQuotesWithPatch("add", quote).slice(0, 40);
     transportFilterApplied = true;
     clearManualQuoteForm();
   }, { requireUnlocked: false });
