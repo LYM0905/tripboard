@@ -1820,6 +1820,39 @@ button:disabled {
   background: transparent;
 }
 
+.comment-highlight {
+  position: absolute;
+  top: calc(var(--selection-y, 0px) + var(--comment-offset, 0px));
+  left: var(--selection-x, 0);
+  width: var(--selection-width, 2px);
+  min-width: 10px;
+  height: var(--selection-height, 22px);
+  padding: 0;
+  background: rgba(255, 196, 77, 0.34);
+  border: 0;
+  border-bottom: 2px solid #d99316;
+  border-radius: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.comment-highlight.is-resolved {
+  background: rgba(49, 111, 91, 0.12);
+  border-bottom-color: rgba(49, 111, 91, 0.55);
+}
+
+.comment-highlight:hover {
+  background: rgba(255, 196, 77, 0.52);
+}
+
+.comment-highlight.is-resolved:hover {
+  background: rgba(49, 111, 91, 0.2);
+}
+
+.comment-highlight i {
+  display: none;
+}
+
 .text-presence-selection {
   position: absolute;
   top: var(--selection-y, 0);

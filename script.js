@@ -1323,13 +1323,37 @@ function remoteTextEditorsForField(field, scope = "stop") {
   });
 }
 
+function commentAnchorsForField(field, comments = currentStop()?.comments || []) {
+  const { roots } = commentRootsAndReplies(comments || []);
+  return roots.filter((comment) => comment.anchor?.field === field);
+}
+
+function renderCommentHighlight(comment, element, index = 0) {
+  const anchor = normalizeCommentAnchor(comment.anchor);
+  if (!anchor || !element) return "";
+  const valueLength = String(element.value || "").length;
+  const rawStart = Math.max(0, Math.min(Number(anchor.start || 0), valueLength));
+  const rawEnd = Math.max(rawStart, Math.min(Number(anchor.end || rawStart), valueLength));
+  const start = rawStart;
+  const end = rawEnd > rawStart ? rawEnd : Math.min(valueLength, rawStart + 1);
+  const geometry = textPresenceGeometry(element, { start, end });
+  if (!geometry) return "";
+  const resolvedClass = comment.resolved ? " is-resolved" : "";
+  return `
+    <button type="button" class="comment-highlight${resolvedClass}" data-comment-highlight="${escapeHtml(comment.id || "")}" style="--selection-x:${geometry.selectionLeft}px;--selection-y:${geometry.selectionTop}px;--selection-width:${geometry.selectionWidth}px;--selection-height:${geometry.selectionHeight}px;--comment-offset:${index * 3}px" title="${escapeHtml(comment.resolved ? "已解决批注" : "未解决批注")}">
+      <i aria-hidden="true"></i>
+    </button>
+  `;
+}
+
 function renderTextPresence() {
   COLLAB_PRESENCE_TEXT_FIELDS.forEach(({ field, presenceId, domKey, scope }) => {
     const target = presenceId ? document.querySelector(`#${presenceId}`) : null;
     if (!target) return;
     const editors = remoteTextEditorsForField(field, scope || "stop");
-    target.hidden = !editors.length;
     const element = dom[domKey];
+    const commentHighlights = scope === "day" ? [] : commentAnchorsForField(field);
+    target.hidden = !editors.length && !commentHighlights.length;
     const inlineMarks = editors
       .slice(0, 3)
       .map((member, index) => {
@@ -1350,6 +1374,10 @@ function renderTextPresence() {
         `;
       })
       .join("");
+    const highlightMarks = commentHighlights
+      .slice(0, 8)
+      .map((comment, index) => renderCommentHighlight(comment, element, index))
+      .join("");
     const chips = editors
       .slice(0, 3)
       .map((member, index) => {
@@ -1369,7 +1397,7 @@ function renderTextPresence() {
       .join("");
     const sizeClass = element?.tagName === "TEXTAREA" ? "is-textarea" : "is-input";
     target.innerHTML = `
-      <span class="text-presence-inline ${sizeClass}" aria-hidden="true">${inlineMarks}</span>
+      <span class="text-presence-inline ${sizeClass}">${highlightMarks}${inlineMarks}</span>
       <span class="text-presence-list">${chips}</span>
     `;
   });
@@ -7801,6 +7829,16 @@ dom.commentList.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const highlight = event.target.closest("[data-comment-highlight]");
+  if (highlight) {
+    event.preventDefault();
+    const comment = commentRootsAndReplies(currentStop()?.comments || []).roots.find((item) => item.id === highlight.dataset.commentHighlight);
+    if (!comment) return;
+    commentFilter = comment.resolved ? "resolved" : "open";
+    renderStopComments(currentStop());
+    if (focusCommentThread(comment.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的批注`;
+    return;
+  }
   const mark = event.target.closest("[data-field-comment-mark]");
   if (!mark) return;
   event.preventDefault();
