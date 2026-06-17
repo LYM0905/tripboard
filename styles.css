@@ -197,6 +197,26 @@ button {
   background: var(--violet);
 }
 
+.a1 {
+  --presence-color: var(--green);
+  --presence-soft: rgba(36, 115, 92, 0.2);
+}
+
+.a2 {
+  --presence-color: var(--coral);
+  --presence-soft: rgba(221, 107, 79, 0.22);
+}
+
+.a3 {
+  --presence-color: var(--blue);
+  --presence-soft: rgba(39, 108, 155, 0.2);
+}
+
+.a4 {
+  --presence-color: var(--violet);
+  --presence-soft: rgba(108, 90, 155, 0.2);
+}
+
 .online-dot,
 .pulse {
   width: 9px;
@@ -1709,14 +1729,96 @@ button:disabled {
 }
 
 .text-presence {
-  display: flex;
-  flex-wrap: wrap;
+  position: relative;
+  display: grid;
   gap: 5px;
   min-height: 0;
+  margin-top: -3px;
+  pointer-events: none;
 }
 
 .text-presence[hidden] {
   display: none;
+}
+
+.text-presence-inline {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: calc(100% + 6px);
+  height: 33px;
+  overflow: hidden;
+  border-radius: 7px;
+  pointer-events: none;
+}
+
+.text-presence-inline.is-textarea {
+  bottom: calc(100% + 6px);
+  height: 80px;
+}
+
+.text-presence-inline-mark {
+  --presence-color: var(--green);
+  --presence-soft: rgba(36, 115, 92, 0.18);
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+
+.text-presence-selection {
+  position: absolute;
+  top: 8px;
+  left: var(--cursor-left, 0%);
+  width: var(--selection-width, 1%);
+  min-width: 3px;
+  height: 22px;
+  background: var(--presence-soft);
+  border-radius: 4px;
+}
+
+.text-presence-inline.is-textarea .text-presence-selection {
+  top: 10px;
+  height: 52px;
+}
+
+.text-presence-inline .text-presence-cursor {
+  position: absolute;
+  top: 7px;
+  left: var(--cursor-left, 0%);
+  width: 2px;
+  height: 25px;
+  background: var(--presence-color);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+  transform: translateX(-1px);
+  animation: caretBlink 1s steps(2, start) infinite;
+}
+
+.text-presence-inline.is-textarea .text-presence-cursor {
+  top: 9px;
+  height: 54px;
+}
+
+.text-presence-inline b {
+  position: absolute;
+  top: 2px;
+  left: var(--cursor-left, 0%);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  color: #fff;
+  background: var(--presence-color);
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.text-presence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
 .text-presence-chip {
@@ -1726,37 +1828,12 @@ button:disabled {
   gap: 5px;
   max-width: 100%;
   min-width: 92px;
-  padding: 13px 7px 3px 4px;
+  padding: 3px 7px 3px 4px;
   color: #fff;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 800;
   overflow: hidden;
-}
-
-.text-presence-chip::before {
-  position: absolute;
-  top: 5px;
-  left: var(--cursor-left, 0%);
-  width: var(--selection-width, 1%);
-  min-width: 2px;
-  height: 5px;
-  background: rgba(255, 255, 255, 0.42);
-  border-radius: 999px;
-  content: "";
-}
-
-.text-presence-cursor {
-  position: absolute;
-  top: 3px;
-  left: var(--cursor-left, 0%);
-  width: 2px;
-  height: 10px;
-  background: #fff;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1px rgba(23, 32, 38, 0.18);
-  transform: translateX(-1px);
-  animation: caretBlink 1s steps(2, start) infinite;
 }
 
 @keyframes caretBlink {

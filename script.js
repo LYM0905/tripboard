@@ -1138,12 +1138,12 @@ function remoteTextEditorsForField(field) {
 }
 
 function renderTextPresence() {
-  COLLAB_TEXT_FIELDS.forEach(({ field, presenceId }) => {
+  COLLAB_TEXT_FIELDS.forEach(({ field, presenceId, domKey }) => {
     const target = presenceId ? document.querySelector(`#${presenceId}`) : null;
     if (!target) return;
     const editors = remoteTextEditorsForField(field);
     target.hidden = !editors.length;
-    target.innerHTML = editors
+    const inlineMarks = editors
       .slice(0, 3)
       .map((member, index) => {
         const selection = member.textSelection || {};
@@ -1154,15 +1154,39 @@ function renderTextPresence() {
         const left = Math.max(0, Math.min(96, Math.round((Math.min(start, length) / length) * 100)));
         const width = selected ? Math.max(4, Math.min(96 - left, Math.round(((Math.min(end, length) - Math.min(start, length)) / length) * 100))) : 1;
         const accentClass = memberPresenceClass(member, index);
+        const initial = escapeHtml(memberInitial(member.name));
         return `
-          <span class="text-presence-chip ${accentClass}" style="--cursor-left:${left}%;--selection-width:${width}%">
+          <span class="text-presence-inline-mark ${accentClass}" style="--cursor-left:${left}%;--selection-width:${width}%">
+            <i class="text-presence-selection" aria-hidden="true"></i>
             <i class="text-presence-cursor" aria-hidden="true"></i>
-            ${memberInitial(member.name)}
+            <b>${initial}</b>
+          </span>
+        `;
+      })
+      .join("");
+    const chips = editors
+      .slice(0, 3)
+      .map((member, index) => {
+        const selection = member.textSelection || {};
+        const start = Number(selection.start || 0);
+        const end = Number(selection.end || start);
+        const selected = end > start;
+        const accentClass = memberPresenceClass(member, index);
+        const initial = escapeHtml(memberInitial(member.name));
+        return `
+          <span class="text-presence-chip ${accentClass}">
+            ${initial}
             <span>${escapeHtml(member.name || "协作者")} ${selected ? `选中 ${end - start} 字` : `光标 ${start}`}</span>
           </span>
         `;
       })
       .join("");
+    const element = dom[domKey];
+    const sizeClass = element?.tagName === "TEXTAREA" ? "is-textarea" : "is-input";
+    target.innerHTML = `
+      <span class="text-presence-inline ${sizeClass}" aria-hidden="true">${inlineMarks}</span>
+      <span class="text-presence-list">${chips}</span>
+    `;
   });
 }
 
