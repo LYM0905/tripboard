@@ -1117,6 +1117,97 @@ function textSelectionLabel(selection = {}) {
   return `${label} · 光标 ${start}`;
 }
 
+function escapeHtmlWithSpaces(value = "") {
+  return escapeHtml(String(value || ""))
+    .replace(/ /g, "&nbsp;")
+    .replace(/\n$/g, "\n\u200b")
+    .replace(/\n/g, "<br>");
+}
+
+function caretCoordinates(element, index = 0) {
+  if (!element) return null;
+  const value = String(element.value || "");
+  const position = Math.max(0, Math.min(Number(index || 0), value.length));
+  const style = window.getComputedStyle(element);
+  const mirror = document.createElement("div");
+  const marker = document.createElement("span");
+  const properties = [
+    "boxSizing",
+    "width",
+    "fontFamily",
+    "fontSize",
+    "fontWeight",
+    "fontStyle",
+    "letterSpacing",
+    "textTransform",
+    "lineHeight",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "borderTopWidth",
+    "borderRightWidth",
+    "borderBottomWidth",
+    "borderLeftWidth",
+    "whiteSpace",
+    "wordBreak",
+    "overflowWrap",
+  ];
+  properties.forEach((property) => {
+    mirror.style[property] = style[property];
+  });
+  mirror.style.position = "absolute";
+  mirror.style.visibility = "hidden";
+  mirror.style.pointerEvents = "none";
+  mirror.style.left = "-9999px";
+  mirror.style.top = "0";
+  mirror.style.minHeight = `${element.clientHeight}px`;
+  mirror.style.whiteSpace = element.tagName === "TEXTAREA" ? "pre-wrap" : "pre";
+  mirror.style.overflowWrap = element.tagName === "TEXTAREA" ? "break-word" : "normal";
+  mirror.style.overflow = "hidden";
+  mirror.scrollTop = element.scrollTop || 0;
+  mirror.scrollLeft = element.scrollLeft || 0;
+  mirror.innerHTML = `${escapeHtmlWithSpaces(value.slice(0, position))}<span data-caret></span>${escapeHtmlWithSpaces(value.slice(position)) || "&nbsp;"}`;
+  document.body.appendChild(mirror);
+  const caret = mirror.querySelector("[data-caret]");
+  marker.textContent = "\u200b";
+  caret.appendChild(marker);
+  const mirrorRect = mirror.getBoundingClientRect();
+  const markerRect = marker.getBoundingClientRect();
+  const x = markerRect.left - mirrorRect.left - (element.scrollLeft || 0);
+  const y = markerRect.top - mirrorRect.top - (element.scrollTop || 0);
+  const lineHeight = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.25 || 18;
+  mirror.remove();
+  return {
+    x: Math.max(0, Math.min(element.clientWidth, Math.round(x))),
+    y: Math.max(0, Math.min(element.clientHeight - 2, Math.round(y))),
+    height: Math.max(14, Math.round(lineHeight)),
+  };
+}
+
+function textPresenceGeometry(element, selection = {}) {
+  const start = Number(selection.start || 0);
+  const end = Number(selection.end || start);
+  const anchor = caretCoordinates(element, start);
+  const focus = caretCoordinates(element, end);
+  if (!anchor || !focus) return null;
+  const selected = end > start;
+  const sameLine = Math.abs(focus.y - anchor.y) < Math.max(6, anchor.height * 0.5);
+  const selectionLeft = selected ? Math.min(anchor.x, focus.x) : anchor.x;
+  const selectionTop = selected ? Math.min(anchor.y, focus.y) : anchor.y;
+  const selectionWidth = selected && sameLine ? Math.max(4, Math.abs(focus.x - anchor.x)) : selected ? Math.max(20, element.clientWidth - selectionLeft - 4) : 2;
+  const selectionHeight = selected && !sameLine ? Math.max(anchor.height, focus.y - anchor.y + focus.height) : anchor.height;
+  return {
+    x: anchor.x,
+    y: anchor.y,
+    height: anchor.height,
+    selectionLeft,
+    selectionTop,
+    selectionWidth,
+    selectionHeight,
+  };
+}
+
 function memberPresenceClass(member = {}, index = 0) {
   const key = String(member.memberId || member.name || index);
   const seed = Array.from(key).reduce((sum, char) => sum + char.charCodeAt(0), index);
@@ -1145,20 +1236,20 @@ function renderTextPresence() {
     if (!target) return;
     const editors = remoteTextEditorsForField(field);
     target.hidden = !editors.length;
+    const element = dom[domKey];
     const inlineMarks = editors
       .slice(0, 3)
       .map((member, index) => {
         const selection = member.textSelection || {};
         const start = Number(selection.start || 0);
         const end = Number(selection.end || start);
-        const length = Math.max(1, Number(selection.length || 1));
         const selected = end > start;
-        const left = Math.max(0, Math.min(96, Math.round((Math.min(start, length) / length) * 100)));
-        const width = selected ? Math.max(4, Math.min(96 - left, Math.round(((Math.min(end, length) - Math.min(start, length)) / length) * 100))) : 1;
+        const geometry = textPresenceGeometry(element, selection);
+        if (!geometry) return "";
         const accentClass = memberPresenceClass(member, index);
         const initial = escapeHtml(memberInitial(member.name));
         return `
-          <span class="text-presence-inline-mark ${accentClass}" style="--cursor-left:${left}%;--selection-width:${width}%">
+          <span class="text-presence-inline-mark ${accentClass}" style="--cursor-x:${geometry.x}px;--cursor-y:${geometry.y}px;--cursor-height:${geometry.height}px;--selection-x:${geometry.selectionLeft}px;--selection-y:${geometry.selectionTop}px;--selection-width:${selected ? geometry.selectionWidth : 2}px;--selection-height:${selected ? geometry.selectionHeight : geometry.height}px">
             <i class="text-presence-selection" aria-hidden="true"></i>
             <i class="text-presence-cursor" aria-hidden="true"></i>
             <b>${initial}</b>
@@ -1183,7 +1274,6 @@ function renderTextPresence() {
         `;
       })
       .join("");
-    const element = dom[domKey];
     const sizeClass = element?.tagName === "TEXTAREA" ? "is-textarea" : "is-input";
     target.innerHTML = `
       <span class="text-presence-inline ${sizeClass}" aria-hidden="true">${inlineMarks}</span>
