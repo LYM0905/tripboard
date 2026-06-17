@@ -19,6 +19,11 @@ const COLLAB_TEXT_FIELDS = [
   { field: "note", domKey: "fieldNote", label: "备注", presenceId: "fieldNotePresence" },
 ];
 const COLLAB_TEXT_FIELD_BY_FIELD = new Map(COLLAB_TEXT_FIELDS.map((item) => [item.field, item]));
+const COMMENT_FILTERS = [
+  { value: "all", label: "全部" },
+  { value: "open", label: "未解决" },
+  { value: "resolved", label: "已解决" },
+];
 const COLLAB_DAY_TEXT_FIELDS = [
   { field: "day:title", docField: "title", domKey: "fieldDayTitle", label: "当天标题", presenceId: "fieldDayTitlePresence", scope: "day" },
   { field: "day:route", docField: "route", domKey: "fieldDayRoute", label: "当天路线", presenceId: "fieldDayRoutePresence", scope: "day" },
@@ -2508,6 +2513,30 @@ function commentRootsAndReplies(comments = []) {
   return { roots, repliesByParent, normalized };
 }
 
+function commentStatsForField(comments = [], field = "") {
+  const { roots, repliesByParent } = commentRootsAndReplies(comments);
+  const related = roots.filter((comment) => comment.anchor?.field === field);
+  const open = related.filter((comment) => !comment.resolved);
+  return {
+    total: related.length,
+    open: open.length,
+    replies: related.reduce((sum, comment) => sum + (repliesByParent.get(comment.id)?.length || 0), 0),
+  };
+}
+
+function commentFilterCounts(comments = []) {
+  const { roots } = commentRootsAndReplies(comments);
+  return roots.reduce(
+    (counts, comment) => {
+      counts.all += 1;
+      if (comment.resolved) counts.resolved += 1;
+      else counts.open += 1;
+      return counts;
+    },
+    { all: 0, open: 0, resolved: 0 },
+  );
+}
+
 function commentAnchorLabel(anchor = null) {
   if (!anchor?.field) return "";
   const meta = collabTextFieldMeta(anchor.field);
@@ -2581,6 +2610,48 @@ function renderCommentReply(reply, editable) {
   `;
 }
 
+function ensureFieldCommentMark(fieldMeta) {
+  const field = fieldMeta?.field;
+  const target = fieldMeta?.presenceId ? document.querySelector(`#${fieldMeta.presenceId}`) : null;
+  const element = fieldMeta?.domKey ? dom[fieldMeta.domKey] : null;
+  if (!field || !target || !element) return null;
+  let mark = document.querySelector(`[data-field-comment-mark="${field}"]`);
+  if (!mark) {
+    mark = document.createElement("button");
+    mark.type = "button";
+    mark.className = "field-comment-mark";
+    mark.dataset.fieldCommentMark = field;
+    mark.title = "查看这个字段的批注";
+    target.insertAdjacentElement("afterend", mark);
+  }
+  return mark;
+}
+
+function renderFieldCommentMarks(stop = currentStop()) {
+  const comments = normalizeComments(stop?.comments || []);
+  COLLAB_TEXT_FIELDS.forEach((fieldMeta) => {
+    const mark = ensureFieldCommentMark(fieldMeta);
+    if (!mark) return;
+    const stats = commentStatsForField(comments, fieldMeta.field);
+    mark.hidden = !stats.total;
+    mark.classList.toggle("is-resolved", stats.total > 0 && stats.open === 0);
+    mark.innerHTML = `${icon(stats.open ? "message-square-more" : "message-square-check")}<span>${stats.open || stats.total}</span>`;
+    mark.title = stats.open
+      ? `${fieldMeta.label}有 ${stats.open} 条未解决批注${stats.replies ? `，${stats.replies} 条回复` : ""}`
+      : `${fieldMeta.label}的批注已解决`;
+  });
+}
+
+function focusCommentThread(commentId = "") {
+  if (!commentId) return false;
+  const thread = Array.from(dom.commentList?.querySelectorAll("[data-comment]") || []).find((item) => item.dataset.comment === commentId);
+  if (!thread) return false;
+  thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  thread.classList.add("is-focused");
+  setTimeout(() => thread.classList.remove("is-focused"), 1300);
+  return true;
+}
+
 function dayTextValuesFromDoc(doc = collabDayTextDoc, fields = collabDayTextFields) {
   const values = {};
   COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
@@ -2616,7 +2687,14 @@ function renderStopComments(stop) {
     replyingCommentId = "";
     if (dom.commentInput) dom.commentInput.placeholder = "添加同行意见或提醒";
   }
-  dom.commentList.innerHTML = roots
+  const counts = commentFilterCounts(stop.comments || []);
+  if (!counts[commentFilter]) commentFilter = "all";
+  const filters = COMMENT_FILTERS.map((filter) => {
+    const active = commentFilter === filter.value ? " is-active" : "";
+    return `<button type="button" class="comment-filter${active}" data-comment-filter="${filter.value}">${filter.label}<span>${counts[filter.value] || 0}</span></button>`;
+  }).join("");
+  const visibleRoots = roots.filter((comment) => commentFilter === "all" || (commentFilter === "open" ? !comment.resolved : comment.resolved));
+  const threadHtml = visibleRoots
     .map((comment) => {
       const anchor = normalizeCommentAnchor(comment.anchor);
       const anchorLabel = commentAnchorLabel(anchor);
@@ -2647,8 +2725,19 @@ function renderStopComments(stop) {
         </div>
       `;
     })
-    .join("") || `<div class="comment-item"><span class="avatar a1">我</span><p>还没有评论，可以先添加同行意见。</p></div>`;
+    .join("");
+  const emptyText = roots.length
+    ? commentFilter === "open"
+      ? "没有未解决批注。"
+      : "没有已解决批注。"
+    : "还没有评论，可以先添加同行意见。";
+  dom.commentList.innerHTML = `
+    <div class="comment-filters">${filters}</div>
+    ${threadHtml || `<div class="comment-item"><span class="avatar a1">我</span><p>${emptyText}</p></div>`}
+  `;
   renderCommentAnchorHint();
+  renderFieldCommentMarks(stop);
+  refreshIcons();
 }
 
 function applyStopRealtimeFields(stop) {
@@ -4519,6 +4608,7 @@ let dayFieldSyncTimer = null;
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
+let commentFilter = "all";
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
@@ -7610,6 +7700,13 @@ dom.commentForm.addEventListener("submit", async (event) => {
 });
 
 dom.commentList.addEventListener("click", async (event) => {
+  const filterButton = event.target.closest("[data-comment-filter]");
+  if (filterButton) {
+    event.preventDefault();
+    commentFilter = filterButton.dataset.commentFilter || "all";
+    renderStopComments(currentStop());
+    return;
+  }
   const anchorButton = event.target.closest("[data-comment-anchor]");
   if (anchorButton) {
     event.preventDefault();
@@ -7689,6 +7786,21 @@ dom.commentList.addEventListener("click", async (event) => {
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot");
   await saveState(`删除评论「${stop.title}」`);
   render();
+});
+
+document.addEventListener("click", (event) => {
+  const mark = event.target.closest("[data-field-comment-mark]");
+  if (!mark) return;
+  event.preventDefault();
+  const field = mark.dataset.fieldCommentMark;
+  const { roots } = commentRootsAndReplies(currentStop()?.comments || []);
+  const matching = roots.filter((comment) => comment.anchor?.field === field);
+  const firstOpen = matching.find((comment) => !comment.resolved);
+  const target = firstOpen || matching[0];
+  if (!target) return;
+  commentFilter = firstOpen ? "open" : "all";
+  renderStopComments(currentStop());
+  if (focusCommentThread(target.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(target.anchor)}的批注`;
 });
 
 dom.commentFocusBtn.addEventListener("click", () => {
