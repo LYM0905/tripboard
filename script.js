@@ -5038,6 +5038,34 @@ function renderDayEditor() {
   dom.deleteDayBtn.disabled = isReadonlyMode || state.days.length <= 1;
 }
 
+function dayEditorDraftValues(day = currentDay()) {
+  return {
+    date: dom.fieldDayDate.value || day.date || "",
+    title: dom.fieldDayTitle.value.trim() || day.title || day.label,
+    route: dom.fieldDayRoute.value.trim() || "待填写路线",
+    weather: dom.fieldDayWeather.value.trim() || "天气待确认",
+    transport: dom.fieldDayTransport.value.trim() || "交通待规划",
+  };
+}
+
+function applyDayEditorDraftToState() {
+  const day = currentDay();
+  if (!day) return null;
+  const previousDate = day.date || state.startDate || formatIsoDate(new Date());
+  const nextValues = dayEditorDraftValues(day);
+  const changed = ["date", "title", "route", "weather", "transport"].some((field) => day[field] !== nextValues[field]);
+  if (!changed) return null;
+  Object.assign(day, nextValues);
+  if (day.date !== previousDate) {
+    const changedDate = parseIsoDate(day.date);
+    const nextStartDate = changedDate ? formatIsoDate(addDays(changedDate, -activeDay)) : state.startDate;
+    reflowPlanDates(state, nextStartDate);
+  } else {
+    resequencePlanDays();
+  }
+  return clone(currentDay());
+}
+
 function renderTimeline() {
   const day = currentDay();
   dom.timeline.innerHTML = day.stops
@@ -5260,27 +5288,30 @@ dom.dayForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let updatedDay = null;
   mutate("保存当天设置", () => {
-    const day = currentDay();
-    const previousDate = day.date || state.startDate || formatIsoDate(new Date());
-    day.date = dom.fieldDayDate.value || day.date || "";
-    day.title = dom.fieldDayTitle.value.trim() || day.title || day.label;
-    day.route = dom.fieldDayRoute.value.trim() || "待填写路线";
-    day.weather = dom.fieldDayWeather.value.trim() || "天气待确认";
-    day.transport = dom.fieldDayTransport.value.trim() || "交通待规划";
-    if (day.date !== previousDate) {
-      const changedDate = parseIsoDate(day.date);
-      const nextStartDate = changedDate ? formatIsoDate(addDays(changedDate, -activeDay)) : state.startDate;
-      reflowPlanDates(state, nextStartDate);
-    } else {
-      resequencePlanDays();
-    }
-    updatedDay = clone(currentDay());
+    updatedDay = applyDayEditorDraftToState();
   }, { requireUnlocked: false });
   if (updatedDay) {
     await syncDayMetasToDoc("local-day-update");
     await syncPlanMetaToDoc("local-day-date-meta");
     broadcastDayUpdated(updatedDay);
   }
+});
+
+async function syncDayEditorDraftChange() {
+  if (!requireEdit("同步当天设置")) return;
+  saveVersionSnapshot("同步当天设置前版本");
+  const updatedDay = applyDayEditorDraftToState();
+  if (!updatedDay) return;
+  logActivity("同步当天设置");
+  await syncDayMetasToDoc("local-day-field-change");
+  await syncPlanMetaToDoc("local-day-field-change-meta");
+  await saveState("已同步当天设置");
+  broadcastDayUpdated(updatedDay);
+  render();
+}
+
+[dom.fieldDayDate, dom.fieldDayTitle, dom.fieldDayRoute, dom.fieldDayWeather, dom.fieldDayTransport].forEach((control) => {
+  control?.addEventListener("change", syncDayEditorDraftChange);
 });
 
 dom.addDayBtn.addEventListener("click", async () => {
