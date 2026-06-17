@@ -1720,15 +1720,49 @@ button:disabled {
 }
 
 .text-presence-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
   max-width: 100%;
-  padding: 3px 7px 3px 4px;
+  min-width: 92px;
+  padding: 13px 7px 3px 4px;
   color: #fff;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 800;
+  overflow: hidden;
+}
+
+.text-presence-chip::before {
+  position: absolute;
+  top: 5px;
+  left: var(--cursor-left, 0%);
+  width: var(--selection-width, 1%);
+  min-width: 2px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.42);
+  border-radius: 999px;
+  content: "";
+}
+
+.text-presence-cursor {
+  position: absolute;
+  top: 3px;
+  left: var(--cursor-left, 0%);
+  width: 2px;
+  height: 10px;
+  background: #fff;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(23, 32, 38, 0.18);
+  transform: translateX(-1px);
+  animation: caretBlink 1s steps(2, start) infinite;
+}
+
+@keyframes caretBlink {
+  50% {
+    opacity: 0.25;
+  }
 }
 
 .text-presence-chip::first-letter {
