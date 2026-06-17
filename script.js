@@ -858,6 +858,8 @@ function buildInitialTextUpdate(Y, stop) {
   COLLAB_STRUCT_FIELDS.forEach((meta) => {
     structMap.set(meta.field, stopStructValue(stop, meta));
   });
+  const commentArray = seedDoc.getArray("comments");
+  commentArray.insert(0, normalizeComments(stop.comments || []));
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -881,7 +883,7 @@ async function ensureYjs() {
   return yjsReadyPromise;
 }
 
-function persistCurrentTextFromDoc(label = "地点字段已实时同步") {
+function persistCurrentTextFromDoc(label = "地点协作内容已实时同步") {
   if (!collabTextDoc || !collabTextStopId) return;
   const stop = state.days.flatMap((day) => day.stops || []).find((item) => item.id === collabTextStopId);
   if (!stop) return;
@@ -890,10 +892,12 @@ function persistCurrentTextFromDoc(label = "地点字段已实时同步") {
     nextValues[field] = collabTextFields[field]?.toString() || "";
   });
   const nextStructValues = readStructFromDoc();
+  const nextComments = readCommentsFromDoc();
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabTextDoc)) : stop.textYjs || stop.noteYjs || "";
   const textChanged = COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== nextValues[field]);
   const structChanged = COLLAB_STRUCT_FIELDS.some(({ field }) => !sameSerialized(stop[field], nextStructValues[field]));
-  const changed = textChanged || structChanged || stop.textYjs !== nextYjs;
+  const commentsChanged = !sameSerialized(normalizeComments(stop.comments || []), nextComments);
+  const changed = textChanged || structChanged || commentsChanged || stop.textYjs !== nextYjs;
   if (!changed) return;
   COLLAB_TEXT_FIELDS.forEach(({ field }) => {
     stop[field] = nextValues[field];
@@ -901,16 +905,17 @@ function persistCurrentTextFromDoc(label = "地点字段已实时同步") {
   COLLAB_STRUCT_FIELDS.forEach(({ field }) => {
     stop[field] = clone(nextStructValues[field]);
   });
+  stop.comments = nextComments;
   stop.textYjs = nextYjs;
   stop.noteYjs = nextYjs;
   applyStopRealtimeFields(stop);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   setNoteCollabStatus(label);
-  if (textChanged || structChanged) refreshRealtimeStopViews();
+  if (textChanged || structChanged || commentsChanged) refreshRealtimeStopViews();
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    pushRemoteState("地点字段已实时同步");
+    pushRemoteState("地点协作内容已实时同步");
   }, 900);
 }
 
@@ -960,6 +965,35 @@ function readStructFromDoc() {
   return values;
 }
 
+function normalizeComments(comments = []) {
+  const seen = new Set();
+  return (comments || [])
+    .filter(Boolean)
+    .map((comment) => ({
+      id: comment.id || uid(),
+      author: comment.author || "我",
+      text: String(comment.text || "").trim(),
+      at: comment.at || new Date().toISOString(),
+    }))
+    .filter((comment) => {
+      if (!comment.text) return false;
+      const key = comment.id || `${comment.author}:${comment.text}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function readCommentsFromDoc() {
+  return normalizeComments(collabCommentsArray ? collabCommentsArray.toArray() : []);
+}
+
+function renderStopComments(stop) {
+  dom.commentList.innerHTML = (stop.comments || [])
+    .map((comment) => `<div class="comment-item"><span class="avatar a2">${escapeHtml(comment.author || "我")}</span><p>${escapeHtml(comment.text)}</p></div>`)
+    .join("") || `<div class="comment-item"><span class="avatar a1">我</span><p>还没有评论，可以先添加同行意见。</p></div>`;
+}
+
 function applyStopRealtimeFields(stop) {
   dom.placeType.textContent = stop.type || "Place";
   dom.placeTitle.textContent = stop.title || "未命名地点";
@@ -970,6 +1004,8 @@ function applyStopRealtimeFields(stop) {
   dom.favoriteBtn.classList.toggle("selected", Boolean(stop.favorite));
   dom.mustVote.classList.toggle("is-active", Boolean(stop.userVoted));
   dom.voteCount.textContent = stop.votes || 0;
+  dom.commentCount.textContent = (stop.comments || []).length;
+  renderStopComments(stop);
 }
 
 function refreshRealtimeStopViews() {
@@ -1012,6 +1048,7 @@ function destroyCollabTextDoc() {
   collabTextStopId = "";
   collabTextFields = {};
   collabStructMap = null;
+  collabCommentsArray = null;
   if (collabTextDoc) {
     collabTextDoc.destroy();
     collabTextDoc = null;
@@ -1065,10 +1102,14 @@ async function bindCollabTextDoc() {
     collabTextFields[field] = collabTextDoc.getText(field);
   });
   collabStructMap = collabTextDoc.getMap("struct");
+  collabCommentsArray = collabTextDoc.getArray("comments");
   collabTextDoc.transact(() => {
     COLLAB_STRUCT_FIELDS.forEach((meta) => {
       if (!collabStructMap.has(meta.field)) collabStructMap.set(meta.field, stopStructValue(stop, meta));
     });
+    if (collabCommentsArray.length === 0 && (stop.comments || []).length) {
+      collabCommentsArray.insert(0, normalizeComments(stop.comments || []));
+    }
   }, "restore");
   COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
     const value = restored ? collabTextFields[field].toString() : stop[field] || "";
@@ -1078,18 +1119,24 @@ async function bindCollabTextDoc() {
     const value = collabStructMap.get(meta.field);
     if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(value, meta.type);
   });
+  const comments = readCommentsFromDoc();
+  if (comments.length) {
+    stop.comments = comments;
+    renderStopComments(stop);
+    dom.commentCount.textContent = comments.length;
+  }
   collabTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentTextFromDoc("收到协作者地点字段更新");
+      persistCurrentTextFromDoc("收到协作者地点协作更新");
       return;
     }
     broadcastTextUpdate(update);
-    persistCurrentTextFromDoc("地点字段实时同步中");
+    persistCurrentTextFromDoc("地点协作内容实时同步中");
   });
   if (restored && COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== collabTextFields[field].toString())) {
     persistCurrentTextFromDoc("已载入文本协作状态");
   }
-  setNoteCollabStatus("文本与结构字段协作已开启");
+  setNoteCollabStatus("文本、结构字段与评论协作已开启");
 }
 
 async function applyRemoteTextUpdate(payload = {}) {
@@ -1113,7 +1160,7 @@ async function applyRemoteTextUpdate(payload = {}) {
       const nextValue = collabStructMap?.get(meta.field);
       if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(nextValue, meta.type);
     });
-    setNoteCollabStatus(`${payload.name || "协作者"} 正在同步地点字段`);
+    setNoteCollabStatus(`${payload.name || "协作者"} 正在同步地点协作内容`);
   } finally {
     isApplyingCollabTextRemote = false;
   }
@@ -1161,6 +1208,23 @@ async function syncCollabStructFieldToDoc(meta) {
   collabTextDoc.transact(() => {
     collabStructMap.set(meta.field, clone(nextValue));
   }, "local-struct-input");
+}
+
+async function addCollaborativeComment(text) {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabTextDoc();
+  if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
+  const comment = {
+    id: uid(),
+    author: getCollabName(),
+    text: String(text || "").trim(),
+    at: new Date().toISOString(),
+  };
+  if (!comment.text) return true;
+  collabTextDoc.transact(() => {
+    collabCommentsArray.push([comment]);
+  }, "local-comment-input");
+  return true;
 }
 
 function applyRemotePlan(remotePlan, meta = {}) {
@@ -1446,6 +1510,7 @@ let remoteVersionHistoryEnabled = true;
 let collabTextDoc = null;
 let collabTextFields = {};
 let collabStructMap = null;
+let collabCommentsArray = null;
 let collabTextStopId = "";
 let isApplyingCollabTextRemote = false;
 let collabTextSaveTimer = null;
@@ -3007,9 +3072,7 @@ function renderDetail() {
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
   dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
 
-  dom.commentList.innerHTML = (stop.comments || [])
-    .map((comment) => `<div class="comment-item"><span class="avatar a2">${comment.author || "我"}</span><p>${comment.text}</p></div>`)
-    .join("") || `<div class="comment-item"><span class="avatar a1">我</span><p>还没有评论，可以先添加同行意见。</p></div>`;
+  renderStopComments(stop);
 }
 
 function renderCandidates() {
@@ -3605,12 +3668,16 @@ dom.favoriteBtn.addEventListener("click", () => {
   });
 });
 
-dom.commentForm.addEventListener("submit", (event) => {
+dom.commentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = dom.commentInput.value.trim();
   if (!text) return;
+  if (await addCollaborativeComment(text)) {
+    dom.commentInput.value = "";
+    return;
+  }
   mutate(`评论「${currentStop().title}」`, () => {
-    currentStop().comments = [...(currentStop().comments || []), { author: "我", text }];
+    currentStop().comments = [...(currentStop().comments || []), { id: uid(), author: getCollabName(), text, at: new Date().toISOString() }];
     dom.commentInput.value = "";
   });
 });
