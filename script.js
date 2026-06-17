@@ -4828,11 +4828,21 @@ async function compareMultiOrigins() {
     renderMultiOriginResults();
   }
   multiOriginComparisons = results.sort((a, b) => compareScore(a.best) - compareScore(b.best));
+  const bestQuotes = multiOriginComparisons
+    .filter((item) => item.best)
+    .map((item) => ({
+      ...item.best,
+      source: `${item.source || "Google Flights"} · ${item.name}`,
+    }));
+  const savedCount = await saveProviderTransportQuotes(bestQuotes, day, "Google Flights 多出发地");
   renderMultiOriginResults();
+  renderTransport();
   refreshIcons();
   const matched = results.filter((item) => item.best).length;
   const total = results.reduce((sum, item) => sum + Number(item.best?.price || 0), 0);
-  setCtripStatus(`已完成多人出发地比较：${matched}/${results.length} 人匹配到航班，最低合计 ${money(total)}。`, matched ? "check-circle-2" : "alert-circle");
+  logActivity(`比较多人出发地航班 ${matched}/${results.length} 人，保存 ${savedCount} 条推荐报价`);
+  await saveState("已保存多人出发地航班比较");
+  setCtripStatus(`已完成多人出发地比较：${matched}/${results.length} 人匹配到航班，最低合计 ${money(total)}；已保存 ${savedCount} 条推荐报价到共享计划。`, matched ? "check-circle-2" : "alert-circle");
   dom.compareOriginsBtn.disabled = false;
 }
 
