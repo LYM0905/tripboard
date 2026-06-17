@@ -2090,6 +2090,7 @@ function broadcastTextSelection() {
 
 function broadcastStopCreated(dayId, stop) {
   if (!realtimeChannel || !tripId || !stop?.id) return;
+  const planYjs = currentPlanYjsState();
   realtimeChannel.send({
     type: "broadcast",
     event: "stop-created",
@@ -2097,6 +2098,7 @@ function broadcastStopCreated(dayId, stop) {
       tripId,
       dayId,
       stop: clone(stop),
+      planYjs,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -2106,6 +2108,7 @@ function broadcastStopCreated(dayId, stop) {
 
 function broadcastStopDeleted(dayId, stop) {
   if (!realtimeChannel || !tripId || !stop?.id) return;
+  const planYjs = currentPlanYjsState();
   realtimeChannel.send({
     type: "broadcast",
     event: "stop-deleted",
@@ -2114,6 +2117,7 @@ function broadcastStopDeleted(dayId, stop) {
       dayId,
       stopId: stop.id,
       title: stop.title || "地点",
+      planYjs,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -2123,6 +2127,7 @@ function broadcastStopDeleted(dayId, stop) {
 
 function broadcastStopsReordered(dayId, stops) {
   if (!realtimeChannel || !tripId || !dayId) return;
+  const planYjs = currentPlanYjsState();
   realtimeChannel.send({
     type: "broadcast",
     event: "stops-reordered",
@@ -2130,6 +2135,7 @@ function broadcastStopsReordered(dayId, stops) {
       tripId,
       dayId,
       stopOrder: (stops || []).map((stop) => stop.id).filter(Boolean),
+      planYjs,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -2139,6 +2145,7 @@ function broadcastStopsReordered(dayId, stops) {
 
 function broadcastDayUpdated(day) {
   if (!realtimeChannel || !tripId || !day?.id) return;
+  const planYjs = currentPlanYjsState();
   realtimeChannel.send({
     type: "broadcast",
     event: "day-updated",
@@ -2155,6 +2162,7 @@ function broadcastDayUpdated(day) {
         transport: day.transport || "",
       }),
       planMeta: currentPlanMeta(),
+      planYjs,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -2164,6 +2172,7 @@ function broadcastDayUpdated(day) {
 
 function broadcastDayCreated(day, index) {
   if (!realtimeChannel || !tripId || !day?.id) return;
+  const planYjs = currentPlanYjsState();
   realtimeChannel.send({
     type: "broadcast",
     event: "day-created",
@@ -2172,6 +2181,7 @@ function broadcastDayCreated(day, index) {
       day: clone(day),
       index,
       planMeta: currentPlanMeta(),
+      planYjs,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -2181,6 +2191,7 @@ function broadcastDayCreated(day, index) {
 
 function broadcastDayDeleted(day) {
   if (!realtimeChannel || !tripId || !day?.id) return;
+  const planYjs = currentPlanYjsState();
   realtimeChannel.send({
     type: "broadcast",
     event: "day-deleted",
@@ -2189,6 +2200,7 @@ function broadcastDayDeleted(day) {
       dayId: day.id,
       title: day.title || day.label || "当天",
       planMeta: currentPlanMeta(),
+      planYjs,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -2198,6 +2210,7 @@ function broadcastDayDeleted(day) {
 
 function broadcastDaysReordered() {
   if (!realtimeChannel || !tripId) return;
+  const planYjs = currentPlanYjsState();
   realtimeChannel.send({
     type: "broadcast",
     event: "days-reordered",
@@ -2205,6 +2218,7 @@ function broadcastDaysReordered() {
       tripId,
       dayOrder: state.days.map((day) => day.id).filter(Boolean),
       planMeta: currentPlanMeta(),
+      planYjs,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -2852,8 +2866,66 @@ async function applyRemotePlanYjsUpdate(payload = {}) {
   }
 }
 
-function applyRemoteStopCreated(payload = {}) {
+async function mergePlanYjsStateIntoLiveDoc(planYjs, label = "已合并计划结构协作快照") {
+  if (!planYjs) return false;
+  if (!collabPlanDoc || collabPlanTripId !== tripId) await bindCollabPlanDoc();
+  if (!collabPlanDoc || isReadonlyMode) return applyPlanYjsStateToCurrentPlan(planYjs, label);
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return false;
+  }
+  isApplyingCollabPlanRemote = true;
+  try {
+    Y.applyUpdate(collabPlanDoc, base64ToBytes(planYjs), "remote");
+  } catch (error) {
+    console.warn("Plan Yjs structure snapshot could not be merged", error);
+    return false;
+  } finally {
+    isApplyingCollabPlanRemote = false;
+  }
+  persistCurrentPlanFromDoc(label);
+  return true;
+}
+
+async function applyRemoteStructureSnapshot(payload = {}, label = "收到协作者结构快照") {
+  if (!payload.planYjs || payload.tripId !== tripId) return false;
+  const applied = await mergePlanYjsStateIntoLiveDoc(payload.planYjs, label);
+  if (applied) {
+    syncGuideStateFromPlan();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+  return applied;
+}
+
+function stopExistsInPlan(stopId) {
+  return Boolean(stopId && state.days.some((day) => (day.stops || []).some((stop) => stop.id === stopId)));
+}
+
+function stopOrderMatches(dayId, stopOrder = []) {
+  const day = state.days.find((item) => item.id === dayId);
+  if (!day || !Array.isArray(stopOrder) || !stopOrder.length) return false;
+  const currentOrder = (day.stops || []).map((stop) => stop.id).filter((id) => stopOrder.includes(id));
+  return sameSerialized(currentOrder, stopOrder.filter((id) => currentOrder.includes(id)));
+}
+
+function dayOrderMatches(dayOrder = []) {
+  if (!Array.isArray(dayOrder) || !dayOrder.length) return false;
+  const currentOrder = state.days.map((day) => day.id).filter((id) => dayOrder.includes(id));
+  return sameSerialized(currentOrder, dayOrder.filter((id) => currentOrder.includes(id)));
+}
+
+async function applyRemoteStopCreated(payload = {}) {
   if (!payload.stop?.id || payload.tripId !== tripId) return;
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 新增地点协作快照`)) {
+    if (stopExistsInPlan(payload.stop.id)) {
+      logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, { broadcast: false });
+      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了「${payload.stop.title || "地点"}」`;
+      render();
+      return;
+    }
+  }
   if (state.days.some((day) => (day.stops || []).some((stop) => stop.id === payload.stop.id))) return;
   const day =
     state.days.find((item) => item.id === payload.dayId) ||
@@ -2867,8 +2939,17 @@ function applyRemoteStopCreated(payload = {}) {
   render();
 }
 
-function applyRemoteStopDeleted(payload = {}) {
+async function applyRemoteStopDeleted(payload = {}) {
   if (!payload.stopId || payload.tripId !== tripId) return;
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 删除地点协作快照`)) {
+    if (!stopExistsInPlan(payload.stopId)) {
+      destroyCollabTextDoc();
+      logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, { broadcast: false });
+      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了「${payload.title || "地点"}」`;
+      render();
+      return;
+    }
+  }
   const dayIndex = state.days.findIndex((day) => day.id === payload.dayId || (day.stops || []).some((stop) => stop.id === payload.stopId));
   if (dayIndex < 0) return;
   const day = state.days[dayIndex];
@@ -2888,8 +2969,16 @@ function applyRemoteStopDeleted(payload = {}) {
   render();
 }
 
-function applyRemoteStopsReordered(payload = {}) {
+async function applyRemoteStopsReordered(payload = {}) {
   if (!payload.dayId || !Array.isArray(payload.stopOrder) || payload.tripId !== tripId) return;
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 调整地点顺序协作快照`)) {
+    if (stopOrderMatches(payload.dayId, payload.stopOrder)) {
+      logActivity(`${payload.name || "协作者"} 调整地点顺序`, { broadcast: false });
+      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了地点顺序`;
+      render();
+      return;
+    }
+  }
   const dayIndex = state.days.findIndex((day) => day.id === payload.dayId);
   if (dayIndex < 0) return;
   const day = state.days[dayIndex];
@@ -2909,8 +2998,17 @@ function applyRemoteStopsReordered(payload = {}) {
   render();
 }
 
-function applyRemoteDayUpdated(payload = {}) {
+async function applyRemoteDayUpdated(payload = {}) {
   if (!payload.day?.id || payload.tripId !== tripId) return;
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 更新当天设置协作快照`)) {
+    const day = state.days.find((item) => item.id === payload.day.id);
+    if (day) {
+      logActivity(`${payload.name || "协作者"} 更新当天设置`, { broadcast: false });
+      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照更新了 ${day.label}`;
+      render();
+      return;
+    }
+  }
   const index = state.days.findIndex((day) => day.id === payload.day.id);
   if (index < 0) return;
   const current = state.days[index];
@@ -2932,8 +3030,16 @@ function applyRemoteDayUpdated(payload = {}) {
   render();
 }
 
-function applyRemoteDayCreated(payload = {}) {
+async function applyRemoteDayCreated(payload = {}) {
   if (!payload.day?.id || payload.tripId !== tripId) return;
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 新增一天协作快照`)) {
+    if (state.days.some((day) => day.id === payload.day.id)) {
+      logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, { broadcast: false });
+      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了 ${payload.day.title || "一天"}`;
+      render();
+      return;
+    }
+  }
   if (state.days.some((day) => day.id === payload.day.id)) return;
   const activeDayId = currentDay()?.id || "";
   const nextIndex = Math.min(Math.max(Number(payload.index ?? state.days.length), 0), state.days.length);
@@ -2948,8 +3054,17 @@ function applyRemoteDayCreated(payload = {}) {
   render();
 }
 
-function applyRemoteDayDeleted(payload = {}) {
+async function applyRemoteDayDeleted(payload = {}) {
   if (!payload.dayId || payload.tripId !== tripId || state.days.length <= 1) return;
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 删除一天协作快照`)) {
+    if (!state.days.some((day) => day.id === payload.dayId)) {
+      destroyCollabTextDoc();
+      logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, { broadcast: false });
+      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了 ${payload.title || "一天"}`;
+      render();
+      return;
+    }
+  }
   const index = state.days.findIndex((day) => day.id === payload.dayId);
   if (index < 0) return;
   const activeDayId = currentDay()?.id || "";
@@ -2969,8 +3084,16 @@ function applyRemoteDayDeleted(payload = {}) {
   render();
 }
 
-function applyRemoteDaysReordered(payload = {}) {
+async function applyRemoteDaysReordered(payload = {}) {
   if (!Array.isArray(payload.dayOrder) || payload.tripId !== tripId) return;
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 调整日期顺序协作快照`)) {
+    if (dayOrderMatches(payload.dayOrder)) {
+      logActivity(`${payload.name || "协作者"} 调整日期顺序`, { broadcast: false });
+      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了日期顺序`;
+      render();
+      return;
+    }
+  }
   const byId = new Map(state.days.map((day) => [day.id, day]).filter(([id]) => id));
   const ordered = payload.dayOrder.map((id) => byId.get(id)).filter(Boolean);
   const leftovers = state.days.filter((day) => !payload.dayOrder.includes(day.id));
@@ -4170,31 +4293,45 @@ function subscribeRemoteState() {
     })
     .on("broadcast", { event: "stop-created" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemoteStopCreated(payload);
+      applyRemoteStopCreated(payload).catch((error) => {
+        dom.collabStatus.textContent = `应用新增地点协作快照失败：${error.message}`;
+      });
     })
     .on("broadcast", { event: "stop-deleted" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemoteStopDeleted(payload);
+      applyRemoteStopDeleted(payload).catch((error) => {
+        dom.collabStatus.textContent = `应用删除地点协作快照失败：${error.message}`;
+      });
     })
     .on("broadcast", { event: "stops-reordered" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemoteStopsReordered(payload);
+      applyRemoteStopsReordered(payload).catch((error) => {
+        dom.collabStatus.textContent = `应用地点排序协作快照失败：${error.message}`;
+      });
     })
     .on("broadcast", { event: "day-updated" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemoteDayUpdated(payload);
+      applyRemoteDayUpdated(payload).catch((error) => {
+        dom.collabStatus.textContent = `应用当天设置协作快照失败：${error.message}`;
+      });
     })
     .on("broadcast", { event: "day-created" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemoteDayCreated(payload);
+      applyRemoteDayCreated(payload).catch((error) => {
+        dom.collabStatus.textContent = `应用新增日期协作快照失败：${error.message}`;
+      });
     })
     .on("broadcast", { event: "day-deleted" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemoteDayDeleted(payload);
+      applyRemoteDayDeleted(payload).catch((error) => {
+        dom.collabStatus.textContent = `应用删除日期协作快照失败：${error.message}`;
+      });
     })
     .on("broadcast", { event: "days-reordered" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
-      applyRemoteDaysReordered(payload);
+      applyRemoteDaysReordered(payload).catch((error) => {
+        dom.collabStatus.textContent = `应用日期排序协作快照失败：${error.message}`;
+      });
     })
     .on("broadcast", { event: "plan-replaced" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
