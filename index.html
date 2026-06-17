@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-day-meta" />
+    <link rel="stylesheet" href="styles.css?v=20260617-edit-access" />
   </head>
   <body>
     <div class="app-shell">
@@ -49,6 +49,14 @@
             <button class="text-btn" id="copySharedLinkBtn"><i data-lucide="link"></i>复制编辑链接</button>
             <button class="text-btn" id="copyReadonlyLinkBtn"><i data-lucide="eye"></i>复制只读链接</button>
           </div>
+          <form class="access-form" id="editAccessForm">
+            <label class="collab-field">
+              编辑口令
+              <input id="editAccessInput" type="password" placeholder="设置或输入编辑口令" autocomplete="off" />
+            </label>
+            <button class="text-btn" id="editAccessBtn" type="submit"><i data-lucide="key-round"></i>解锁/更新</button>
+          </form>
+          <p class="helper-text" id="editAccessStatus">未设置编辑口令，编辑链接可直接修改。</p>
           <p class="helper-text" id="collabStatus">未配置云端时，计划只保存在当前浏览器。</p>
           <div class="conflict-panel" id="conflictPanel" hidden>
             <div class="conflict-head">
@@ -603,7 +611,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-day-meta"></script>
-    <script src="script.js?v=20260617-day-meta"></script>
+    <script src="config.js?v=20260617-edit-access"></script>
+    <script src="script.js?v=20260617-edit-access"></script>
   </body>
 </html>
