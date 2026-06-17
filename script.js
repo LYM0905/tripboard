@@ -53,6 +53,7 @@ const COLLAB_PRESENCE_TEXT_FIELDS = [
   ...COLLAB_DAY_TEXT_FIELDS,
 ];
 const COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD = new Map(COLLAB_PRESENCE_TEXT_FIELDS.map((item) => [item.field, item]));
+const COLLAB_COMMENT_ANCHOR_FIELDS = COLLAB_PRESENCE_TEXT_FIELDS.filter((item) => item.scope === "stop" && item.domKey && item.presenceId);
 const PLAN_SETTING_FIELDS = [
   { field: "name", type: "string" },
   { field: "destination", type: "string" },
@@ -2615,9 +2616,11 @@ function ensureFieldCommentMark(fieldMeta) {
   const target = fieldMeta?.presenceId ? document.querySelector(`#${fieldMeta.presenceId}`) : null;
   const element = fieldMeta?.domKey ? dom[fieldMeta.domKey] : null;
   if (!field || !target || !element) return null;
-  let mark = document.querySelector(`[data-field-comment-mark="${field}"]`);
+  const markId = `fieldCommentMark-${String(field).replace(/[^a-z0-9_-]/gi, "-")}`;
+  let mark = document.getElementById(markId);
   if (!mark) {
     mark = document.createElement("button");
+    mark.id = markId;
     mark.type = "button";
     mark.className = "field-comment-mark";
     mark.dataset.fieldCommentMark = field;
@@ -2629,7 +2632,7 @@ function ensureFieldCommentMark(fieldMeta) {
 
 function renderFieldCommentMarks(stop = currentStop()) {
   const comments = normalizeComments(stop?.comments || []);
-  COLLAB_TEXT_FIELDS.forEach((fieldMeta) => {
+  COLLAB_COMMENT_ANCHOR_FIELDS.forEach((fieldMeta) => {
     const mark = ensureFieldCommentMark(fieldMeta);
     if (!mark) return;
     const stats = commentStatsForField(comments, fieldMeta.field);
@@ -7061,12 +7064,21 @@ document.addEventListener("selectionchange", () => {
 
 COLLAB_STRUCT_FIELDS.forEach((meta) => {
   if (!meta.domKey) return;
+  const anchorMeta = COLLAB_STRUCT_PRESENCE_FIELDS.find((field) => field.structField === meta.field) || null;
   ["input", "change"].forEach((eventName) => {
     dom[meta.domKey]?.addEventListener(eventName, () => {
       syncCollabStructFieldToDoc(meta);
+      if (anchorMeta) captureCommentAnchor(anchorMeta);
       schedulePresenceTrack();
     });
   });
+  ["focus", "click", "keyup", "select"].forEach((eventName) => {
+    dom[meta.domKey]?.addEventListener(eventName, () => {
+      if (anchorMeta) captureCommentAnchor(anchorMeta);
+      schedulePresenceTrack(eventName === "focus" ? 0 : 90);
+    });
+  });
+  dom[meta.domKey]?.addEventListener("blur", () => schedulePresenceTrack(180));
 });
 
 dom.addStopBtn.addEventListener("click", async () => {
