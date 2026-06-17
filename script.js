@@ -4235,7 +4235,11 @@ async function syncWeather() {
       applied += 1;
     });
     logActivity(`同步天气 ${applied} 天`);
-    saveState("已同步天气");
+    if (applied) {
+      await syncDayMetasToDoc("local-weather-sync");
+      await syncPlanMetaToDoc("local-weather-sync-meta");
+    }
+    await saveState("已同步天气");
     dom.serviceStatusText.textContent = `已同步 ${applied} 天天气，来源：${forecast.source || "天气接口"}。`;
     render();
   } catch (error) {
