@@ -2177,6 +2177,27 @@ async function addCollaborativeCandidate(stop) {
   return true;
 }
 
+async function deleteYArrayItemById(getYArray, itemId, origin = "local-array-delete") {
+  if (!canEdit() || isReadonlyMode || !itemId) return false;
+  await bindCollabPlanDoc();
+  const yArray = typeof getYArray === "function" ? getYArray() : getYArray;
+  if (!collabPlanDoc || !yArray || isApplyingCollabPlanRemote) return false;
+  const index = yArray.toArray().findIndex((item) => item?.id === itemId);
+  if (index < 0) return true;
+  collabPlanDoc.transact(() => {
+    yArray.delete(index, 1);
+  }, origin);
+  return true;
+}
+
+async function deleteTransportQuoteFromDoc(quoteId) {
+  return deleteYArrayItemById(() => collabTransportQuotesArray, quoteId, "local-transport-quote-delete");
+}
+
+async function deleteCandidateFromDoc(candidateId) {
+  return deleteYArrayItemById(() => collabCandidatesArray, candidateId, "local-candidate-delete");
+}
+
 async function addCollaborativeActivity(text) {
   if (!canEdit() || isReadonlyMode || !tripId) return false;
   await bindCollabPlanDoc();
@@ -4536,6 +4557,7 @@ function renderTransport() {
   const options = [...manualQuotes, ...baseOptions];
   const filtered = options.filter(matchesTransportFilter);
   const visible = transportFilterApplied ? filtered : filtered.slice(0, 4);
+  const manualQuoteIds = new Set(manualQuotes.map((item) => item.id));
   if (!dom.transportFrom.value) dom.transportFrom.value = route.from;
   if (!dom.transportTo.value) dom.transportTo.value = route.to;
   const links = officialTransportLinks(route, day);
@@ -4568,13 +4590,14 @@ function renderTransport() {
     visible
       .map(
         (item) => `
-          <article class="transport-item">
+          <article class="transport-item" data-quote="${item.id || ""}">
             <span class="transport-icon">${icon(item.type === "flight" ? "plane" : "train-front")}</span>
             <div>
               <strong>${item.code} · ${item.from} → ${item.to}</strong>
               <span>${item.depart} - ${item.arrive} · 约${Math.floor(item.duration / 60)}小时${item.duration % 60}分 · ${item.source}</span>
             </div>
             <em>${money(item.price)}</em>
+            ${manualQuoteIds.has(item.id) ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-quote="${item.id}" aria-label="删除报价">${icon("trash-2")}</button>` : ""}
           </article>
         `,
       )
@@ -4992,14 +5015,18 @@ function renderDetail() {
 }
 
 function renderCandidates() {
+  const editable = canEdit();
   dom.candidateGrid.innerHTML = state.candidates
     .map(
       (stop, index) => `
-        <button class="candidate" data-candidate="${index}">
+        <article class="candidate" data-candidate="${index}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
           ${icon(stop.type === "Market" ? "shopping-bag" : stop.type === "Cafe" ? "coffee" : "landmark")}
           ${stop.title}
-          <span>${money(stop.budget)}</span>
-        </button>
+          <span class="candidate-price">${money(stop.budget)}</span>
+          ${editable ? `<span class="candidate-actions">
+            <button type="button" class="icon-btn subtle danger-icon" data-delete-candidate="${stop.id}" aria-label="移除备选">${icon("trash-2")}</button>
+          </span>` : ""}
+        </article>
       `,
     )
     .join("");
@@ -5822,8 +5849,26 @@ dom.commentFocusBtn.addEventListener("click", () => {
 });
 
 dom.candidateGrid.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest("[data-delete-candidate]");
+  if (deleteButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const candidateId = deleteButton.dataset.deleteCandidate;
+    const candidate = state.candidates.find((item) => item.id === candidateId);
+    if (!candidate || !requireEdit("移除备选地点")) return;
+    if (await deleteCandidateFromDoc(candidateId)) {
+      dom.saveState.textContent = `已移除备选「${candidate.title}」`;
+      return;
+    }
+    mutate(`移除备选「${candidate.title}」`, () => {
+      state.candidates = (state.candidates || []).filter((item) => item.id !== candidateId);
+    }, { requireUnlocked: false });
+    await syncCandidatesToDoc("local-candidate-delete-fallback");
+    return;
+  }
   const button = event.target.closest("[data-candidate]");
   if (!button) return;
+  if (!requireEdit("加入备选地点")) return;
   const candidate = clone(state.candidates[Number(button.dataset.candidate)]);
   candidate.id = uid();
   let createdDayId = "";
@@ -5835,6 +5880,14 @@ dom.candidateGrid.addEventListener("click", async (event) => {
   });
   await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop");
   broadcastStopCreated(createdDayId, candidate);
+});
+
+dom.candidateGrid.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  const card = event.target.closest("[data-candidate]");
+  if (!card || event.target.closest("[data-delete-candidate]")) return;
+  event.preventDefault();
+  card.click();
 });
 
 document.querySelectorAll("[data-guide-group]").forEach((group) => {
@@ -5882,6 +5935,26 @@ dom.transportFilterForm.addEventListener("submit", (event) => {
   transportFilterApplied = true;
   renderTransport();
   refreshIcons();
+});
+
+dom.transportList.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest("[data-delete-quote]");
+  if (!deleteButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const quoteId = deleteButton.dataset.deleteQuote;
+  const quote = (state.transportQuotes || []).find((item) => item.id === quoteId);
+  if (!quote || !requireEdit("删除交通报价")) return;
+  if (await deleteTransportQuoteFromDoc(quoteId)) {
+    transportFilterApplied = true;
+    dom.saveState.textContent = `已删除报价「${quote.code}」`;
+    return;
+  }
+  mutate(`删除报价「${quote.code}」`, () => {
+    state.transportQuotes = (state.transportQuotes || []).filter((item) => item.id !== quoteId);
+    transportFilterApplied = true;
+  }, { requireUnlocked: false });
+  await syncTransportQuotesToDoc("local-transport-quote-delete-fallback");
 });
 
 dom.manualQuoteForm.addEventListener("submit", async (event) => {
