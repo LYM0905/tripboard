@@ -25,22 +25,29 @@ const COLLAB_DAY_TEXT_FIELDS = [
   { field: "day:weather", docField: "weather", domKey: "fieldDayWeather", label: "天气", presenceId: "fieldDayWeatherPresence", scope: "day" },
   { field: "day:transport", docField: "transport", domKey: "fieldDayTransport", label: "交通", presenceId: "fieldDayTransportPresence", scope: "day" },
 ];
-const COLLAB_PRESENCE_TEXT_FIELDS = [...COLLAB_TEXT_FIELDS.map((field) => ({ ...field, scope: "stop" })), ...COLLAB_DAY_TEXT_FIELDS];
-const COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD = new Map(COLLAB_PRESENCE_TEXT_FIELDS.map((item) => [item.field, item]));
 const COLLAB_STRUCT_FIELDS = [
-  { field: "time", domKey: "fieldTime", type: "string" },
-  { field: "budget", domKey: "fieldBudget", type: "number" },
-  { field: "paid", domKey: "fieldPaid", type: "number" },
-  { field: "payer", domKey: "fieldPayer", type: "string" },
-  { field: "lng", domKey: "fieldLng", type: "string" },
-  { field: "lat", domKey: "fieldLat", type: "string" },
-  { field: "image", domKey: "fieldImage", type: "string" },
-  { field: "tags", domKey: "fieldTags", type: "tags" },
+  { field: "time", domKey: "fieldTime", type: "string", label: "时间", presenceId: "fieldTimePresence" },
+  { field: "budget", domKey: "fieldBudget", type: "number", label: "预算", presenceId: "fieldBudgetPresence" },
+  { field: "paid", domKey: "fieldPaid", type: "number", label: "已付", presenceId: "fieldPaidPresence" },
+  { field: "payer", domKey: "fieldPayer", type: "string", label: "付款人", presenceId: "fieldPayerPresence" },
+  { field: "lng", domKey: "fieldLng", type: "string", label: "经度", presenceId: "fieldLngPresence" },
+  { field: "lat", domKey: "fieldLat", type: "string", label: "纬度", presenceId: "fieldLatPresence" },
+  { field: "image", domKey: "fieldImage", type: "string", label: "图片 URL", presenceId: "fieldImagePresence" },
+  { field: "tags", domKey: "fieldTags", type: "tags", label: "标签", presenceId: "fieldTagsPresence" },
   { field: "voters", type: "list" },
   { field: "votes", type: "number" },
   { field: "userVoted", type: "boolean" },
   { field: "favorite", type: "boolean" },
 ];
+const COLLAB_STRUCT_PRESENCE_FIELDS = COLLAB_STRUCT_FIELDS
+  .filter((field) => field.domKey && field.presenceId)
+  .map((field) => ({ ...field, field: `struct:${field.field}`, structField: field.field, scope: "stop" }));
+const COLLAB_PRESENCE_TEXT_FIELDS = [
+  ...COLLAB_TEXT_FIELDS.map((field) => ({ ...field, scope: "stop" })),
+  ...COLLAB_STRUCT_PRESENCE_FIELDS,
+  ...COLLAB_DAY_TEXT_FIELDS,
+];
+const COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD = new Map(COLLAB_PRESENCE_TEXT_FIELDS.map((item) => [item.field, item]));
 const PLAN_SETTING_FIELDS = [
   { field: "name", type: "string" },
   { field: "destination", type: "string" },
@@ -1108,12 +1115,15 @@ function currentFocusedTextField() {
 function textSelectionPayload(fieldMeta) {
   const element = fieldMeta ? dom[fieldMeta.domKey] : null;
   if (!element || document.activeElement !== element) return null;
+  const fallbackPosition = String(element.value || "").length;
+  const start = typeof element.selectionStart === "number" ? element.selectionStart : fallbackPosition;
+  const end = typeof element.selectionEnd === "number" ? element.selectionEnd : start;
   return {
     field: fieldMeta.field,
     scope: fieldMeta.scope || "stop",
     label: fieldMeta.label,
-    start: element.selectionStart ?? 0,
-    end: element.selectionEnd ?? element.selectionStart ?? 0,
+    start,
+    end,
     length: String(element.value || "").length,
   };
 }

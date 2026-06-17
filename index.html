@@ -450,18 +450,18 @@
             <span id="editLockText">其他成员正在编辑这个地点</span>
           </div>
           <form class="edit-form" id="stopForm">
-            <label>时间<input id="fieldTime" name="time" placeholder="09:00" /></label>
+            <label>时间<input id="fieldTime" name="time" placeholder="09:00" /><span class="text-presence" id="fieldTimePresence" hidden></span></label>
             <label>名称<input id="fieldTitle" name="title" placeholder="地点名称" required /><span class="text-presence" id="fieldTitlePresence" hidden></span></label>
             <label>类型<input id="fieldType" name="type" placeholder="Museum / Food" /><span class="text-presence" id="fieldTypePresence" hidden></span></label>
-            <label>预算<input id="fieldBudget" name="budget" type="number" min="0" step="1" placeholder="人均或项目预算" /></label>
-            <label>已付<input id="fieldPaid" name="paid" type="number" min="0" step="1" placeholder="已支付金额" /></label>
-            <label>付款人<input id="fieldPayer" name="payer" placeholder="例如：林 / AA" /></label>
+            <label>预算<input id="fieldBudget" name="budget" type="number" min="0" step="1" placeholder="人均或项目预算" /><span class="text-presence" id="fieldBudgetPresence" hidden></span></label>
+            <label>已付<input id="fieldPaid" name="paid" type="number" min="0" step="1" placeholder="已支付金额" /><span class="text-presence" id="fieldPaidPresence" hidden></span></label>
+            <label>付款人<input id="fieldPayer" name="payer" placeholder="例如：林 / AA" /><span class="text-presence" id="fieldPayerPresence" hidden></span></label>
             <label class="full">地址<input id="fieldAddress" name="address" placeholder="地址或集合点" /><span class="text-presence" id="fieldAddressPresence" hidden></span></label>
             <label class="full">高德地点关键词<input id="fieldAmapKeyword" name="amapKeyword" placeholder="例如：甘肃 莫高窟" /><span class="text-presence" id="fieldAmapKeywordPresence" hidden></span></label>
-            <label>经度<input id="fieldLng" name="lng" type="number" step="0.000001" placeholder="可选" /></label>
-            <label>纬度<input id="fieldLat" name="lat" type="number" step="0.000001" placeholder="可选" /></label>
-            <label class="full">图片 URL<input id="fieldImage" name="image" type="url" placeholder="可粘贴景点官方图或自己上传后的图片地址" /></label>
-            <label class="full">标签<input id="fieldTags" name="tags" placeholder="用逗号分隔，比如 必去,日落,需预约" /></label>
+            <label>经度<input id="fieldLng" name="lng" type="number" step="0.000001" placeholder="可选" /><span class="text-presence" id="fieldLngPresence" hidden></span></label>
+            <label>纬度<input id="fieldLat" name="lat" type="number" step="0.000001" placeholder="可选" /><span class="text-presence" id="fieldLatPresence" hidden></span></label>
+            <label class="full">图片 URL<input id="fieldImage" name="image" type="url" placeholder="可粘贴景点官方图或自己上传后的图片地址" /><span class="text-presence" id="fieldImagePresence" hidden></span></label>
+            <label class="full">标签<input id="fieldTags" name="tags" placeholder="用逗号分隔，比如 必去,日落,需预约" /><span class="text-presence" id="fieldTagsPresence" hidden></span></label>
             <label class="full">备注<textarea id="fieldNote" name="note" rows="4" placeholder="写下预订、交通、注意事项"></textarea><span class="text-presence" id="fieldNotePresence" hidden></span><small class="field-hint" id="noteCollabStatus">名称、类型、地址、高德关键词和备注会随计划保存</small></label>
             <a class="map-link full" id="fieldAmapLink" href="#" target="_blank" rel="noopener">生成后可打开高德搜索</a>
             <div class="form-actions full">
