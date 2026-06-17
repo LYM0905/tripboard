@@ -66,26 +66,26 @@ https://你的域名/?trip=某个id
 
 页面现在支持按出发日期和返程日期生成计划，并在每天显示机票、动车/高铁的示例均价。你也可以按交通类型、出发地、到达地和时间段筛选班次。
 
-携程入口现在提供接入配置面板：点击“携程 / Trip.com 接入”，填写你自己的 HTTPS 后端代理接口，再点击“测试连接”或“同步当天交通”。
+当前优先接入 Amadeus 个人开发者航班 API：点击“Amadeus 航班报价接入”，填写 Supabase Edge Function 代理地址，再点击“测试连接”或“同步当天航班”。
 
-不要把携程 AppSecret、签名密钥或个人账号密码写进这个公开网页。正确做法是：
+不要把 Amadeus API Secret、携程 AppSecret、签名密钥或个人账号密码写进这个公开网页。正确做法是：
 
-1. 在携程 / Trip.com 开放平台或商旅开放平台创建应用并取得 API 权限。
+1. 在 Amadeus for Developers 创建 Self-Service 应用并取得 API Key / API Secret。
 2. 新建一个后端代理接口，例如 Supabase Edge Function、Vercel Function、Cloudflare Worker 或自己的服务器。
-3. 把携程 AppKey、AppSecret、签名逻辑放到后端环境变量和后端代码里。
-4. 前端只填写你的后端代理地址，例如 `https://your-domain.com/api/ctrip/transport`。
-5. 后端返回 `{ items: [...] }`，前端会把返回的机票/动车报价显示到当天交通列表。
+3. 把 Amadeus API Key / API Secret 放到后端环境变量和后端代码里。
+4. 前端只填写你的后端代理地址，例如 `https://your-project.supabase.co/functions/v1/amadeus-flight-offers`。
+5. 后端返回 `{ items: [...] }`，前端会把返回的机票报价显示到当天交通列表。
 
-本项目已经生成了 Supabase Edge Function 模板：
+本项目已经生成了 Supabase Edge Function：
 
 ```text
-supabase/functions/ctrip-transport/index.ts
+supabase/functions/amadeus-flight-offers/index.ts
 ```
 
 默认前端代理地址已经写在 `config.js`：
 
 ```text
-https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/ctrip-transport
+https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/amadeus-flight-offers
 ```
 
 部署方式：
@@ -93,23 +93,23 @@ https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/ctrip-transport
 ```bash
 supabase login
 supabase link --project-ref juicyxqblnrmbhtuujez
-supabase functions deploy ctrip-transport
+supabase functions deploy amadeus-flight-offers
 ```
 
-如果已经拿到 Trip.com/Ctrip 的真实接口权限，把密钥放到 Supabase 环境变量里：
+如果已经拿到 Amadeus API Key / API Secret，把密钥放到 Supabase 环境变量里：
 
 ```bash
-supabase secrets set TRIPCOM_APP_KEY=你的AppKey
-supabase secrets set TRIPCOM_APP_SECRET=你的AppSecret
-supabase secrets set TRIPCOM_TRANSPORT_API_URL=官方给你的交通查询接口地址
+supabase secrets set AMADEUS_CLIENT_ID=你的APIKey
+supabase secrets set AMADEUS_CLIENT_SECRET=你的APISecret
+supabase secrets set AMADEUS_BASE_URL=https://test.api.amadeus.com
 ```
 
-当前函数在未配置真实 Trip.com 接口时会返回“代理示例”交通数据，用来验证前端和后端链路已经打通。
+Amadeus 只解决机票报价，不提供 12306 动车/高铁报价。动车/高铁当前继续使用 12306 查询入口或手动保存报价。
 
 页面会明确区分：
 
 - `本地示例`：前端根据日期和城市生成的示例报价。
-- `代理示例`：Supabase 后端代理已经连通，但还没有配置 Trip.com/Ctrip 正式 API。
+- `待配置密钥`：Amadeus 函数已部署，但 Supabase 还没有配置 API Key / API Secret。
 - `真实接口`：你的后端代理返回了真实票价数据。
 
 前端发送给后端的请求格式：
@@ -117,9 +117,9 @@ supabase secrets set TRIPCOM_TRANSPORT_API_URL=官方给你的交通查询接口
 ```json
 {
   "date": "2026-06-30",
-  "from": "上海",
-  "to": "兰州",
-  "type": "all",
+  "from": "上海 SHA",
+  "to": "兰州 LHW",
+  "type": "flight",
   "startTime": "08:00",
   "endTime": "18:30"
 }
@@ -158,12 +158,49 @@ supabase secrets set TRIPCOM_TRANSPORT_API_URL=官方给你的交通查询接口
 页面新增“智能与实时数据”配置区：
 
 - AI 路径代理：填写你自己的后端模型接口。未配置时，按钮会使用本地距离排序。
-- 高德地点代理：填写你自己的高德 Web 服务代理。未配置时，只生成高德搜索链接。
+- 高德地点代理：填写你自己的高德 Web 服务地点搜索代理。未配置时，只生成高德搜索链接。
+- 高德路线代理：填写你自己的高德 Web 服务路线规划代理。配置后可按当天地点顺序生成步行、驾车、公交/地铁路线。
 - 天气代理：可选。不填写时，页面使用 Open-Meteo 免费接口按目的地同步天气。
 
 Open-Meteo 官方说明：Forecast API 和 Geocoding API 可直接通过 HTTPS 调用，免费非商业使用、无需 API key，并支持 CORS。商业使用请按 Open-Meteo 条款选择合适方案。
 
-外部 App 同步仍不能直接读取美团、点评、携程、民宿 App 账号订单。现在支持手动粘贴订单短信/分享文本并点击“解析文本”，页面会尝试提取名称、时间、金额和地址，再导入当天行程。
+外部 App 同步仍不能直接读取美团、点评、携程、民宿 App 账号订单。现在支持“AI 辅助导入”：点击美团/点评、民宿/酒店或分享/截图，粘贴订单短信、邮件、分享文本或截图识别出的文字，再点击“解析文本”。页面会先显示结构化预览，确认后导入到计划里，并同步给协作者。
+
+外部订单解析代理：
+
+```text
+supabase/functions/external-order-parse/index.ts
+```
+
+默认前端代理地址已经写在 `config.js`：
+
+```text
+https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/external-order-parse
+```
+
+这个功能会把以下字段尽量解析出来：
+
+- 来源平台和类别
+- 日期、时间、名称、地址
+- 金额、已付、付款人
+- 订单号、来源链接、备注/原文
+
+如果 AI 解析超时或失败，页面会自动使用本地规则兜底。自动读取外部 App 账号仍需要平台授权或官方 API，不能通过网页直接读取用户手机 App 数据。
+
+高德地图部分现在走后端代理，公开网页不保存高德 Key：
+
+```text
+supabase/functions/amap-place-search/index.ts
+supabase/functions/amap-route-plan/index.ts
+```
+
+需要在 Supabase Secrets 中配置：
+
+```text
+AMAP_WEB_SERVICE_KEY=你的高德 Web 服务 Key
+```
+
+配置并部署后，页面可以搜索地点、回填经纬度，并按当天地点顺序展示高德返回的距离、耗时和分段路线。高德 JS 地图 SDK 还没有嵌入，当前右侧地图仍是 Tripboard 自带的行程示意图。
 
 预算现在支持：
 

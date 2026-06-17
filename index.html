@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260616-readonly-links" />
+    <link rel="stylesheet" href="styles.css?v=20260617-ai-route-report" />
   </head>
   <body>
     <div class="app-shell">
@@ -188,7 +188,7 @@
               <span>动车/高铁均价</span>
               <strong id="trainAvgPrice">¥--</strong>
             </div>
-            <p id="transportDayHint">按当前日期生成，可接入携程官方 API 后替换为实时价格。</p>
+            <p id="transportDayHint">按当前日期生成；配置 Amadeus 后可同步航班报价，动车/高铁先用官方查询或手动保存。</p>
           </div>
           <form class="transport-controls" id="transportFilterForm">
             <label>
@@ -217,6 +217,17 @@
             </label>
             <button class="primary-btn" type="submit"><i data-lucide="list-filter"></i>筛选</button>
           </form>
+          <div class="multi-origin-panel">
+            <label>
+              多人出发地
+              <textarea id="multiOriginInput" rows="2" placeholder="例如：林: SHA; 王: PEK; 周: CAN"></textarea>
+            </label>
+            <div class="multi-origin-actions">
+              <button type="button" class="text-btn" id="multiOriginExampleBtn"><i data-lucide="users"></i>示例</button>
+              <button type="button" class="primary-btn" id="compareOriginsBtn"><i data-lucide="git-compare-arrows"></i>综合比较</button>
+            </div>
+          </div>
+          <div class="multi-origin-results" id="multiOriginResults"></div>
           <div class="transport-manual">
             <div class="official-links">
               <a class="text-btn" id="openCtripSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>携程查询</a>
@@ -273,7 +284,17 @@
               <button type="button" class="text-btn" id="optimizeRouteBtn"><i data-lucide="wand-sparkles"></i>AI 优化路径</button>
             </div>
           </form>
-          <p class="helper-text" id="optimizeHint">优化会根据当前地点的坐标/地图位置重新排序；真实 AI 调用需要接入后端模型接口。</p>
+          <p class="helper-text" id="optimizeHint">优化会先请求后端 AI 代理；未配置模型密钥时会自动使用本地距离排序兜底。</p>
+          <div class="ai-route-report" id="aiRouteReport" hidden></div>
+          <div class="amap-route-tools">
+            <select id="amapRouteMode" aria-label="高德路线方式">
+              <option value="walking">步行</option>
+              <option value="driving">驾车</option>
+              <option value="transit">公交/地铁</option>
+            </select>
+            <button type="button" class="text-btn" id="amapRouteBtn"><i data-lucide="route"></i>高德规划路线</button>
+          </div>
+          <div class="amap-route-report" id="amapRouteReport" hidden></div>
           <a class="map-link" id="quickAmapLink" href="#" target="_blank" rel="noopener">高德链接会显示在这里</a>
         </section>
 
@@ -285,7 +306,7 @@
           <div class="connector-grid">
             <label>
               AI 路径代理
-              <input id="aiRouteEndpointInput" type="url" placeholder="https://your-domain.com/api/route-optimize" />
+              <input id="aiRouteEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/ai-route-optimize" />
             </label>
             <label>
               AI 访问令牌
@@ -293,7 +314,11 @@
             </label>
             <label>
               高德地点代理
-              <input id="amapEndpointInput" type="url" placeholder="https://your-domain.com/api/amap-place" />
+              <input id="amapEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/amap-place-search" />
+            </label>
+            <label>
+              高德路线代理
+              <input id="amapRouteEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/amap-route-plan" />
             </label>
             <label>
               天气代理
@@ -304,7 +329,7 @@
               <button type="button" class="text-btn" id="syncWeatherBtn"><i data-lucide="cloud-sun"></i>同步天气</button>
             </div>
           </div>
-          <p class="helper-text" id="serviceStatusText">AI、高德需要你自己的后端代理保存密钥；天气未配置代理时使用 Open-Meteo 免费接口。</p>
+          <p class="helper-text" id="serviceStatusText">AI 和高德密钥只放在后端代理；高德未配置 Key 时保留搜索链接，天气未配置代理时使用 Open-Meteo。</p>
         </section>
 
         <section class="timeline-wrap">
@@ -404,34 +429,34 @@
           </div>
           <button class="provider-login" id="ctripLoginBtn" type="button">
             <i data-lucide="plane"></i>
-            <strong>携程 / Trip.com 接入</strong>
-            <span>配置后端代理后，可测试连接并同步当日机票、动车报价。</span>
+            <strong>Google Flights 报价接入</strong>
+            <span>个人账号先接 SearchApi 获取航班班次和价格；动车/高铁继续用官方查询或手动保存。</span>
           </button>
           <div class="provider-connect-panel" id="ctripConnectPanel" hidden>
             <div class="provider-connect-head">
               <strong>接入配置</strong>
-              <a href="https://connect.trip.com/" target="_blank" rel="noopener">打开开放平台</a>
+              <a href="https://www.searchapi.io/users/sign_up" target="_blank" rel="noopener">注册 SearchApi</a>
             </div>
-            <p class="helper-text">请填写你自己的后端代理接口地址。不要把携程 AppSecret、签名密钥或个人账号密码填到这个公开网页里。</p>
+            <p class="helper-text">SearchApi API Key 只放在 Supabase Edge Function 的环境变量里；公开网页只保存后端代理地址。</p>
             <form class="provider-form" id="ctripConnectForm">
               <label>
                 后端代理接口
-                <input id="ctripEndpointInput" type="url" placeholder="https://your-domain.com/api/ctrip/transport" />
+                <input id="ctripEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/searchapi-flight-offers" />
               </label>
               <label>
                 前端访问令牌（可选）
-                <input id="ctripTokenInput" type="password" placeholder="只填你的后端需要的访问令牌，不填携程密钥" autocomplete="off" />
+                <input id="ctripTokenInput" type="password" placeholder="只填你的后端需要的访问令牌，不填 SearchApi Key" autocomplete="off" />
               </label>
               <div class="connection-actions">
                 <button type="submit" class="primary-btn"><i data-lucide="plug-zap"></i>保存接入</button>
                 <button type="button" class="text-btn" id="ctripTestBtn"><i data-lucide="activity"></i>测试连接</button>
-                <button type="button" class="text-btn" id="ctripSyncTransportBtn"><i data-lucide="refresh-cw"></i>同步当天交通</button>
+                <button type="button" class="text-btn" id="ctripSyncTransportBtn"><i data-lucide="refresh-cw"></i>同步当天航班</button>
                 <button type="button" class="text-btn" id="ctripSpecBtn"><i data-lucide="copy"></i>复制接口规范</button>
               </div>
             </form>
             <pre class="api-spec" id="ctripSpecBox">POST 你的后端接口
-Request: { "date": "2026-06-30", "from": "上海", "to": "兰州", "type": "all", "startTime": "", "endTime": "" }
-Response: { "items": [{ "type": "flight", "code": "MU1234", "from": "上海", "to": "兰州", "depart": "09:30", "arrive": "12:20", "duration": 170, "price": 860, "source": "携程" }] }</pre>
+Request: { "date": "2026-07-10", "from": "上海 SHA", "to": "兰州 LHW", "type": "flight", "startTime": "", "endTime": "" }
+Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", "code": "MU1234", "from": "上海 SHA", "to": "兰州 LHW", "depart": "09:30", "arrive": "12:20", "duration": 170, "price": 860, "source": "Google Flights / SearchApi" }] }</pre>
           </div>
           <div class="sync-grid">
             <button class="sync-card" data-provider="美团/点评">
@@ -452,11 +477,11 @@ Response: { "items": [{ "type": "flight", "code": "MU1234", "from": "上海", "t
           </div>
           <div class="sync-status" id="syncStatus">
             <i data-lucide="shield-check"></i>
-            <span>真实接入外部 App 前，需要用户授权或平台 API；这里先支持手动导入并写入计划。</span>
+            <span>可粘贴订单文本并用 AI 解析后写入计划；自动读取 App 账号仍需要平台授权或官方 API。</span>
           </div>
           <div class="sync-status provider-status" id="ctripStatus">
             <i data-lucide="info"></i>
-            <span>携程实时票价需要官方开放平台或商旅接口权限；当前交通面板使用可筛选的示例报价。</span>
+            <span>SearchApi 可用个人账号测试 Google Flights 航班报价；动车/高铁暂时使用 12306 查询或手动保存。</span>
           </div>
         </section>
 
@@ -478,17 +503,31 @@ Response: { "items": [{ "type": "flight", "code": "MU1234", "from": "上海", "t
         <h3 id="importTitle">导入外部记录</h3>
         <p class="permission-copy" id="importCopy">把订单里和行程有关的信息录入计划。</p>
         <form class="import-form" id="importForm">
+          <label>
+            类别
+            <select id="importCategory">
+              <option value="餐饮">餐饮</option>
+              <option value="住宿">住宿</option>
+              <option value="交通">交通</option>
+              <option value="景点">景点</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
+          <label>日期<input id="importDate" type="date" /></label>
           <label>名称<input id="importName" required placeholder="餐厅预约 / 民宿入住" /></label>
           <label>时间<input id="importTime" placeholder="18:30" /></label>
           <label>金额<input id="importBudget" type="number" min="0" step="1" placeholder="320" /></label>
           <label>已付<input id="importPaid" type="number" min="0" step="1" placeholder="已支付金额" /></label>
           <label>付款人<input id="importPayer" placeholder="例如：林 / AA" /></label>
           <label>地点<input id="importAddress" placeholder="地址或集合点" /></label>
-          <label>备注<textarea id="importNote" rows="4" placeholder="可粘贴订单短信、分享链接、入住规则等"></textarea></label>
+          <label>订单号<input id="importOrderNo" placeholder="券码 / 确认号 / 订单编号" /></label>
+          <label>来源链接<input id="importSourceUrl" type="url" placeholder="分享链接，可选" /></label>
+          <label class="full">备注 / 原文<textarea id="importNote" rows="5" placeholder="可粘贴美团、点评、酒店、民宿、短信、邮件或分享内容"></textarea></label>
+          <div class="import-preview full" id="importPreview" hidden></div>
           <div class="modal-actions">
             <button type="button" class="text-btn" data-close-import>取消</button>
             <button type="button" class="text-btn" id="parseImportBtn"><i data-lucide="scan-text"></i>解析文本</button>
-            <button type="submit" class="primary-btn"><i data-lucide="file-plus-2"></i>导入到当天</button>
+            <button type="submit" class="primary-btn"><i data-lucide="file-plus-2"></i>导入到计划</button>
           </div>
         </form>
       </section>
@@ -521,7 +560,7 @@ Response: { "items": [{ "type": "flight", "code": "MU1234", "from": "上海", "t
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260616-real-data-tools"></script>
-    <script src="script.js?v=20260616-real-data-tools"></script>
+    <script src="config.js?v=20260617-ai-route-report"></script>
+    <script src="script.js?v=20260617-ai-route-report"></script>
   </body>
 </html>

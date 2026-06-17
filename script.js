@@ -2,8 +2,10 @@ const STORAGE_KEY = "tripboard-editable-v1";
 const CTRIP_CONFIG_KEY = "tripboard-ctrip-connector-v1";
 const MEMBER_PROFILE_KEY = "tripboard-member-profile-v1";
 const SERVICE_CONFIG_KEY = "tripboard-service-connectors-v1";
+const EXTERNAL_IMPORT_CONFIG_KEY = "tripboard-external-import-v1";
 const VERSION_PREFIX = "tripboard-version-history:";
 const MAX_VERSION_HISTORY = 12;
+const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
 
 const images = {
   kyoto:
@@ -40,9 +42,34 @@ function money(value) {
   return `¥${Number(value || 0).toLocaleString("zh-CN")}`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
 function numberValue(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("请求超时，已切换本地解析。");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function normalizeTags(value) {
@@ -127,11 +154,21 @@ function amapSearchUrl(keyword) {
   return `https://uri.amap.com/search?keyword=${query}&src=tripboard&coordinate=gaode&callnative=1`;
 }
 
+function amapMarkerUrl(stop) {
+  const keyword = stop?.amapKeyword || stop?.title || "";
+  const lng = String(stop?.lng || "").trim();
+  const lat = String(stop?.lat || "").trim();
+  if (lng && lat) {
+    return `https://uri.amap.com/marker?position=${encodeURIComponent(`${lng},${lat}`)}&name=${encodeURIComponent(keyword)}&src=tripboard&coordinate=gaode&callnative=1`;
+  }
+  return amapSearchUrl(keyword);
+}
+
 async function lookupAmapPlace(keyword) {
   if (!serviceConfig.amapEndpoint || !keyword) return null;
   const response = await fetch(serviceConfig.amapEndpoint, {
     method: "POST",
-    headers: serviceHeaders(),
+    headers: serviceHeaders("", serviceConfig.amapEndpoint),
     body: JSON.stringify({ keyword, city: state.destination || "" }),
   });
   const data = await response.json().catch(() => ({}));
@@ -144,6 +181,40 @@ async function lookupAmapPlace(keyword) {
     lng: String(place.lng || place.longitude || ""),
     lat: String(place.lat || place.latitude || ""),
   };
+}
+
+async function requestAmapRoute(day, mode = "walking") {
+  if (!serviceConfig.amapRouteEndpoint) {
+    throw new Error("请先配置高德路线代理。");
+  }
+  const stops = day.stops
+    .map((stop, index) => ({
+      index,
+      title: stop.title,
+      address: stop.address,
+      amapKeyword: stop.amapKeyword || `${state.destination || ""} ${stop.title}`.trim(),
+      lng: stop.lng,
+      lat: stop.lat,
+    }))
+    .filter((stop) => stop.title);
+  if (stops.length < 2) {
+    throw new Error("至少需要 2 个地点才能规划路线。");
+  }
+  const response = await fetch(serviceConfig.amapRouteEndpoint, {
+    method: "POST",
+    headers: serviceHeaders("", serviceConfig.amapRouteEndpoint),
+    body: JSON.stringify({
+      mode,
+      destination: state.destination || "",
+      city: state.destination || "",
+      stops,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.message || data.error || `HTTP ${response.status}`);
+  }
+  return data;
 }
 
 function pointForStop(stop) {
@@ -547,6 +618,10 @@ const dom = {
   quickAmapLink: document.querySelector("#quickAmapLink"),
   optimizeRouteBtn: document.querySelector("#optimizeRouteBtn"),
   optimizeHint: document.querySelector("#optimizeHint"),
+  aiRouteReport: document.querySelector("#aiRouteReport"),
+  amapRouteMode: document.querySelector("#amapRouteMode"),
+  amapRouteBtn: document.querySelector("#amapRouteBtn"),
+  amapRouteReport: document.querySelector("#amapRouteReport"),
   moveUpBtn: document.querySelector("#moveUpBtn"),
   moveDownBtn: document.querySelector("#moveDownBtn"),
   deleteStopBtn: document.querySelector("#deleteStopBtn"),
@@ -568,6 +643,10 @@ const dom = {
   transportStartTime: document.querySelector("#transportStartTime"),
   transportEndTime: document.querySelector("#transportEndTime"),
   transportList: document.querySelector("#transportList"),
+  multiOriginInput: document.querySelector("#multiOriginInput"),
+  multiOriginExampleBtn: document.querySelector("#multiOriginExampleBtn"),
+  compareOriginsBtn: document.querySelector("#compareOriginsBtn"),
+  multiOriginResults: document.querySelector("#multiOriginResults"),
   openCtripSearchLink: document.querySelector("#openCtripSearchLink"),
   openTripSearchLink: document.querySelector("#openTripSearchLink"),
   openRailSearchLink: document.querySelector("#openRailSearchLink"),
@@ -586,13 +665,18 @@ const dom = {
   importTitle: document.querySelector("#importTitle"),
   importCopy: document.querySelector("#importCopy"),
   importForm: document.querySelector("#importForm"),
+  importCategory: document.querySelector("#importCategory"),
+  importDate: document.querySelector("#importDate"),
   importName: document.querySelector("#importName"),
   importTime: document.querySelector("#importTime"),
   importBudget: document.querySelector("#importBudget"),
   importPaid: document.querySelector("#importPaid"),
   importPayer: document.querySelector("#importPayer"),
   importAddress: document.querySelector("#importAddress"),
+  importOrderNo: document.querySelector("#importOrderNo"),
+  importSourceUrl: document.querySelector("#importSourceUrl"),
   importNote: document.querySelector("#importNote"),
+  importPreview: document.querySelector("#importPreview"),
   parseImportBtn: document.querySelector("#parseImportBtn"),
   createChoiceModal: document.querySelector("#createChoiceModal"),
   createChoiceTitle: document.querySelector("#createChoiceTitle"),
@@ -616,6 +700,7 @@ const dom = {
   aiRouteEndpointInput: document.querySelector("#aiRouteEndpointInput"),
   aiRouteTokenInput: document.querySelector("#aiRouteTokenInput"),
   amapEndpointInput: document.querySelector("#amapEndpointInput"),
+  amapRouteEndpointInput: document.querySelector("#amapRouteEndpointInput"),
   weatherEndpointInput: document.querySelector("#weatherEndpointInput"),
   saveServiceConfigBtn: document.querySelector("#saveServiceConfigBtn"),
   syncWeatherBtn: document.querySelector("#syncWeatherBtn"),
@@ -627,11 +712,21 @@ let state = ensurePlanDates(loadState());
 let activeDay = 0;
 let activeStop = 0;
 let pendingProvider = "";
+let quickAmapPlace = null;
 let transportFilterApplied = false;
 let transportProviderItems = [];
 let transportProviderSource = "";
+let multiOriginComparisons = [];
 let ctripConfig = safeJsonParse(localStorage.getItem(CTRIP_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
-let serviceConfig = safeJsonParse(localStorage.getItem(SERVICE_CONFIG_KEY), { aiEndpoint: "", aiToken: "", amapEndpoint: "", weatherEndpoint: "" }) || { aiEndpoint: "", aiToken: "", amapEndpoint: "", weatherEndpoint: "" };
+let externalImportConfig = safeJsonParse(localStorage.getItem(EXTERNAL_IMPORT_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
+let lastParsedImport = null;
+let serviceConfig = safeJsonParse(localStorage.getItem(SERVICE_CONFIG_KEY), { aiEndpoint: "", aiToken: "", amapEndpoint: "", amapRouteEndpoint: "", weatherEndpoint: "" }) || {
+  aiEndpoint: "",
+  aiToken: "",
+  amapEndpoint: "",
+  amapRouteEndpoint: "",
+  weatherEndpoint: "",
+};
 let memberProfile = safeJsonParse(localStorage.getItem(MEMBER_PROFILE_KEY), null);
 let onlineMembers = [];
 const sessionId = crypto.randomUUID ? crypto.randomUUID() : uid();
@@ -858,6 +953,7 @@ function applyReadonlyUi() {
     dom.recommendedPlanBtn,
     dom.blankPlanBtn,
     dom.optimizeRouteBtn,
+    dom.amapRouteBtn,
     dom.deleteStopBtn,
     dom.moveUpBtn,
     dom.moveDownBtn,
@@ -1220,28 +1316,35 @@ function saveServiceConfig() {
     aiEndpoint: dom.aiRouteEndpointInput.value.trim(),
     aiToken: dom.aiRouteTokenInput.value.trim(),
     amapEndpoint: dom.amapEndpointInput.value.trim(),
+    amapRouteEndpoint: dom.amapRouteEndpointInput.value.trim(),
     weatherEndpoint: dom.weatherEndpointInput.value.trim(),
   };
   localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
   renderServiceStatus();
 }
 
-function serviceHeaders(token) {
+function serviceHeaders(token, endpoint = "") {
   const headers = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
+  const appConfig = window.TRIPBOARD_CONFIG || {};
+  if (!token && endpoint.includes("supabase.co/functions/v1") && appConfig.supabaseAnonKey) {
+    headers.apikey = appConfig.supabaseAnonKey;
+    headers.Authorization = `Bearer ${appConfig.supabaseAnonKey}`;
+  }
   return headers;
 }
 
 function renderServiceStatus() {
   const connected = [
     serviceConfig.aiEndpoint && "AI",
-    serviceConfig.amapEndpoint && "高德",
+    serviceConfig.amapEndpoint && "高德地点",
+    serviceConfig.amapRouteEndpoint && "高德路线",
     serviceConfig.weatherEndpoint && "天气代理",
   ].filter(Boolean);
   dom.serviceConfigStatus.textContent = connected.length ? `已配置 ${connected.join(" / ")}` : "本地兜底";
   dom.serviceStatusText.textContent = connected.length
-    ? `已保存 ${connected.join("、")} 接口。密钥仍应放在你的后端代理里，前端只保存代理地址和可选访问令牌。`
-    : "AI、高德需要你自己的后端代理保存密钥；天气未配置代理时使用 Open-Meteo 免费接口。";
+    ? `已保存 ${connected.join("、")} 接口。密钥只放在后端代理；AI 或高德未配置密钥时会保留本地兜底能力。`
+    : "AI、高德需要后端代理保存密钥；天气未配置代理时使用 Open-Meteo 免费接口。";
 }
 
 function weatherLabel(code) {
@@ -1291,7 +1394,7 @@ async function requestWeatherForecast() {
   if (serviceConfig.weatherEndpoint) {
     const response = await fetch(serviceConfig.weatherEndpoint, {
       method: "POST",
-      headers: serviceHeaders(),
+      headers: serviceHeaders("", serviceConfig.weatherEndpoint),
       body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({}));
@@ -1339,6 +1442,7 @@ function normalizeTransportItem(item, index, fallbackRoute) {
   const depart = item.depart || item.departTime || item.startTime || "09:00";
   const arrive = item.arrive || item.arriveTime || item.endTime || addMinutesToTime(depart, Number(item.duration || 120));
   const duration = Number(item.duration || Math.max(30, (timeToMinutes(arrive) ?? 0) - (timeToMinutes(depart) ?? 0)) || 120);
+  const stops = Number(item.stops ?? item.stopCount ?? 0);
   return {
     id: item.id || `provider-${Date.now()}-${index}`,
     type,
@@ -1349,7 +1453,9 @@ function normalizeTransportItem(item, index, fallbackRoute) {
     arrive,
     duration,
     price: Number(item.price || item.amount || item.lowestPrice || 0),
-    source: item.source || "携程",
+    source: item.source || "外部接口",
+    carrier: item.carrier || item.airline || "",
+    stops: Number.isFinite(stops) ? Math.max(0, stops) : 0,
   };
 }
 
@@ -1380,19 +1486,245 @@ function currentManualQuotes(day) {
   return manualTransportQuotes().filter((item) => item.date === day?.date || (!item.date && item.dayId === day?.id));
 }
 
-function parseExternalOrderText(text) {
-  const source = String(text || "");
-  const amountMatch = source.match(/(?:¥|￥|金额|房费|总价|合计|支付)[^\d]{0,6}(\d+(?:\.\d+)?)/);
-  const timeMatch = source.match(/(?:\b|[^0-9])([01]?\d|2[0-3])[:：]([0-5]\d)(?:\b|[^0-9])/);
-  const dateTimeMatch = source.match(/(\d{1,2})月(\d{1,2})日[^0-9]{0,8}([01]?\d|2[0-3])[:：]([0-5]\d)/);
-  const addressMatch = source.match(/(?:地址|地点|位置|入住地址|到店地址)[:：\s]*(.+?)(?:\n|$)/);
-  const titleMatch = source.match(/(?:商户|酒店|民宿|餐厅|名称|订单)[:：\s]*(.+?)(?:\n|$)/);
-  return {
-    title: titleMatch?.[1]?.trim(),
-    time: dateTimeMatch ? `${dateTimeMatch[3].padStart(2, "0")}:${dateTimeMatch[4]}` : timeMatch ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}` : "",
-    budget: amountMatch ? Math.round(Number(amountMatch[1])) : 0,
-    address: addressMatch?.[1]?.trim(),
+function normalizeImportCategory(value, provider = "") {
+  const text = `${value || ""} ${provider || ""}`;
+  if (/住宿|酒店|民宿|入住|离店|房型/.test(text)) return "住宿";
+  if (/交通|航班|机票|动车|高铁|火车|车次|机场|车站/.test(text)) return "交通";
+  if (/景点|门票|入园|预约|景区/.test(text)) return "景点";
+  if (/餐饮|餐厅|美团|点评|团购|套餐|到店|排队/.test(text)) return "餐饮";
+  return ["住宿", "餐饮", "交通", "景点", "其他"].includes(value) ? value : "其他";
+}
+
+function providerDefaults(provider = "") {
+  const category = normalizeImportCategory("", provider);
+  const defaults = {
+    住宿: { title: "住宿入住", time: "15:00", image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80" },
+    餐饮: { title: "餐厅预约", time: "18:30", image: images.food },
+    交通: { title: "交通订单", time: "09:00", image: images.train },
+    景点: { title: "景点预约", time: "10:00", image: images.museum },
+    其他: { title: "外部记录", time: "10:00", image: images.city },
   };
+  return { category, ...defaults[category] };
+}
+
+function dayIndexByDate(dateValue) {
+  if (!dateValue) return activeDay;
+  const index = state.days.findIndex((day) => day.date === dateValue);
+  return index >= 0 ? index : activeDay;
+}
+
+function importDateOptionsText(dateValue) {
+  const exactIndex = dateValue ? state.days.findIndex((day) => day.date === dateValue) : -1;
+  const index = exactIndex >= 0 ? exactIndex : activeDay;
+  const day = state.days[index];
+  const label = day?.date ? `${day.label} · ${formatDisplayDate(day.date)}` : currentDay()?.label || "当前天";
+  return dateValue && exactIndex < 0 ? `未匹配计划日期，将导入 ${label}` : label;
+}
+
+function parseMultiOrigins(value) {
+  return String(value || "")
+    .split(/[\n;；,，]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .map((entry, index) => {
+      const parts = entry.split(/[:：]/);
+      if (parts.length > 1) {
+        return { name: parts[0].trim() || `成员${index + 1}`, from: parts.slice(1).join(":").trim() };
+      }
+      return { name: `成员${index + 1}`, from: entry };
+    })
+    .filter((item) => item.from);
+}
+
+function transportDurationText(minutes) {
+  const duration = Number(minutes || 0);
+  if (!duration) return "时长待确认";
+  return `约${Math.floor(duration / 60)}小时${duration % 60}分`;
+}
+
+function bestFlightOption(items) {
+  const flights = items
+    .filter((item) => item.type === "flight")
+    .filter((item) => Number(item.price) > 0)
+    .sort((a, b) => {
+      const priceGap = Number(a.price) - Number(b.price);
+      if (priceGap) return priceGap;
+      const stopsGap = Number(a.stops || 0) - Number(b.stops || 0);
+      if (stopsGap) return stopsGap;
+      return Number(a.duration || 0) - Number(b.duration || 0);
+    });
+  return flights[0] || items.filter((item) => item.type === "flight")[0] || null;
+}
+
+function compareScore(option) {
+  if (!option) return Number.POSITIVE_INFINITY;
+  return Number(option.price || 99999) + Number(option.duration || 0) * 1.6 + Number(option.stops || 0) * 180;
+}
+
+function renderMultiOriginResults() {
+  if (!multiOriginComparisons.length) {
+    dom.multiOriginResults.innerHTML = "";
+    return;
+  }
+  const successful = multiOriginComparisons.filter((item) => item.best);
+  const total = successful.reduce((sum, item) => sum + Number(item.best.price || 0), 0);
+  const average = successful.length ? Math.round(total / successful.length) : 0;
+  const bestScore = successful.length ? Math.min(...successful.map((item) => compareScore(item.best))) : Number.POSITIVE_INFINITY;
+  const earliestArrive = successful
+    .map((item) => item.best.arrive)
+    .filter(Boolean)
+    .sort()[0];
+  const latestArrive = successful
+    .map((item) => item.best.arrive)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  dom.multiOriginResults.innerHTML = `
+    <div class="multi-origin-summary">
+      <strong>${successful.length}/${multiOriginComparisons.length} 人已匹配航班</strong>
+      <span>合计最低预算 ${money(total)} · 人均 ${money(average)}${earliestArrive ? ` · 抵达 ${earliestArrive}${latestArrive && latestArrive !== earliestArrive ? `-${latestArrive}` : ""}` : ""}</span>
+    </div>
+    ${multiOriginComparisons
+      .map((item) => {
+        if (item.loading) {
+          return `
+            <article class="multi-origin-item is-loading">
+              <strong>${escapeHtml(item.name)} · ${escapeHtml(item.from)}</strong>
+              <span>正在查询 ${escapeHtml(item.from)} → ${escapeHtml(item.to)} 的航班报价...</span>
+            </article>
+          `;
+        }
+        if (!item.best) {
+          return `
+            <article class="multi-origin-item is-empty">
+              <strong>${escapeHtml(item.name)} · ${escapeHtml(item.from)}</strong>
+              <span>${escapeHtml(item.error || "没有匹配航班，可调整机场码或日期。")}</span>
+            </article>
+          `;
+        }
+        const score = compareScore(item.best);
+        const tag = score === bestScore ? "推荐" : score <= bestScore * 1.25 ? "备选" : "成本偏高";
+        const carrier = item.best.carrier ? ` · ${escapeHtml(item.best.carrier)}` : "";
+        return `
+          <article class="multi-origin-item">
+            <div>
+              <strong>${escapeHtml(item.name)} · ${escapeHtml(item.from)} → ${escapeHtml(item.to)}</strong>
+              <span>${escapeHtml(item.best.code)} · ${escapeHtml(item.best.depart)} - ${escapeHtml(item.best.arrive)} · ${transportDurationText(item.best.duration)} · ${item.best.stops || 0}次经停${carrier}</span>
+            </div>
+            <em>${money(item.best.price)}</em>
+            <b>${tag}</b>
+          </article>
+        `;
+      })
+      .join("")}
+  `;
+}
+
+function parseExternalOrderText(text, provider = pendingProvider) {
+  const source = String(text || "");
+  const currentYear = new Date().getFullYear();
+  const amountMatch = source.match(/(?:¥|￥|金额|房费|总价|合计|实付|支付|付款)[^\d]{0,8}(\d+(?:\.\d+)?)/);
+  const timeMatch = source.match(/(?:\b|[^0-9])([01]?\d|2[0-3])[:：]([0-5]\d)(?:\b|[^0-9])/);
+  const fullDateMatch = source.match(/(20\d{2})[年/\-.](\d{1,2})[月/\-.](\d{1,2})日?/);
+  const dateMatch = source.match(/(\d{1,2})月(\d{1,2})日/);
+  const dateTimeMatch = source.match(/(\d{1,2})月(\d{1,2})日[^0-9]{0,8}([01]?\d|2[0-3])[:：]([0-5]\d)/);
+  const addressMatch = source.match(/(?:地址|地点|位置|入住地址|到店地址|集合点)[:：\s]*(.+?)(?:\n|$)/);
+  const titleMatch = source.match(/(?:商户|酒店|民宿|餐厅|名称|订单|项目|景点)[:：\s]*(.+?)(?:\n|$)/);
+  const orderMatch = source.match(/(?:订单号|订单编号|券码|确认号|预订号)[:：\s]*([A-Za-z0-9-]{5,})/);
+  const urlMatch = source.match(/https?:\/\/[^\s]+/);
+  const category = normalizeImportCategory(source, provider);
+  const defaults = providerDefaults(provider || category);
+  const date = fullDateMatch
+    ? `${fullDateMatch[1]}-${fullDateMatch[2].padStart(2, "0")}-${fullDateMatch[3].padStart(2, "0")}`
+    : dateMatch
+    ? `${currentYear}-${dateMatch[1].padStart(2, "0")}-${dateMatch[2].padStart(2, "0")}`
+    : "";
+  const budget = amountMatch ? Math.round(Number(amountMatch[1])) : 0;
+  return {
+    provider,
+    category,
+    title: titleMatch?.[1]?.trim() || defaults.title,
+    date,
+    time: dateTimeMatch ? `${dateTimeMatch[3].padStart(2, "0")}:${dateTimeMatch[4]}` : timeMatch ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}` : "",
+    budget,
+    paid: budget,
+    address: addressMatch?.[1]?.trim(),
+    orderNo: orderMatch?.[1] || "",
+    sourceUrl: urlMatch?.[0] || "",
+    note: source.slice(0, 900),
+    confidence: 0.45,
+    warnings: ["本地规则解析结果，请核对后导入。"],
+  };
+}
+
+function applyParsedImport(parsed = {}, source = "本地解析") {
+  const category = normalizeImportCategory(parsed.category, pendingProvider);
+  const defaults = providerDefaults(category);
+  dom.importCategory.value = category;
+  if (parsed.date) dom.importDate.value = parsed.date;
+  if (parsed.title) dom.importName.value = parsed.title;
+  else if (!dom.importName.value) dom.importName.value = defaults.title;
+  if (parsed.time) dom.importTime.value = parsed.time;
+  if (Number(parsed.amount ?? parsed.budget)) dom.importBudget.value = Math.round(Number(parsed.amount ?? parsed.budget));
+  if (Number(parsed.paid ?? parsed.amount ?? parsed.budget)) dom.importPaid.value = Math.round(Number(parsed.paid ?? parsed.amount ?? parsed.budget));
+  if (parsed.payer) dom.importPayer.value = parsed.payer;
+  if (parsed.address) dom.importAddress.value = parsed.address;
+  if (parsed.orderNo) dom.importOrderNo.value = parsed.orderNo;
+  if (parsed.sourceUrl) dom.importSourceUrl.value = parsed.sourceUrl;
+  lastParsedImport = { ...parsed, category, source };
+  renderImportPreview(lastParsedImport);
+}
+
+function renderImportPreview(parsed) {
+  if (!dom.importPreview) return;
+  if (!parsed) {
+    dom.importPreview.hidden = true;
+    dom.importPreview.innerHTML = "";
+    return;
+  }
+  const confidence = Math.round(Number(parsed.confidence || 0) * 100);
+  const warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
+  dom.importPreview.hidden = false;
+  dom.importPreview.innerHTML = `
+    <div class="import-preview-head">
+      <strong>${escapeHtml(parsed.source || "解析结果")}</strong>
+      <span>${confidence ? `可信度 ${confidence}%` : "请人工核对"}</span>
+    </div>
+    <dl>
+      <div><dt>类别</dt><dd>${escapeHtml(parsed.category || dom.importCategory.value || "其他")}</dd></div>
+      <div><dt>日期</dt><dd>${escapeHtml(parsed.date || dom.importDate.value || "按当前天")}</dd></div>
+      <div><dt>名称</dt><dd>${escapeHtml(parsed.title || dom.importName.value || "外部记录")}</dd></div>
+      <div><dt>金额</dt><dd>${money(parsed.amount ?? parsed.budget ?? dom.importBudget.value)}</dd></div>
+      <div><dt>地址</dt><dd>${escapeHtml(parsed.address || dom.importAddress.value || "待确认")}</dd></div>
+      <div><dt>导入到</dt><dd>${escapeHtml(importDateOptionsText(parsed.date || dom.importDate.value))}</dd></div>
+    </dl>
+    ${warnings.length ? `<ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
+  `;
+}
+
+async function requestExternalOrderParse() {
+  const text = dom.importNote.value.trim();
+  if (!text) throw new Error("请先粘贴订单短信、邮件、分享文本或截图识别出的文字。");
+  if (!externalImportConfig.endpoint) {
+    return { source: "本地规则", parsed: parseExternalOrderText(text, pendingProvider) };
+  }
+  const response = await fetchWithTimeout(externalImportConfig.endpoint, {
+    method: "POST",
+    headers: serviceHeaders(externalImportConfig.token, externalImportConfig.endpoint),
+    body: JSON.stringify({
+      provider: pendingProvider,
+      destination: state.destination || "",
+      tripStartDate: state.startDate || "",
+      tripEndDate: state.endDate || "",
+      text,
+    }),
+  }, EXTERNAL_IMPORT_TIMEOUT_MS);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.message || data.error || `HTTP ${response.status}`);
+  }
+  return { source: data.source || "AI 解析", parsed: data.parsed || data };
 }
 
 function matchesTransportFilter(option) {
@@ -1496,27 +1828,31 @@ function ctripHeaders() {
   return headers;
 }
 
+async function fetchTransportQuotes(payload) {
+  const response = await fetch(ctripConfig.endpoint, {
+    method: "POST",
+    headers: ctripHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `HTTP ${response.status}`);
+  }
+  return data;
+}
+
 async function requestCtripTransport({ testOnly = false } = {}) {
   saveCtripConfig();
   if (!ctripConfig.endpoint) {
-    setCtripStatus("请先填写你的后端代理接口地址。这个地址由你控制，负责安全保存携程密钥并调用官方 API。", "alert-circle");
+    setCtripStatus("请先填写后端代理接口地址。SearchApi API Key 只应保存在后端环境变量里。", "alert-circle");
     return null;
   }
   const payload = { ...getCtripPayload(), testOnly };
-  setCtripStatus(testOnly ? "正在测试后端代理连接..." : "正在通过后端代理同步携程交通报价...", "loader");
+  setCtripStatus(testOnly ? "正在测试 Google Flights 航班代理连接..." : "正在通过 Google Flights 同步当天航班报价...", "loader");
   try {
-    const response = await fetch(ctripConfig.endpoint, {
-      method: "POST",
-      headers: ctripHeaders(),
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.message || data.error || `HTTP ${response.status}`);
-    }
-    return data;
+    return await fetchTransportQuotes(payload);
   } catch (error) {
-    setCtripStatus(`连接失败：${error.message}。如果接口在本地，请先部署为 HTTPS 后端或 Supabase Edge Function，公开页面无法直接访问你的本机服务。`, "alert-triangle");
+    setCtripStatus(`连接失败：${error.message}。请确认 Google Flights / SearchApi 代理函数已经部署到 Supabase，且函数允许当前网页跨域访问；如果接口在本地，公开页面无法直接访问你的本机服务。`, "alert-triangle");
     return null;
   }
 }
@@ -1524,19 +1860,23 @@ async function requestCtripTransport({ testOnly = false } = {}) {
 async function testCtripConnection() {
   const data = await requestCtripTransport({ testOnly: true });
   if (!data) return;
-  setCtripStatus(data.message || "连接成功。现在可以点击“同步当天交通”拉取报价。", "check-circle-2");
-  dom.syncBadge.textContent = "接口可用";
+  setCtripStatus(data.message || "连接成功。现在可以点击“同步当天航班”拉取报价。", data.ok === false ? "alert-circle" : "check-circle-2");
+  dom.syncBadge.textContent = data.ok === false ? "待配置密钥" : "接口可用";
 }
 
 async function syncCtripTransport() {
   if (!requireEdit("同步交通报价")) return;
+  if (dom.transportType.value === "train") {
+    setCtripStatus("当前个人接口只提供航班报价。动车/高铁请用 12306 查询后手动保存报价，或以后接入有授权的火车票 API。", "train-front");
+    return;
+  }
   const data = await requestCtripTransport();
   if (!data) return;
   const route = defaultTransportRoute(currentDay());
   const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
   if (!rawItems.length) {
     transportProviderItems = [];
-    setCtripStatus("后端已响应，但没有返回班次。请检查日期、城市、时间段，或确认你的携程 API 权限是否包含机票/火车票报价。", "alert-circle");
+    setCtripStatus(data.message || "Google Flights 已响应，但没有返回匹配航班。请检查日期、城市/机场三字码和时间段。", "alert-circle");
     renderTransport();
     return;
   }
@@ -1544,11 +1884,85 @@ async function syncCtripTransport() {
   transportProviderSource = data.source || "";
   transportFilterApplied = true;
   const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
-  setCtripStatus(isDemoProxy ? `后端代理已连通，返回 ${transportProviderItems.length} 条示例交通数据。配置 Trip.com/Ctrip 正式 API 后会显示真实报价。` : `已同步 ${transportProviderItems.length} 条真实交通报价，并更新当前交通列表。`, isDemoProxy ? "info" : "check-circle-2");
-  dom.syncBadge.textContent = isDemoProxy ? "代理示例" : "真实报价";
-  logActivity(`同步携程交通报价 ${transportProviderItems.length} 条`);
-  saveState("已同步携程报价");
+  setCtripStatus(isDemoProxy ? `后端代理已连通，返回 ${transportProviderItems.length} 条示例交通数据。` : `已同步 ${transportProviderItems.length} 条 Google Flights 航班报价，并更新当前交通列表。`, isDemoProxy ? "info" : "check-circle-2");
+  dom.syncBadge.textContent = isDemoProxy ? "代理示例" : "Google Flights";
+  logActivity(`同步 Google Flights 航班报价 ${transportProviderItems.length} 条`);
+  saveState("已同步 Google Flights 报价");
   render();
+}
+
+async function compareMultiOrigins() {
+  saveCtripConfig();
+  if (!ctripConfig.endpoint) {
+    setCtripStatus("请先保存 Google Flights / SearchApi 后端代理接口地址，再比较多人出发地。", "alert-circle");
+    return;
+  }
+  if (dom.transportType.value === "train") {
+    setCtripStatus("多人出发地比较目前使用 Google Flights 航班数据。动车/高铁仍需要 12306 查询后手动保存。", "train-front");
+    return;
+  }
+  const origins = parseMultiOrigins(dom.multiOriginInput.value);
+  if (!origins.length) {
+    dom.multiOriginInput.focus();
+    setCtripStatus("请先填写多人出发地，例如：林: SHA; 王: PEK; 周: CAN。", "alert-circle");
+    return;
+  }
+  const day = currentDay();
+  const route = defaultTransportRoute(day);
+  const to = dom.transportTo.value.trim() || route.to;
+  if (!to) {
+    dom.transportTo.focus();
+    setCtripStatus("请先填写共同到达地，例如：兰州 LHW。", "alert-circle");
+    return;
+  }
+  const payloadBase = {
+    tripId,
+    date: day?.date || "",
+    to,
+    type: "flight",
+    startTime: dom.transportStartTime.value || "",
+    endTime: dom.transportEndTime.value || "",
+  };
+  multiOriginComparisons = origins.map((origin) => ({ ...origin, to, loading: true }));
+  renderMultiOriginResults();
+  refreshIcons();
+  dom.compareOriginsBtn.disabled = true;
+  setCtripStatus(`正在比较 ${origins.length} 个出发地；每个出发地会消耗 1 次航班查询。`, "loader");
+  const results = [];
+  for (const [index, origin] of origins.entries()) {
+    try {
+      setCtripStatus(`正在查询 ${origin.name}：${origin.from} → ${to}（${index + 1}/${origins.length}）`, "loader");
+      const data = await fetchTransportQuotes({ ...payloadBase, from: origin.from });
+      const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
+      const items = rawItems.map((item, itemIndex) => normalizeTransportItem(item, itemIndex, { from: origin.from, to }));
+      results.push({
+        ...origin,
+        to,
+        items,
+        best: bestFlightOption(items),
+        source: data.source || "",
+        count: items.length,
+      });
+    } catch (error) {
+      results.push({
+        ...origin,
+        to,
+        items: [],
+        best: null,
+        count: 0,
+        error: error.message,
+      });
+    }
+    multiOriginComparisons = [...results, ...origins.slice(index + 1).map((pending) => ({ ...pending, to, loading: true }))];
+    renderMultiOriginResults();
+  }
+  multiOriginComparisons = results.sort((a, b) => compareScore(a.best) - compareScore(b.best));
+  renderMultiOriginResults();
+  refreshIcons();
+  const matched = results.filter((item) => item.best).length;
+  const total = results.reduce((sum, item) => sum + Number(item.best?.price || 0), 0);
+  setCtripStatus(`已完成多人出发地比较：${matched}/${results.length} 人匹配到航班，最低合计 ${money(total)}。`, matched ? "check-circle-2" : "alert-circle");
+  dom.compareOriginsBtn.disabled = false;
 }
 
 function totalBudget() {
@@ -1647,8 +2061,8 @@ function renderDaySummary() {
   ]
     .map(([name, text]) => `<span class="status-pill">${icon(name)}${text}</span>`)
     .join("");
-  dom.routeDistance.textContent = `${Math.max(1, day.stops.length * 3.4).toFixed(1)} km`;
-  dom.routeDuration.textContent = `${Math.max(25, day.stops.length * 22)} min`;
+  dom.routeDistance.textContent = day.amapRoute?.distance ? formatDistanceText(day.amapRoute.distance) : `${Math.max(1, day.stops.length * 3.4).toFixed(1)} km`;
+  dom.routeDuration.textContent = day.amapRoute?.duration ? formatDurationText(day.amapRoute.duration) : `${Math.max(25, day.stops.length * 22)} min`;
 }
 
 function renderTimeline() {
@@ -1774,6 +2188,7 @@ function render() {
   renderCandidates();
   renderActivities();
   renderGuideResult();
+  renderAmapRouteReport(currentDay()?.amapRoute || null);
   renderMembers();
   renderVersionHistory();
   applyReadonlyUi();
@@ -1787,6 +2202,11 @@ function mutate(label, action) {
   logActivity(label);
   saveState(label);
   render();
+}
+
+function clearCurrentAmapRoute() {
+  const day = currentDay();
+  if (day) day.amapRoute = null;
 }
 
 dom.dayList.addEventListener("click", (event) => {
@@ -1831,6 +2251,7 @@ dom.stopForm.addEventListener("submit", (event) => {
     stop.image = dom.fieldImage.value.trim() || stop.image || images.city;
     stop.tags = normalizeTags(dom.fieldTags.value);
     stop.note = dom.fieldNote.value.trim();
+    clearCurrentAmapRoute();
   });
 });
 
@@ -1849,6 +2270,7 @@ dom.addStopBtn.addEventListener("click", () => {
       }),
     );
     activeStop = day.stops.length - 1;
+    clearCurrentAmapRoute();
   });
 });
 
@@ -1857,6 +2279,7 @@ dom.quickAddForm.addEventListener("submit", (event) => {
   const name = dom.quickPlaceName.value.trim();
   if (!name) return;
   const keyword = dom.quickAmapKeyword.value.trim() || `${state.destination || ""} ${name}`.trim();
+  const locatedPlace = quickAmapPlace && (quickAmapPlace.keyword === keyword || quickAmapPlace.title === name) ? quickAmapPlace : null;
   mutate(`加入景点「${name}」`, () => {
     const day = currentDay();
     day.stops.push(
@@ -1864,22 +2287,26 @@ dom.quickAddForm.addEventListener("submit", (event) => {
         time: dom.quickTime.value.trim() || "10:00",
         title: name,
         type: "Scenic",
-        address: dom.quickAddress.value.trim() || keyword,
+        address: dom.quickAddress.value.trim() || locatedPlace?.address || keyword,
         note: `从快速录入加入。高德关键词：${keyword}`,
         tags: ["自定义", "待优化"],
         budget: Number(dom.quickBudget.value || 0),
         amapKeyword: keyword,
+        lng: locatedPlace?.lng || "",
+        lat: locatedPlace?.lat || "",
         x: 30 + ((day.stops.length * 17) % 52),
         y: 28 + ((day.stops.length * 13) % 42),
         image: state.cover || images.city,
       }),
     );
     activeStop = day.stops.length - 1;
+    clearCurrentAmapRoute();
     dom.quickPlaceName.value = "";
     dom.quickAmapKeyword.value = "";
     dom.quickTime.value = "";
     dom.quickBudget.value = "";
     dom.quickAddress.value = "";
+    quickAmapPlace = null;
   });
 });
 
@@ -1898,6 +2325,7 @@ dom.openAmapBtn.addEventListener("click", async () => {
   try {
     const place = await lookupAmapPlace(keyword);
     if (place?.address) dom.quickAddress.value = place.address;
+    quickAmapPlace = place ? { ...place, keyword } : null;
     dom.optimizeHint.textContent = place?.lng && place?.lat ? `高德代理已定位：${place.address || keyword}（${place.lng}, ${place.lat}）。加入后可在右侧保存坐标。` : `高德代理已响应，但没有返回经纬度；已保留搜索链接。`;
   } catch (error) {
     dom.optimizeHint.textContent = `高德代理调用失败：${error.message}。已保留高德搜索链接。`;
@@ -1924,6 +2352,53 @@ dom.amapLookupBtn.addEventListener("click", async () => {
   }
 });
 
+dom.amapRouteBtn.addEventListener("click", async () => {
+  if (!requireEdit("高德规划路线")) return;
+  const day = currentDay();
+  if (day.stops.length < 2) {
+    dom.optimizeHint.textContent = "至少需要 2 个地点才能用高德规划路线。";
+    return;
+  }
+  saveVersionSnapshot("高德规划路线前版本");
+  dom.amapRouteBtn.disabled = true;
+  dom.optimizeHint.textContent = "正在请求高德路线规划...";
+  try {
+    const result = await requestAmapRoute(day, dom.amapRouteMode.value);
+    const resolvedStops = Array.isArray(result.stops) ? result.stops : [];
+    resolvedStops.forEach((resolved) => {
+      const stop = day.stops[Number(resolved.index)];
+      if (!stop) return;
+      if (resolved.address && !stop.address) stop.address = resolved.address;
+      if (resolved.lng) stop.lng = String(resolved.lng);
+      if (resolved.lat) stop.lat = String(resolved.lat);
+      if (resolved.amapKeyword && !stop.amapKeyword) stop.amapKeyword = resolved.amapKeyword;
+    });
+    day.amapRoute = {
+      source: result.source || "高德路线规划",
+      mode: result.mode || dom.amapRouteMode.value,
+      distance: Number(result.distance || 0),
+      duration: Number(result.duration || 0),
+      legs: Array.isArray(result.legs) ? result.legs : [],
+      warnings: Array.isArray(result.warnings) ? result.warnings : [],
+      updatedAt: new Date().toISOString(),
+    };
+    logActivity("高德规划当天路线");
+    saveState("已用高德规划路线");
+    render();
+    dom.optimizeHint.textContent = `高德已规划 ${day.amapRoute.legs.length} 段路线：${formatDistanceText(day.amapRoute.distance)} · ${formatDurationText(day.amapRoute.duration)}。`;
+  } catch (error) {
+    dom.optimizeHint.textContent = `高德路线规划失败：${error.message}`;
+    renderAmapRouteReport({
+      source: "高德路线规划失败",
+      mode: dom.amapRouteMode.value,
+      warnings: [error.message, "请检查 Supabase 函数是否部署、AMAP_WEB_SERVICE_KEY 是否配置，以及地点是否能搜索到坐标。"],
+    });
+  } finally {
+    dom.amapRouteBtn.disabled = false;
+    refreshIcons();
+  }
+});
+
 dom.deleteStopBtn.addEventListener("click", () => {
   const day = currentDay();
   if (day.stops.length <= 1) {
@@ -1934,6 +2409,7 @@ dom.deleteStopBtn.addEventListener("click", () => {
   mutate(`删除「${title}」`, () => {
     day.stops.splice(activeStop, 1);
     activeStop = Math.max(0, activeStop - 1);
+    clearCurrentAmapRoute();
   });
 });
 
@@ -1943,6 +2419,7 @@ dom.moveUpBtn.addEventListener("click", () => {
     const stops = currentDay().stops;
     [stops[activeStop - 1], stops[activeStop]] = [stops[activeStop], stops[activeStop - 1]];
     activeStop -= 1;
+    clearCurrentAmapRoute();
   });
 });
 
@@ -1952,6 +2429,7 @@ dom.moveDownBtn.addEventListener("click", () => {
   mutate("下移地点", () => {
     [stops[activeStop + 1], stops[activeStop]] = [stops[activeStop], stops[activeStop + 1]];
     activeStop += 1;
+    clearCurrentAmapRoute();
   });
 });
 
@@ -1977,14 +2455,117 @@ function localOptimizeStops(stops) {
   return optimized;
 }
 
+function renderAiRouteReport(result, day, optimizedStops) {
+  if (!dom.aiRouteReport) return;
+  if (!result && !optimizedStops?.length) {
+    dom.aiRouteReport.hidden = true;
+    dom.aiRouteReport.innerHTML = "";
+    return;
+  }
+  const sourceLabel = result?.fallback ? "本地兜底" : result?.source || (serviceConfig.aiEndpoint ? "AI 代理" : "本地距离排序");
+  const note = result?.note || "已应用新的地点顺序。";
+  const reason = result?.reason || (result?.fallback ? "模型密钥未配置或调用失败，已按地点坐标和地图位置做最近邻排序。" : "");
+  const segments = Array.isArray(result?.segments) ? result.segments.slice(0, 6) : [];
+  const warnings = Array.isArray(result?.warnings) ? result.warnings.slice(0, 4) : [];
+  const order = (optimizedStops || day.stops || []).map((stop, index) => `${index + 1}. ${escapeHtml(stop.title)}`).join(" → ");
+  dom.aiRouteReport.hidden = false;
+  dom.aiRouteReport.innerHTML = `
+    <div class="ai-route-report-head">
+      <strong>${escapeHtml(sourceLabel)}</strong>
+      <span>${escapeHtml(day.date ? formatDisplayDate(day.date) : day.label || "当天")}</span>
+    </div>
+    <p>${escapeHtml(note)}</p>
+    ${reason ? `<p>${escapeHtml(reason)}</p>` : ""}
+    <div class="ai-route-order">${order}</div>
+    ${
+      segments.length
+        ? `<div class="ai-route-segments">
+            ${segments
+              .map(
+                (segment) => `
+                  <span>${escapeHtml(segment.from || "")} → ${escapeHtml(segment.to || "")}${segment.transport ? ` · ${escapeHtml(segment.transport)}` : ""}${segment.minutes ? ` · 约${Number(segment.minutes)}分钟` : ""}${segment.note ? ` · ${escapeHtml(segment.note)}` : ""}</span>
+                `,
+              )
+              .join("")}
+          </div>`
+        : ""
+    }
+    ${
+      warnings.length
+        ? `<ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
+        : ""
+    }
+  `;
+}
+
+function renderAmapRouteReport(result) {
+  if (!dom.amapRouteReport) return;
+  if (!result) {
+    dom.amapRouteReport.hidden = true;
+    dom.amapRouteReport.innerHTML = "";
+    return;
+  }
+  const legs = Array.isArray(result.legs) ? result.legs : [];
+  const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+  const modeText = {
+    walking: "步行",
+    driving: "驾车",
+    transit: "公交/地铁",
+  }[result.mode] || "路线";
+  dom.amapRouteReport.hidden = false;
+  dom.amapRouteReport.innerHTML = `
+    <div class="amap-route-summary">
+      <strong>${escapeHtml(result.source || "高德路线规划")}</strong>
+      <span>${escapeHtml(modeText)} · ${formatDistanceText(result.distance)} · ${formatDurationText(result.duration)}</span>
+    </div>
+    ${
+      legs.length
+        ? `<div class="amap-route-legs">
+            ${legs
+              .map(
+                (leg, index) => `
+                  <div class="amap-route-leg">
+                    <strong>${index + 1}. ${escapeHtml(leg.from || "")} → ${escapeHtml(leg.to || "")}</strong>
+                    <span>${formatDistanceText(leg.distance)} · ${formatDurationText(leg.duration)}${leg.cost ? ` · 约${money(leg.cost)}` : ""}</span>
+                    ${leg.instruction ? `<span>${escapeHtml(leg.instruction)}</span>` : ""}
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>`
+        : `<p>高德已响应，但没有返回可展示的分段路线。</p>`
+    }
+    ${warnings.length ? `<p>${warnings.map((warning) => escapeHtml(warning)).join("；")}</p>` : ""}
+  `;
+}
+
+function formatDistanceText(value) {
+  const meters = Number(value || 0);
+  if (!meters) return "距离待确认";
+  return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
+}
+
+function formatDurationText(value) {
+  const seconds = Number(value || 0);
+  if (!seconds) return "时长待确认";
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
 async function requestAiRoute(day) {
   if (!serviceConfig.aiEndpoint) return null;
   const response = await fetch(serviceConfig.aiEndpoint, {
     method: "POST",
-    headers: serviceHeaders(serviceConfig.aiToken),
+    headers: serviceHeaders(serviceConfig.aiToken, serviceConfig.aiEndpoint),
     body: JSON.stringify({
       tripId,
       day: day.date || day.label,
+      date: day.date || "",
+      dayTitle: day.title || "",
+      pace: guideState.pace,
+      budgetLimit: state.budgetLimit || 0,
+      weather: day.weather || "",
       destination: state.destination,
       origin: state.origin,
       stops: day.stops.map((stop, index) => ({
@@ -1992,17 +2573,39 @@ async function requestAiRoute(day) {
         id: stop.id,
         title: stop.title,
         time: stop.time,
+        type: stop.type,
         address: stop.address,
+        note: stop.note,
         lng: stop.lng,
         lat: stop.lat,
+        budget: stop.budget || 0,
+        weather: day.weather || "",
         tags: stop.tags || [],
       })),
     }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+  if (!response.ok) {
+    if (Array.isArray(data.fallbackOrder) && data.fallbackOrder.length) {
+      return {
+        order: data.fallbackOrder,
+        note: data.note || data.error || "AI 未配置，已使用后端本地兜底顺序。",
+        reason: data.error || "",
+        source: data.source || "AI 代理兜底",
+        fallback: true,
+      };
+    }
+    throw new Error(data.message || data.error || `HTTP ${response.status}`);
+  }
   const order = Array.isArray(data.order) ? data.order : Array.isArray(data.stopIds) ? data.stopIds : [];
-  return { order, note: data.note || data.reason || "AI 已返回优化顺序" };
+  return {
+    order,
+    note: data.note || data.reason || "AI 已返回优化顺序",
+    reason: data.reason || "",
+    segments: Array.isArray(data.segments) ? data.segments : [],
+    warnings: Array.isArray(data.warnings) ? data.warnings : [],
+    source: data.source || "AI 代理",
+  };
 }
 
 async function optimizeCurrentDayRoute() {
@@ -2016,6 +2619,7 @@ async function optimizeCurrentDayRoute() {
   saveVersionSnapshot("优化路径前版本");
   try {
     dom.optimizeHint.textContent = serviceConfig.aiEndpoint ? "正在请求 AI 路径代理..." : "未配置 AI 代理，使用本地距离排序。";
+    renderAiRouteReport(null);
     const aiResult = await requestAiRoute(day);
     let optimized = null;
     if (aiResult?.order?.length) {
@@ -2027,18 +2631,48 @@ async function optimizeCurrentDayRoute() {
       const pickedIds = new Set(picked.map((stop) => stop.id));
       optimized = [...picked, ...day.stops.filter((stop) => !pickedIds.has(stop.id))];
     }
-    if (!optimized) optimized = localOptimizeStops(day.stops);
+    let routeResult = aiResult;
+    if (!optimized) {
+      optimized = localOptimizeStops(day.stops);
+      routeResult = routeResult || {
+        fallback: true,
+        source: "本地距离排序",
+        note: "未配置 AI 代理，已按地点坐标/地图位置做最近邻排序。",
+        reason: "本地兜底只考虑坐标距离，不会判断营业时间、排队、实时交通和天气。",
+        warnings: ["本地兜底结果适合作为初稿，建议人工核对交通和开放时间。"],
+      };
+    }
     day.stops = optimized.map((stop, index) => ({
       ...stop,
-      tags: Array.from(new Set([...(stop.tags || []).filter((tag) => !["待优化", "已优化", "AI优化"].includes(tag)), index === 0 ? "起点" : serviceConfig.aiEndpoint ? "AI优化" : "已优化"])),
+      tags: Array.from(
+        new Set([
+          ...(stop.tags || []).filter((tag) => !["待优化", "已优化", "AI优化", "兜底优化"].includes(tag)),
+          index === 0 ? "起点" : routeResult?.fallback ? "兜底优化" : serviceConfig.aiEndpoint ? "AI优化" : "已优化",
+        ]),
+      ),
     }));
+    day.amapRoute = null;
     activeStop = 0;
     logActivity(serviceConfig.aiEndpoint ? "AI 优化当天路径" : "本地优化当天路径");
     saveState(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
-    dom.optimizeHint.textContent = serviceConfig.aiEndpoint ? `AI 已优化 ${day.stops.length} 个地点：${aiResult?.note || "已应用返回顺序"}` : `已按 ${day.stops.length} 个地点的坐标/地图位置做本地距离排序；配置 AI 代理后可考虑营业时间、交通方式、天气和体力。`;
+    dom.optimizeHint.textContent = serviceConfig.aiEndpoint
+      ? `${routeResult?.fallback ? "AI 代理未配置，已兜底优化" : "AI 已优化"} ${day.stops.length} 个地点：${routeResult?.note || "已应用返回顺序"}`
+      : `已按 ${day.stops.length} 个地点的坐标/地图位置做本地距离排序；配置 AI 代理后可考虑营业时间、交通方式、天气和体力。`;
+    renderAiRouteReport(routeResult, day, day.stops);
     render();
   } catch (error) {
     dom.optimizeHint.textContent = `AI 代理调用失败：${error.message}。已保留原顺序，可检查后端地址或令牌。`;
+    renderAiRouteReport(
+      {
+        fallback: true,
+        source: "调用失败",
+        note: "AI 代理调用失败，未改动当前顺序。",
+        reason: error.message,
+        warnings: ["请检查 Supabase 函数是否部署、OPENAI_API_KEY 是否配置、代理地址和访问令牌是否正确。"],
+      },
+      day,
+      day.stops,
+    );
   }
 }
 
@@ -2367,8 +3001,8 @@ dom.ctripLoginBtn.addEventListener("click", () => {
   dom.syncBadge.textContent = ctripConfig.endpoint ? "已配置接口" : "等待配置";
   setCtripStatus(
     nextOpen
-      ? "请填写你的后端代理接口，然后点击“测试连接”。携程密钥只放在后端环境变量里。"
-      : "携程接入配置已收起。",
+      ? "请填写 Google Flights 航班代理接口，然后点击“测试连接”。SearchApi Key 只放在后端环境变量里。"
+      : "航班报价接入配置已收起。",
     nextOpen ? "plug-zap" : "info",
   );
 });
@@ -2382,6 +3016,13 @@ dom.ctripConnectForm.addEventListener("submit", (event) => {
 dom.ctripTestBtn.addEventListener("click", testCtripConnection);
 
 dom.ctripSyncTransportBtn.addEventListener("click", syncCtripTransport);
+
+dom.multiOriginExampleBtn.addEventListener("click", () => {
+  dom.multiOriginInput.value = "林: SHA; 王: PEK; 周: CAN";
+  setCtripStatus("已填入多人出发地示例。到达地可填 LHW 或 兰州，然后点击“综合比较”。", "users");
+});
+
+dom.compareOriginsBtn.addEventListener("click", compareMultiOrigins);
 
 dom.ctripSpecBtn.addEventListener("click", async () => {
   const spec = dom.ctripSpecBox.textContent.trim();
@@ -2408,15 +3049,24 @@ document.querySelectorAll(".sync-card").forEach((card) => {
   card.addEventListener("click", () => {
     if (!requireEdit("导入外部记录")) return;
     pendingProvider = card.dataset.provider;
+    const defaults = providerDefaults(pendingProvider);
+    lastParsedImport = null;
     dom.importTitle.textContent = `从${pendingProvider}导入`;
-    dom.importCopy.textContent = "这里不会读取你的账号，只把你录入或粘贴的订单信息写入当天行程。";
-    dom.importName.value = pendingProvider.includes("民宿") ? "民宿入住" : pendingProvider.includes("美团") ? "餐厅预约" : "外部记录";
-    dom.importTime.value = pendingProvider.includes("民宿") ? "15:00" : "18:30";
+    dom.importCopy.textContent = externalImportConfig.endpoint
+      ? "粘贴订单文本后可用 AI 解析，再写入计划；不会读取你的账号。"
+      : "这里不会读取你的账号，只把你录入或粘贴的订单信息写入计划。";
+    dom.importCategory.value = defaults.category;
+    dom.importDate.value = currentDay()?.date || "";
+    dom.importName.value = defaults.title;
+    dom.importTime.value = defaults.time;
     dom.importBudget.value = "";
     dom.importPaid.value = "";
     dom.importPayer.value = memberProfile?.name || "";
     dom.importAddress.value = "";
+    dom.importOrderNo.value = "";
+    dom.importSourceUrl.value = "";
     dom.importNote.value = "";
+    renderImportPreview(null);
     dom.importModal.classList.add("is-open");
     dom.importModal.setAttribute("aria-hidden", "false");
     refreshIcons();
@@ -2431,40 +3081,67 @@ document.querySelectorAll("[data-close-import]").forEach((button) => {
 });
 
 dom.parseImportBtn.addEventListener("click", () => {
-  const parsed = parseExternalOrderText(dom.importNote.value);
-  if (parsed.title && (!dom.importName.value || dom.importName.value === "外部记录")) dom.importName.value = parsed.title;
-  if (parsed.time) dom.importTime.value = parsed.time;
-  if (parsed.budget) {
-    dom.importBudget.value = parsed.budget;
-    if (!dom.importPaid.value) dom.importPaid.value = parsed.budget;
+  dom.parseImportBtn.disabled = true;
+  dom.syncStatus.innerHTML = `${icon("scan-text")}<span>正在解析外部订单文本...</span>`;
+  requestExternalOrderParse()
+    .then(({ source, parsed }) => {
+      applyParsedImport(parsed, source);
+      dom.syncStatus.innerHTML = `${icon("scan-text")}<span>已解析订单字段，请检查预览后导入。</span>`;
+    })
+    .catch((error) => {
+      const parsed = parseExternalOrderText(dom.importNote.value, pendingProvider);
+      applyParsedImport(parsed, "本地规则兜底");
+      dom.syncStatus.innerHTML = `${icon("info")}<span>AI 解析不可用：${escapeHtml(error.message)}。已使用本地规则。</span>`;
+    })
+    .finally(() => {
+      dom.parseImportBtn.disabled = false;
+      refreshIcons();
+    });
+});
+
+dom.importCategory.addEventListener("change", () => {
+  const defaults = providerDefaults(dom.importCategory.value);
+  if (!dom.importName.value || ["外部记录", "餐厅预约", "住宿入住", "交通订单", "景点预约"].includes(dom.importName.value)) {
+    dom.importName.value = defaults.title;
   }
-  if (parsed.address) dom.importAddress.value = parsed.address;
-  dom.syncStatus.innerHTML = `${icon("scan-text")}<span>已尝试从粘贴文本解析名称、时间、金额和地址，请检查后再导入。</span>`;
-  refreshIcons();
 });
 
 dom.importForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const title = dom.importName.value.trim() || "外部记录";
+  const category = normalizeImportCategory(dom.importCategory.value, pendingProvider);
+  const targetDayIndex = dayIndexByDate(dom.importDate.value);
+  const targetDay = state.days[targetDayIndex] || currentDay();
+  const defaults = providerDefaults(category);
+  const metadataLines = [
+    `来源：${pendingProvider || "外部导入"}`,
+    `类别：${category}`,
+    dom.importOrderNo.value.trim() ? `订单号：${dom.importOrderNo.value.trim()}` : "",
+    dom.importSourceUrl.value.trim() ? `链接：${dom.importSourceUrl.value.trim()}` : "",
+    lastParsedImport?.source ? `解析：${lastParsedImport.source}` : "",
+  ].filter(Boolean);
+  const rawNote = dom.importNote.value.trim();
+  const note = [metadataLines.join("\n"), rawNote].filter(Boolean).join("\n\n");
   mutate(`导入${pendingProvider}记录`, () => {
     const stop = makeStop({
       time: dom.importTime.value.trim() || "18:30",
       title,
-      type: "Synced",
+      type: category,
       address: dom.importAddress.value.trim() || "地址待确认",
-      note: dom.importNote.value.trim() || `${pendingProvider}记录，后续可继续补充订单详情。`,
-      tags: ["已导入", pendingProvider],
+      note: note || `${pendingProvider}记录，后续可继续补充订单详情。`,
+      tags: ["已导入", pendingProvider, category].filter(Boolean),
       budget: numberValue(dom.importBudget.value),
       paid: numberValue(dom.importPaid.value),
       payer: dom.importPayer.value.trim(),
-      image: pendingProvider.includes("民宿") ? "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80" : images.food,
+      image: defaults.image,
       x: 78,
       y: 60,
     });
-    currentDay().stops.push(stop);
-    activeStop = currentDay().stops.length - 1;
+    targetDay.stops.push(stop);
+    activeDay = targetDayIndex;
+    activeStop = targetDay.stops.length - 1;
     dom.syncBadge.textContent = "已导入";
-    dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已加入当天行程，可在右侧继续编辑。</span>`;
+    dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已加入 ${targetDay.label}，可在右侧继续编辑。</span>`;
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
   });
@@ -2474,21 +3151,47 @@ async function boot() {
   dom.collabName.value = memberProfile?.name || localStorage.getItem("tripboard-user-name") || "";
   dom.collabRole.value = memberProfile?.role || "";
   const appConfig = window.TRIPBOARD_CONFIG || {};
-  const isPlaceholderEndpoint = /example\.com\/api\/ctrip\/transport/.test(ctripConfig.endpoint || "");
-  if ((!ctripConfig.endpoint || isPlaceholderEndpoint) && appConfig.ctripProxyUrl) {
-    ctripConfig = { endpoint: appConfig.ctripProxyUrl, token: "" };
+  const isLegacyTransportEndpoint =
+    ctripConfig.endpoint &&
+    (ctripConfig.endpoint === appConfig.ctripProxyUrl ||
+      ctripConfig.endpoint === appConfig.amadeusFlightProxyUrl ||
+      /\/functions\/v1\/(?:ctrip-transport|amadeus-flight-offers)\b/.test(ctripConfig.endpoint));
+  const isPlaceholderEndpoint = /example\.com\/api\/ctrip\/transport|your-project\.supabase\.co\/functions\/v1\/(?:amadeus-flight-offers|searchapi-flight-offers)/.test(ctripConfig.endpoint || "");
+  const defaultTransportEndpoint = appConfig.searchApiFlightProxyUrl || appConfig.amadeusFlightProxyUrl || appConfig.ctripProxyUrl || "";
+  if ((!ctripConfig.endpoint || isPlaceholderEndpoint || isLegacyTransportEndpoint) && defaultTransportEndpoint) {
+    ctripConfig = { endpoint: defaultTransportEndpoint, token: "" };
     localStorage.setItem(CTRIP_CONFIG_KEY, JSON.stringify(ctripConfig));
+  }
+  if ((!externalImportConfig.endpoint || /your-project\.supabase\.co\/functions\/v1\/external-order-parse/.test(externalImportConfig.endpoint)) && appConfig.externalOrderParseProxyUrl) {
+    externalImportConfig = { endpoint: appConfig.externalOrderParseProxyUrl, token: "" };
+    localStorage.setItem(EXTERNAL_IMPORT_CONFIG_KEY, JSON.stringify(externalImportConfig));
+  }
+  const isPlaceholderAiEndpoint = /your-domain\.com\/api\/route-optimize/.test(serviceConfig.aiEndpoint || "");
+  if ((!serviceConfig.aiEndpoint || isPlaceholderAiEndpoint) && appConfig.aiRouteProxyUrl) {
+    serviceConfig = { ...serviceConfig, aiEndpoint: appConfig.aiRouteProxyUrl, aiToken: "" };
+    localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+  }
+  const isPlaceholderAmapEndpoint = /your-domain\.com\/api\/amap-place/.test(serviceConfig.amapEndpoint || "");
+  if ((!serviceConfig.amapEndpoint || isPlaceholderAmapEndpoint) && appConfig.amapPlaceProxyUrl) {
+    serviceConfig = { ...serviceConfig, amapEndpoint: appConfig.amapPlaceProxyUrl };
+    localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+  }
+  const isPlaceholderAmapRouteEndpoint = /your-project\.supabase\.co\/functions\/v1\/amap-route-plan/.test(serviceConfig.amapRouteEndpoint || "");
+  if ((!serviceConfig.amapRouteEndpoint || isPlaceholderAmapRouteEndpoint) && appConfig.amapRouteProxyUrl) {
+    serviceConfig = { ...serviceConfig, amapRouteEndpoint: appConfig.amapRouteProxyUrl };
+    localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
   }
   dom.ctripEndpointInput.value = ctripConfig.endpoint || "";
   dom.ctripTokenInput.value = ctripConfig.token || "";
   dom.aiRouteEndpointInput.value = serviceConfig.aiEndpoint || "";
   dom.aiRouteTokenInput.value = serviceConfig.aiToken || "";
   dom.amapEndpointInput.value = serviceConfig.amapEndpoint || "";
+  dom.amapRouteEndpointInput.value = serviceConfig.amapRouteEndpoint || "";
   dom.weatherEndpointInput.value = serviceConfig.weatherEndpoint || "";
   renderServiceStatus();
   if (ctripConfig.endpoint) {
     dom.syncBadge.textContent = "已配置接口";
-    setCtripStatus("已读取本机保存的携程后端代理地址，可测试连接或同步当天交通。", "plug-zap");
+    setCtripStatus("已读取本机保存的 Google Flights 航班代理地址。配置 Supabase 密钥后可测试连接并同步航班。", "plug-zap");
   }
   guideState.destination = state.destination || guideState.destination;
   guideState.origin = state.origin || guideState.origin;
