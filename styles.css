@@ -465,6 +465,18 @@ button {
   border-color: #f0d69b;
 }
 
+.icon-btn.subtle {
+  width: 34px;
+  min-height: 34px;
+  color: var(--muted);
+  background: var(--panel-2);
+}
+
+.danger-icon:hover {
+  color: var(--danger);
+  border-color: rgba(183, 79, 57, 0.45);
+}
+
 .primary-btn,
 .text-btn,
 .danger-btn {
@@ -982,7 +994,7 @@ button:disabled {
 
 .transport-item {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
+  grid-template-columns: 38px minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
   padding: 11px 12px;
@@ -1559,11 +1571,25 @@ button:disabled {
   border: 1px solid var(--line);
 }
 
-.candidate span {
+.candidate-price {
   margin-left: auto;
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.candidate-actions {
+  display: inline-flex;
+  margin-left: 0;
+}
+
+.candidate-actions .icon-btn {
+  width: 30px;
+  min-height: 30px;
+}
+
+.candidate[aria-disabled="true"] {
+  cursor: default;
 }
 
 .map-toolbar {
@@ -2420,6 +2446,11 @@ svg {
 
   .transport-item em {
     grid-column: 2;
+  }
+
+  .transport-item .danger-icon {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .multi-origin-item {
