@@ -1502,6 +1502,10 @@ function currentDayTextRoomId(dayId = currentDay()?.id) {
   return tripId && dayId ? `day-text:${tripId}:${dayId}` : "";
 }
 
+function dayBlockTextKey(dayId = "", blockId = "") {
+  return dayId && blockId ? `${dayId}:${blockId}` : "";
+}
+
 function findStopLocation(stopId) {
   if (!stopId) return null;
   for (let dayIndex = 0; dayIndex < (state.days || []).length; dayIndex += 1) {
@@ -1546,6 +1550,15 @@ function buildInitialDayTextUpdate(Y, day) {
   });
   const commentArray = seedDoc.getArray("comments");
   commentArray.insert(0, normalizeComments(day.comments || []));
+  const update = Y.encodeStateAsUpdate(seedDoc);
+  seedDoc.destroy();
+  return update;
+}
+
+function buildInitialDayBlockTextUpdate(Y, block = {}, dayId = "") {
+  const seedDoc = new Y.Doc();
+  seedDoc.clientID = stableTextClientId(`${tripId}:day-block:${dayId}:${block.id}`);
+  seedDoc.getText("text").insert(0, block.text || "");
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -1640,6 +1653,31 @@ function dayTextStateSnapshotFromDays(days = [], Y = null) {
   (days || []).forEach((day) => {
     const textState = day?.dayTextYjs || day?.textYjs || (Y && day?.id ? bytesToBase64(buildInitialDayTextUpdate(Y, day)) : "");
     if (day?.id && textState) entries.push([day.id, textState]);
+  });
+  return normalizeDayTextStateEntries(entries);
+}
+
+function dayBlockTextStateSnapshotFromDays(days = [], Y = null) {
+  const entries = [];
+  (days || []).forEach((day) => {
+    if (!day?.id) return;
+    (day.blocks || []).forEach((block) => {
+      const normalized = normalizeDayBlock(block);
+      if (!normalized?.id) return;
+      const textState = Y ? bytesToBase64(buildInitialDayBlockTextUpdate(Y, normalized, day.id)) : normalized.textYjs || "";
+      if (textState) entries.push([dayBlockTextKey(day.id, normalized.id), textState]);
+    });
+  });
+  return normalizeDayTextStateEntries(entries);
+}
+
+function dayBlockTextValueSnapshotFromDays(days = []) {
+  const entries = [];
+  (days || []).forEach((day) => {
+    if (!day?.id) return;
+    normalizeDayBlocks(day.blocks || []).forEach((block) => {
+      entries.push([dayBlockTextKey(day.id, block.id), block.text || ""]);
+    });
   });
   return normalizeDayTextStateEntries(entries);
 }
@@ -1830,6 +1868,7 @@ function normalizeDayBlock(block = {}) {
     id: block.id || uid(),
     type,
     text,
+    textYjs: block.textYjs || "",
     done: Boolean(block.done),
     comments: normalizeComments(block.comments || []),
     createdBy: block.createdBy || "",
@@ -1916,6 +1955,16 @@ function buildInitialPlanUpdate(Y, plan) {
   const dayTextStatesMap = seedDoc.getMap("dayTextStates");
   Object.entries(dayTextStateSnapshotFromDays(plan.days || [], Y)).forEach(([dayId, textState]) => {
     dayTextStatesMap.set(dayId, textState);
+  });
+  const dayBlockTextStatesMap = seedDoc.getMap("dayBlockTextStates");
+  Object.entries(dayBlockTextStateSnapshotFromDays(plan.days || [], Y)).forEach(([blockKey, textState]) => {
+    dayBlockTextStatesMap.set(blockKey, textState);
+  });
+  const dayBlockTextsMap = seedDoc.getMap("dayBlockTexts");
+  Object.entries(dayBlockTextValueSnapshotFromDays(plan.days || [])).forEach(([blockKey, text]) => {
+    const yText = new Y.Text();
+    if (text) yText.insert(0, text);
+    dayBlockTextsMap.set(blockKey, yText);
   });
   const stopListsMap = seedDoc.getMap("stopLists");
   (plan.days || []).forEach((day) => {
@@ -2125,6 +2174,19 @@ function readDayTextStatesFromDoc() {
   return normalizeDayTextStateEntries(Array.from(collabDayTextStatesMap.entries()));
 }
 
+function readDayBlockTextStatesFromDoc() {
+  if (!collabDayBlockTextStatesMap) return dayBlockTextStateSnapshotFromDays(state.days || [], yjsModule);
+  return normalizeDayTextStateEntries(Array.from(collabDayBlockTextStatesMap.entries()));
+}
+
+function readDayBlockTextValuesFromDoc() {
+  if (!collabDayBlockTextsMap) return dayBlockTextValueSnapshotFromDays(state.days || []);
+  const entries = Array.from(collabDayBlockTextsMap.entries())
+    .filter(([blockKey, yText]) => blockKey && yText?.toString)
+    .map(([blockKey, yText]) => [blockKey, yText.toString()]);
+  return normalizeDayTextStateEntries(entries);
+}
+
 function readDayBlocksFromDoc() {
   const fallback = normalizeDayBlocksFromDays(state.days || []);
   if (!collabDayBlocksMap) return fallback;
@@ -2311,6 +2373,52 @@ function applyDayTextStatesToState(textStates = {}) {
   return changed;
 }
 
+function dayBlockTextFromState(textState = "", fallback = "") {
+  if (!textState || !yjsModule) return String(fallback || "");
+  const tempDoc = new yjsModule.Doc();
+  try {
+    yjsModule.applyUpdate(tempDoc, base64ToBytes(textState), "read");
+    return tempDoc.getText("text").toString();
+  } catch (error) {
+    console.warn("Stored day block Yjs text state could not be read", error);
+    return String(fallback || "");
+  } finally {
+    tempDoc.destroy();
+  }
+}
+
+function applyDayBlockTextStatesToState(textStates = {}) {
+  let changed = false;
+  state.days.forEach((day) => {
+    if (!day?.id || !day.blocks?.length) return;
+    day.blocks = normalizeDayBlocks(day.blocks.map((block) => {
+      const textState = textStates[dayBlockTextKey(day.id, block.id)];
+      if (!textState || block.textYjs === textState) return block;
+      changed = true;
+      return {
+        ...block,
+        text: dayBlockTextFromState(textState, block.text) || block.text,
+        textYjs: textState,
+      };
+    }));
+  });
+  return changed;
+}
+
+function applyDayBlockTextValuesToState(textValues = {}) {
+  let changed = false;
+  state.days.forEach((day) => {
+    if (!day?.id || !day.blocks?.length) return;
+    day.blocks = normalizeDayBlocks(day.blocks.map((block) => {
+      const key = dayBlockTextKey(day.id, block.id);
+      if (!Object.prototype.hasOwnProperty.call(textValues, key) || block.text === textValues[key]) return block;
+      changed = true;
+      return { ...block, text: textValues[key] || block.text };
+    }));
+  });
+  return changed;
+}
+
 function applyDayBlocksToState(dayBlocks = {}) {
   let changed = false;
   state.days.forEach((day) => {
@@ -2348,9 +2456,11 @@ function refreshRealtimePlanViews() {
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步", options = {}) {
   const { refreshViews = true, scheduleSave = true, updateStatus = true } = options;
-  if (!collabPlanDoc || !collabDayMetasArray || !collabDayTextStatesMap || !collabStopListsMap || !collabStopTextStatesMap || !collabDayBlocksMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
+  if (!collabPlanDoc || !collabDayMetasArray || !collabDayTextStatesMap || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || !collabStopListsMap || !collabStopTextStatesMap || !collabDayBlocksMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
   const nextDayMetas = readDayMetasFromDoc();
   const nextDayTextStates = readDayTextStatesFromDoc();
+  const nextDayBlockTextStates = readDayBlockTextStatesFromDoc();
+  const nextDayBlockTextValues = readDayBlockTextValuesFromDoc();
   const nextStopLists = readStopListsFromDoc();
   const nextStopTextStates = readStopTextStatesFromDoc();
   const nextDayBlocks = readDayBlocksFromDoc();
@@ -2360,6 +2470,8 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const nextSettings = readSettingsFromDoc();
   const dayMetasChanged = !sameSerialized(normalizeDayMetas(state.days || []), nextDayMetas);
   const dayTextStatesChanged = !sameSerialized(dayTextStateSnapshotFromDays(state.days || [], yjsModule), nextDayTextStates);
+  const dayBlockTextStatesChanged = !sameSerialized(dayBlockTextStateSnapshotFromDays(state.days || [], yjsModule), nextDayBlockTextStates);
+  const dayBlockTextValuesChanged = !sameSerialized(dayBlockTextValueSnapshotFromDays(state.days || []), nextDayBlockTextValues);
   const stopListsChanged = !sameSerialized(normalizeStopListsFromDays(state.days || []), nextStopLists);
   const stopTextStatesChanged = !sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), nextStopTextStates);
   const dayBlocksChanged = !sameSerialized(normalizeDayBlocksFromDays(state.days || []), nextDayBlocks);
@@ -2369,14 +2481,16 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
   const nextPlanYjs = currentPlanYjsState();
   const planYjsChanged = Boolean(nextPlanYjs && state.planYjs !== nextPlanYjs);
-  const changed = dayMetasChanged || dayTextStatesChanged || stopListsChanged || stopTextStatesChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
+  const changed = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || stopListsChanged || stopTextStatesChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
   if (!changed) return;
-  const visibleChanged = dayMetasChanged || dayTextStatesChanged || stopListsChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
+  const visibleChanged = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || stopListsChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   if (dayTextStatesChanged) applyDayTextStatesToState(nextDayTextStates);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
   if (stopTextStatesChanged) applyStopTextStatesToState(nextStopTextStates);
   if (dayBlocksChanged) applyDayBlocksToState(nextDayBlocks);
+  if (dayBlockTextStatesChanged) applyDayBlockTextStatesToState(nextDayBlockTextStates);
+  if (dayBlockTextValuesChanged) applyDayBlockTextValuesToState(nextDayBlockTextValues);
   state.transportQuotes = nextQuotes;
   state.candidates = nextCandidates;
   state.activities = nextActivities;
@@ -2455,6 +2569,8 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
   const previousRefs = {
     dayMetas: collabDayMetasArray,
     dayTextStates: collabDayTextStatesMap,
+    dayBlockTextStates: collabDayBlockTextStatesMap,
+    dayBlockTexts: collabDayBlockTextsMap,
     stopLists: collabStopListsMap,
     stopTextStates: collabStopTextStatesMap,
     dayBlocks: collabDayBlocksMap,
@@ -2478,6 +2594,8 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
     collabPlanDoc = previousPlanDoc;
     collabDayMetasArray = previousRefs.dayMetas;
     collabDayTextStatesMap = previousRefs.dayTextStates;
+    collabDayBlockTextStatesMap = previousRefs.dayBlockTextStates;
+    collabDayBlockTextsMap = previousRefs.dayBlockTexts;
     collabStopListsMap = previousRefs.stopLists;
     collabStopTextStatesMap = previousRefs.stopTextStates;
     collabDayBlocksMap = previousRefs.dayBlocks;
@@ -2497,6 +2615,8 @@ function clearPlanYjsState(plan = state) {
 function attachCollabPlanRefs() {
   collabDayMetasArray = collabPlanDoc.getArray("dayMetas");
   collabDayTextStatesMap = collabPlanDoc.getMap("dayTextStates");
+  collabDayBlockTextStatesMap = collabPlanDoc.getMap("dayBlockTextStates");
+  collabDayBlockTextsMap = collabPlanDoc.getMap("dayBlockTexts");
   collabStopListsMap = collabPlanDoc.getMap("stopLists");
   collabStopTextStatesMap = collabPlanDoc.getMap("stopTextStates");
   collabDayBlocksMap = collabPlanDoc.getMap("dayBlocks");
@@ -2523,6 +2643,15 @@ function seedMissingPlanDocContent(Y) {
     });
     Object.entries(dayTextStateSnapshotFromDays(state.days || [], Y)).forEach(([dayId, textState]) => {
       if (!collabDayTextStatesMap.has(dayId)) collabDayTextStatesMap.set(dayId, textState);
+    });
+    Object.entries(dayBlockTextStateSnapshotFromDays(state.days || [], Y)).forEach(([blockKey, textState]) => {
+      if (!collabDayBlockTextStatesMap.has(blockKey)) collabDayBlockTextStatesMap.set(blockKey, textState);
+    });
+    Object.entries(dayBlockTextValueSnapshotFromDays(state.days || [])).forEach(([blockKey, text]) => {
+      if (collabDayBlockTextsMap.has(blockKey)) return;
+      const yText = new Y.Text();
+      if (text) yText.insert(0, text);
+      collabDayBlockTextsMap.set(blockKey, yText);
     });
     (state.days || []).forEach((day) => {
       if (!day?.id || collabDayBlocksMap.has(day.id)) return;
@@ -2552,6 +2681,8 @@ function planDocMatchesCurrentState() {
   return (
     sameSerialized(normalizeDayMetas(state.days || []), readDayMetasFromDoc()) &&
     sameSerialized(dayTextStateSnapshotFromDays(state.days || [], yjsModule), readDayTextStatesFromDoc()) &&
+    sameSerialized(dayBlockTextStateSnapshotFromDays(state.days || [], yjsModule), readDayBlockTextStatesFromDoc()) &&
+    sameSerialized(dayBlockTextValueSnapshotFromDays(state.days || []), readDayBlockTextValuesFromDoc()) &&
     sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(readStopListsFromDoc())) &&
     sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), readStopTextStatesFromDoc()) &&
     sameSerialized(normalizeDayBlocksFromDays(state.days || []), readDayBlocksFromDoc()) &&
@@ -3398,6 +3529,8 @@ function destroyCollabPlanDoc() {
   collabPlanTripId = "";
   collabDayMetasArray = null;
   collabDayTextStatesMap = null;
+  collabDayBlockTextStatesMap = null;
+  collabDayBlockTextsMap = null;
   collabStopListsMap = null;
   collabStopTextStatesMap = null;
   collabDayBlocksMap = null;
@@ -3731,6 +3864,16 @@ async function addDayMetaToDoc(day, index = -1, origin = "local-day-create") {
       const blocks = normalizeDayBlocks(day.blocks || []);
       if (blocks.length) blockArray.insert(0, blocks);
       collabDayBlocksMap.set(day.id, blockArray);
+      blocks.forEach((block) => {
+        const key = dayBlockTextKey(day.id, block.id);
+        if (!collabDayBlockTextsMap?.has(key)) {
+          const yText = new yjsModule.Text();
+          if (block.text) yText.insert(0, block.text);
+          collabDayBlockTextsMap?.set(key, yText);
+        }
+        const textState = bytesToBase64(buildInitialDayBlockTextUpdate(yjsModule, block, day.id));
+        collabDayBlockTextStatesMap?.set(key, textState);
+      });
     }
   }, origin);
   return true;
@@ -3931,6 +4074,8 @@ async function deleteDayFromDoc(dayId, origin = "local-day-delete") {
   if (!collabPlanDoc || !collabDayMetasArray || !collabStopListsMap || isApplyingCollabPlanRemote) return false;
   const existingStops = collabStopListsMap.get(dayId)?.toArray?.() || [];
   const existingStopIds = existingStops.map((stop) => stop?.id).filter(Boolean);
+  const existingBlocks = collabDayBlocksMap?.get(dayId)?.toArray?.() || [];
+  const existingBlockIds = existingBlocks.map((block) => block?.id).filter(Boolean);
   const dayMetaIndex = collabDayMetasArray.toArray().findIndex((day) => day?.id === dayId);
   collabPlanDoc.transact(() => {
     if (dayMetaIndex >= 0) collabDayMetasArray.delete(dayMetaIndex, 1);
@@ -3938,6 +4083,11 @@ async function deleteDayFromDoc(dayId, origin = "local-day-delete") {
     collabDayBlocksMap?.delete(dayId);
     collabStopListsMap.delete(dayId);
     existingStopIds.forEach((stopId) => collabStopTextStatesMap?.delete(stopId));
+    existingBlockIds.forEach((blockId) => {
+      const key = dayBlockTextKey(dayId, blockId);
+      collabDayBlockTextStatesMap?.delete(key);
+      collabDayBlockTextsMap?.delete(key);
+    });
   }, origin);
   return true;
 }
@@ -3955,6 +4105,57 @@ async function ensureDayBlockArray(dayId) {
   return blockArray;
 }
 
+async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day-block-text-crdt") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || isApplyingCollabPlanRemote) return false;
+  const items = normalizeDayBlocks(blockArray.toArray());
+  const block = items.find((item) => item.id === blockId);
+  if (!block) return false;
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return false;
+  }
+  const nextText = String(text || "").trim();
+  let changed = false;
+  let nextState = "";
+  collabPlanDoc.transact(() => {
+    const key = dayBlockTextKey(dayId, blockId);
+    let yText = collabDayBlockTextsMap.get(key);
+    if (!yText) {
+      yText = new Y.Text();
+      const initialText = block.text || "";
+      if (initialText) yText.insert(0, initialText);
+      collabDayBlockTextsMap.set(key, yText);
+    }
+    changed = applyTextDiff(yText, nextText);
+    const yTextValue = yText.toString();
+    nextState = bytesToBase64(buildInitialDayBlockTextUpdate(Y, { ...block, id: blockId, text: yTextValue }, dayId));
+    collabDayBlockTextStatesMap.set(key, nextState);
+  }, origin);
+  if (!changed && block.text === nextText && block.textYjs === nextState) return true;
+  collabPlanDoc.transact(() => {
+    const latestItems = blockArray.toArray();
+    const latestIndex = latestItems.findIndex((item) => item?.id === blockId);
+    if (latestIndex < 0) return;
+    const latest = normalizeDayBlock(latestItems[latestIndex]);
+    const next = normalizeDayBlock({
+      ...latest,
+      id: blockId,
+      text: nextText,
+      textYjs: nextState,
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!next || sameSerialized(latest, next)) return;
+    blockArray.delete(latestIndex, 1);
+    blockArray.insert(latestIndex, [next]);
+  }, origin);
+  return { text: nextText, textYjs: nextState };
+}
+
 async function addDayBlockToDoc(dayId, block, origin = "local-day-block-add") {
   if (!canEdit() || isReadonlyMode || !dayId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
@@ -3966,7 +4167,25 @@ async function addDayBlockToDoc(dayId, block, origin = "local-day-block-add") {
   });
   if (!normalized) return true;
   if (blockArray.toArray().some((item) => item?.id === normalized.id)) return true;
+  const blockKey = dayBlockTextKey(dayId, normalized.id);
+  let textState = normalized.textYjs || "";
+  if (!textState) {
+    let Y;
+    try {
+      Y = await ensureYjs();
+      textState = bytesToBase64(buildInitialDayBlockTextUpdate(Y, normalized, dayId));
+    } catch (error) {
+      console.warn("Day block Yjs text state could not be initialized", error);
+    }
+  }
+  if (textState) normalized.textYjs = textState;
   collabPlanDoc.transact(() => {
+    if (!collabDayBlockTextsMap?.has(blockKey)) {
+      const yText = new yjsModule.Text();
+      if (normalized.text) yText.insert(0, normalized.text);
+      collabDayBlockTextsMap?.set(blockKey, yText);
+    }
+    if (textState) collabDayBlockTextStatesMap?.set(blockKey, textState);
     blockArray.insert(blockArray.length, [normalized]);
   }, origin);
   return normalized;
@@ -4013,6 +4232,9 @@ async function deleteDayBlockFromDoc(dayId, blockId, origin = "local-day-block-d
   const index = blockArray.toArray().findIndex((block) => block?.id === blockId);
   if (index < 0) return true;
   collabPlanDoc.transact(() => {
+    const key = dayBlockTextKey(dayId, blockId);
+    collabDayBlockTextStatesMap?.delete(key);
+    collabDayBlockTextsMap?.delete(key);
     blockArray.delete(index, 1);
   }, origin);
   return true;
@@ -4198,13 +4420,34 @@ async function reorderDayBlockInDoc(dayId, blockId, targetIndex = 0, origin = "l
 async function syncDayBlocksToDoc(dayId, origin = "local-day-blocks") {
   if (!canEdit() || isReadonlyMode || !dayId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
-  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  if (!collabPlanDoc || !blockArray || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || isApplyingCollabPlanRemote) return false;
   const day = state.days.find((item) => item.id === dayId);
   if (!day) return false;
   const nextBlocks = normalizeDayBlocks(day.blocks || []);
-  if (sameSerialized(normalizeDayBlocks(blockArray.toArray()), nextBlocks)) return true;
+  const nextBlockKeys = new Set(nextBlocks.map((block) => dayBlockTextKey(dayId, block.id)));
+  if (
+    sameSerialized(normalizeDayBlocks(blockArray.toArray()), nextBlocks) &&
+    nextBlocks.every((block) => collabDayBlockTextsMap.get(dayBlockTextKey(dayId, block.id))?.toString?.() === block.text)
+  ) return true;
   collabPlanDoc.transact(() => {
     syncYArrayById(blockArray, nextBlocks, normalizeDayBlock);
+    Array.from(collabDayBlockTextsMap.keys()).forEach((blockKey) => {
+      if (blockKey.startsWith(`${dayId}:`) && !nextBlockKeys.has(blockKey)) {
+        collabDayBlockTextsMap.delete(blockKey);
+        collabDayBlockTextStatesMap.delete(blockKey);
+      }
+    });
+    nextBlocks.forEach((block) => {
+      const key = dayBlockTextKey(dayId, block.id);
+      let yText = collabDayBlockTextsMap.get(key);
+      if (!yText) {
+        yText = new yjsModule.Text();
+        collabDayBlockTextsMap.set(key, yText);
+      }
+      applyTextDiff(yText, block.text || "");
+      const textState = bytesToBase64(buildInitialDayBlockTextUpdate(yjsModule, block, dayId));
+      collabDayBlockTextStatesMap.set(key, textState);
+    });
   }, origin);
   return true;
 }
@@ -4243,9 +4486,15 @@ async function syncStopListsToDoc(origin = "local-stop-lists") {
 async function syncAllDayBlocksToDoc(origin = "local-day-blocks-all") {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
-  if (!collabPlanDoc || !collabDayBlocksMap || isApplyingCollabPlanRemote) return false;
+  if (!collabPlanDoc || !collabDayBlocksMap || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || isApplyingCollabPlanRemote) return false;
   const nextLists = normalizeDayBlocksFromDays(state.days || []);
-  if (sameSerialized(readDayBlocksFromDoc(), nextLists)) return true;
+  const nextTextStates = dayBlockTextStateSnapshotFromDays(state.days || [], yjsModule);
+  const nextTextValues = dayBlockTextValueSnapshotFromDays(state.days || []);
+  if (
+    sameSerialized(readDayBlocksFromDoc(), nextLists) &&
+    sameSerialized(readDayBlockTextStatesFromDoc(), nextTextStates) &&
+    sameSerialized(readDayBlockTextValuesFromDoc(), nextTextValues)
+  ) return true;
   collabPlanDoc.transact(() => {
     Array.from(collabDayBlocksMap.keys()).forEach((dayId) => {
       if (!Object.prototype.hasOwnProperty.call(nextLists, dayId)) collabDayBlocksMap.delete(dayId);
@@ -4258,6 +4507,24 @@ async function syncAllDayBlocksToDoc(origin = "local-day-blocks-all") {
       }
       if (sameSerialized(normalizeDayBlocks(blockArray.toArray()), blocks)) return;
       syncYArrayById(blockArray, blocks, normalizeDayBlock);
+    });
+    const nextKeys = new Set(Object.keys(nextTextValues));
+    Array.from(collabDayBlockTextStatesMap.keys()).forEach((blockKey) => {
+      if (!nextKeys.has(blockKey)) collabDayBlockTextStatesMap.delete(blockKey);
+    });
+    Array.from(collabDayBlockTextsMap.keys()).forEach((blockKey) => {
+      if (!nextKeys.has(blockKey)) collabDayBlockTextsMap.delete(blockKey);
+    });
+    Object.entries(nextTextValues).forEach(([blockKey, text]) => {
+      let yText = collabDayBlockTextsMap.get(blockKey);
+      if (!yText) {
+        yText = new yjsModule.Text();
+        collabDayBlockTextsMap.set(blockKey, yText);
+      }
+      applyTextDiff(yText, text || "");
+    });
+    Object.entries(nextTextStates).forEach(([blockKey, textState]) => {
+      if (collabDayBlockTextStatesMap.get(blockKey) !== textState) collabDayBlockTextStatesMap.set(blockKey, textState);
     });
   }, origin);
   return true;
@@ -5423,6 +5690,8 @@ let collabDayTextSaveTimer = null;
 let collabPlanDoc = null;
 let collabDayMetasArray = null;
 let collabDayTextStatesMap = null;
+let collabDayBlockTextStatesMap = null;
+let collabDayBlockTextsMap = null;
 let collabStopListsMap = null;
 let collabStopTextStatesMap = null;
 let collabDayBlocksMap = null;
@@ -9179,9 +9448,12 @@ dom.dayBlockList?.addEventListener("input", (event) => {
     const blockId = input.dataset.editDayBlock;
     const text = input.value.trim();
     if (!day || !blockId || !text) return;
-    if (await updateDayBlockInDoc(day.id, blockId, { text }, "local-day-block-text")) {
-      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
+    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, text, "local-day-block-text-crdt");
+    if (updatedText) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+      const metaElement = blockElement?.querySelector(".day-block-meta");
+      if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;
       await saveCollaborativePlanChange("协作块已更新");
       return;
     }
