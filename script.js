@@ -1128,6 +1128,69 @@ function textSelectionPayload(fieldMeta) {
   };
 }
 
+function textSelectionExcerpt(fieldMeta, selection = {}) {
+  const element = fieldMeta ? dom[fieldMeta.domKey] : null;
+  const value = String(element?.value || "");
+  const start = Math.max(0, Math.min(Number(selection.start || 0), value.length));
+  const end = Math.max(start, Math.min(Number(selection.end || start), value.length));
+  const selectedText = value.slice(start, end).trim();
+  if (selectedText) return selectedText.length > 48 ? `${selectedText.slice(0, 48)}...` : selectedText;
+  const before = value.slice(Math.max(0, start - 12), start).trim();
+  const after = value.slice(start, Math.min(value.length, start + 24)).trim();
+  const context = `${before}${before && after ? " / " : ""}${after}`.trim();
+  return context.length > 48 ? `${context.slice(0, 48)}...` : context;
+}
+
+function normalizeCommentAnchor(anchor = null) {
+  if (!anchor?.field) return null;
+  const meta = collabTextFieldMeta(anchor.field);
+  if (!meta || (meta.scope || "stop") !== "stop") return null;
+  const start = Math.max(0, Number(anchor.start || 0));
+  const end = Math.max(start, Number(anchor.end || start));
+  return {
+    field: meta.field,
+    label: meta.label,
+    scope: "stop",
+    start,
+    end,
+    length: Math.max(0, Number(anchor.length || 0)),
+    excerpt: String(anchor.excerpt || "").trim(),
+    stopId: anchor.stopId || currentStop()?.id || "",
+  };
+}
+
+function buildCommentAnchorFromField(fieldMeta = currentFocusedTextField()) {
+  if (!fieldMeta || (fieldMeta.scope || "stop") !== "stop") return null;
+  const selection = textSelectionPayload(fieldMeta);
+  if (!selection) return null;
+  return normalizeCommentAnchor({
+    ...selection,
+    excerpt: textSelectionExcerpt(fieldMeta, selection),
+    stopId: currentStop()?.id || "",
+  });
+}
+
+function captureCommentAnchor(fieldMeta = currentFocusedTextField()) {
+  const anchor = buildCommentAnchorFromField(fieldMeta);
+  if (anchor) {
+    lastCommentAnchor = {
+      ...anchor,
+      capturedAt: Date.now(),
+    };
+    renderCommentAnchorHint();
+  }
+  return anchor;
+}
+
+function currentCommentAnchor() {
+  const focused = buildCommentAnchorFromField(currentFocusedTextField());
+  if (focused) return focused;
+  if (!lastCommentAnchor) return null;
+  const sameStop = lastCommentAnchor.stopId && lastCommentAnchor.stopId === currentStop()?.id;
+  const fresh = Date.now() - Number(lastCommentAnchor.capturedAt || 0) < 10 * 60 * 1000;
+  return sameStop && fresh ? normalizeCommentAnchor(lastCommentAnchor) : null;
+}
+
 function textSelectionLabel(selection = {}) {
   const label = selection.label || collabTextFieldMeta(selection.field)?.label || "文本";
   const start = Number(selection.start || 0);
@@ -2352,12 +2415,16 @@ function normalizeComments(comments = []) {
   const seen = new Set();
   return (comments || [])
     .filter(Boolean)
-    .map((comment) => ({
-      id: comment.id || uid(),
-      author: comment.author || "我",
-      text: String(comment.text || "").trim(),
-      at: comment.at || new Date().toISOString(),
-    }))
+    .map((comment) => {
+      const anchor = normalizeCommentAnchor(comment.anchor);
+      return {
+        id: comment.id || uid(),
+        author: comment.author || "我",
+        text: String(comment.text || "").trim(),
+        at: comment.at || new Date().toISOString(),
+        ...(anchor ? { anchor } : {}),
+      };
+    })
     .filter((comment) => {
       if (!comment.text) return false;
       const key = comment.id || `${comment.author}:${comment.text}`;
@@ -2369,6 +2436,47 @@ function normalizeComments(comments = []) {
 
 function readCommentsFromDoc() {
   return normalizeComments(collabCommentsArray ? collabCommentsArray.toArray() : []);
+}
+
+function commentAnchorLabel(anchor = null) {
+  if (!anchor?.field) return "";
+  const meta = collabTextFieldMeta(anchor.field);
+  const label = anchor.label || meta?.label || "字段";
+  const start = Number(anchor.start || 0);
+  const end = Number(anchor.end || start);
+  if (end > start) return `${label} · 选中 ${end - start} 字`;
+  return `${label} · 光标 ${start}`;
+}
+
+function commentAnchorHint(anchor = null) {
+  if (!anchor) return "选中名称、地址或备注里的文字后，可以把评论挂到对应位置。";
+  const label = commentAnchorLabel(anchor);
+  const excerpt = anchor.excerpt ? `「${anchor.excerpt}」` : "";
+  return `将评论挂到：${label}${excerpt ? ` ${excerpt}` : ""}`;
+}
+
+function renderCommentAnchorHint() {
+  if (!dom.commentAnchorHint) return;
+  const anchor = currentCommentAnchor();
+  dom.commentAnchorHint.hidden = !anchor;
+  dom.commentAnchorHint.textContent = anchor ? commentAnchorHint(anchor) : "";
+}
+
+function focusCommentAnchor(anchor = null) {
+  const normalized = normalizeCommentAnchor(anchor);
+  const meta = normalized ? collabTextFieldMeta(normalized.field) : null;
+  const element = meta ? dom[meta.domKey] : null;
+  if (!element) return false;
+  element.focus();
+  const valueLength = String(element.value || "").length;
+  const start = Math.max(0, Math.min(Number(normalized.start || 0), valueLength));
+  const end = Math.max(start, Math.min(Number(normalized.end || start), valueLength));
+  if (typeof element.setSelectionRange === "function") {
+    element.setSelectionRange(start, end);
+  }
+  captureCommentAnchor(meta);
+  schedulePresenceTrack(0);
+  return true;
 }
 
 function dayTextValuesFromDoc(doc = collabDayTextDoc, fields = collabDayTextFields) {
@@ -2402,16 +2510,23 @@ function dayValuesFromTextState(textState = "", fallbackDay = {}) {
 function renderStopComments(stop) {
   const editable = canEdit();
   dom.commentList.innerHTML = (stop.comments || [])
-    .map(
-      (comment) => `
+    .map((comment) => {
+      const anchor = normalizeCommentAnchor(comment.anchor);
+      const anchorLabel = commentAnchorLabel(anchor);
+      const anchorExcerpt = anchor?.excerpt ? `<em>${escapeHtml(anchor.excerpt)}</em>` : "";
+      return `
         <div class="comment-item" data-comment="${comment.id || ""}">
           <span class="avatar a2">${escapeHtml(comment.author || "我")}</span>
-          <p>${escapeHtml(comment.text)}</p>
+          <div class="comment-bubble">
+            ${anchor ? `<button type="button" class="comment-anchor" data-comment-anchor="${comment.id}" title="回到评论位置">${escapeHtml(anchorLabel)}${anchorExcerpt}</button>` : ""}
+            <p>${escapeHtml(comment.text)}</p>
+          </div>
           ${editable ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-comment="${comment.id}" aria-label="删除评论">${icon("trash-2")}</button>` : ""}
         </div>
-      `,
-    )
+      `;
+    })
     .join("") || `<div class="comment-item"><span class="avatar a1">我</span><p>还没有评论，可以先添加同行意见。</p></div>`;
+  renderCommentAnchorHint();
 }
 
 function applyStopRealtimeFields(stop) {
@@ -3829,15 +3944,17 @@ async function syncCollabStructValuesToDoc(values = {}, origin = "local-struct-a
   return true;
 }
 
-async function addCollaborativeComment(text) {
+async function addCollaborativeComment(text, anchor = null) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabTextDoc();
   if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
+  const normalizedAnchor = normalizeCommentAnchor(anchor);
   const comment = {
     id: uid(),
     author: getCollabName(),
     text: String(text || "").trim(),
     at: new Date().toISOString(),
+    ...(normalizedAnchor ? { anchor: normalizedAnchor } : {}),
   };
   if (!comment.text) return true;
   collabTextDoc.transact(() => {
@@ -4033,6 +4150,7 @@ const dom = {
   commentCount: document.querySelector("#commentCount"),
   commentTitle: document.querySelector("#commentTitle"),
   commentList: document.querySelector("#commentList"),
+  commentAnchorHint: document.querySelector("#commentAnchorHint"),
   commentForm: document.querySelector("#commentForm"),
   commentInput: document.querySelector("#commentInput"),
   stopForm: document.querySelector("#stopForm"),
@@ -4230,6 +4348,7 @@ let isApplyingCollabPlanRemote = false;
 let collabPlanBindRequestId = 0;
 let dayFieldSyncTimer = null;
 let presenceTrackTimer = null;
+let lastCommentAnchor = null;
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
@@ -6660,16 +6779,24 @@ dom.stopForm.addEventListener("submit", async (event) => {
 COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
   dom[domKey]?.addEventListener("input", () => {
     syncCollabTextFieldToDoc(field, dom[domKey].value);
+    captureCommentAnchor({ field, domKey, scope: "stop", label: COLLAB_TEXT_FIELD_BY_FIELD.get(field)?.label || field });
     schedulePresenceTrack();
   });
   ["focus", "click", "keyup", "select"].forEach((eventName) => {
-    dom[domKey]?.addEventListener(eventName, () => schedulePresenceTrack(eventName === "focus" ? 0 : 90));
+    dom[domKey]?.addEventListener(eventName, () => {
+      captureCommentAnchor({ field, domKey, scope: "stop", label: COLLAB_TEXT_FIELD_BY_FIELD.get(field)?.label || field });
+      schedulePresenceTrack(eventName === "focus" ? 0 : 90);
+    });
   });
   dom[domKey]?.addEventListener("blur", () => schedulePresenceTrack(180));
 });
 
 document.addEventListener("selectionchange", () => {
-  if (currentFocusedTextField()) schedulePresenceTrack(90);
+  const focused = currentFocusedTextField();
+  if (focused) {
+    captureCommentAnchor(focused);
+    schedulePresenceTrack(90);
+  }
 });
 
 COLLAB_STRUCT_FIELDS.forEach((meta) => {
@@ -7259,7 +7386,8 @@ dom.commentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = dom.commentInput.value.trim();
   if (!text) return;
-  const collaborativeComment = await addCollaborativeComment(text);
+  const anchor = currentCommentAnchor();
+  const collaborativeComment = await addCollaborativeComment(text, anchor);
   if (collaborativeComment) {
     const stop = currentStop();
     stop.comments = normalizeComments([...(stop.comments || []), collaborativeComment]);
@@ -7274,7 +7402,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
   }
   const fallbackTitle = currentStop().title;
   if (!mutate(`评论「${fallbackTitle}」`, () => {
-    currentStop().comments = [...(currentStop().comments || []), { id: uid(), author: getCollabName(), text, at: new Date().toISOString() }];
+    currentStop().comments = [...(currentStop().comments || []), { id: uid(), author: getCollabName(), text, at: new Date().toISOString(), ...(anchor ? { anchor } : {}) }];
     dom.commentInput.value = "";
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-fallback-snapshot");
@@ -7283,6 +7411,15 @@ dom.commentForm.addEventListener("submit", async (event) => {
 });
 
 dom.commentList.addEventListener("click", async (event) => {
+  const anchorButton = event.target.closest("[data-comment-anchor]");
+  if (anchorButton) {
+    event.preventDefault();
+    const comment = (currentStop()?.comments || []).find((item) => item.id === anchorButton.dataset.commentAnchor);
+    if (comment?.anchor && focusCommentAnchor(comment.anchor)) {
+      dom.saveState.textContent = "已定位到评论锚点";
+    }
+    return;
+  }
   const deleteButton = event.target.closest("[data-delete-comment]");
   if (!deleteButton) return;
   event.preventDefault();
