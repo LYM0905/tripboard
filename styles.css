@@ -2079,7 +2079,7 @@ button:disabled {
 
 .day-block {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto 34px;
+  grid-template-columns: 34px minmax(0, 1fr) auto 66px 34px;
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -2117,6 +2117,50 @@ button:disabled {
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.day-block-order {
+  display: grid;
+  grid-template-columns: repeat(2, 30px);
+  gap: 4px;
+}
+
+.day-block-order .icon-btn {
+  width: 30px;
+  min-height: 30px;
+}
+
+@media (max-width: 620px) {
+  .day-block {
+    grid-template-columns: 34px minmax(0, 1fr) 34px;
+  }
+
+  .day-block-toggle {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .day-block-text {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .day-block > .danger-icon {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .day-block-meta {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    max-width: none;
+  }
+
+  .day-block-order {
+    grid-column: 2 / -1;
+    grid-row: 3;
+    justify-self: start;
+  }
 }
 
 .comment-filters {

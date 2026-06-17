@@ -1804,6 +1804,18 @@ function normalizeDayBlocksFromDays(days = []) {
   return lists;
 }
 
+function moveDayBlockList(blocks = [], blockId = "", direction = "down", patch = {}) {
+  const normalized = normalizeDayBlocks(blocks);
+  const index = normalized.findIndex((block) => block.id === blockId);
+  const offset = direction === "up" ? -1 : 1;
+  const targetIndex = index + offset;
+  if (index < 0 || targetIndex < 0 || targetIndex >= normalized.length) return normalized;
+  const nextBlocks = [...normalized];
+  const [moved] = nextBlocks.splice(index, 1);
+  nextBlocks.splice(targetIndex, 0, normalizeDayBlock({ ...moved, ...patch, id: moved.id }) || moved);
+  return normalizeDayBlocks(nextBlocks);
+}
+
 function normalizeDayMetas(days = []) {
   const seen = new Set();
   return (days || [])
@@ -3010,16 +3022,22 @@ function renderDayBlocks(day = currentDay()) {
   }
   dom.dayBlockList.innerHTML = blocks.length
     ? blocks
-        .map((block) => {
+        .map((block, index) => {
           const doneClass = block.done ? " is-done" : "";
           const meta = block.updatedBy || block.createdBy
             ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
             : dayBlockTypeLabel(block.type);
+          const upDisabled = isReadonlyMode || index === 0 ? " disabled" : "";
+          const downDisabled = isReadonlyMode || index === blocks.length - 1 ? " disabled" : "";
           return `
             <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}">
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <input class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" value="${escapeHtml(block.text)}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr} />
               <span class="day-block-meta">${escapeHtml(meta)}</span>
+              <span class="day-block-order">
+                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
+                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
+              </span>
               <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
             </article>
           `;
@@ -3881,6 +3899,33 @@ async function deleteDayBlockFromDoc(dayId, blockId, origin = "local-day-block-d
   if (index < 0) return true;
   collabPlanDoc.transact(() => {
     blockArray.delete(index, 1);
+  }, origin);
+  return true;
+}
+
+async function moveDayBlockInDoc(dayId, blockId, direction = "down", origin = "local-day-block-reorder") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const items = normalizeDayBlocks(blockArray.toArray());
+  const index = items.findIndex((block) => block.id === blockId);
+  const offset = direction === "up" ? -1 : 1;
+  const targetIndex = index + offset;
+  if (index < 0 || targetIndex < 0 || targetIndex >= items.length) return true;
+  const movedAt = new Date().toISOString();
+  const nextBlocks = moveDayBlockList(items, blockId, direction, {
+    updatedBy: getCollabName(),
+    updatedAt: movedAt,
+  });
+  if (sameSerialized(items, nextBlocks)) return true;
+  collabPlanDoc.transact(() => {
+    const latestBlocks = normalizeDayBlocks(blockArray.toArray());
+    const latestNext = moveDayBlockList(latestBlocks, blockId, direction, {
+      updatedBy: getCollabName(),
+      updatedAt: movedAt,
+    });
+    if (sameSerialized(latestBlocks, latestNext)) return;
+    syncYArrayById(blockArray, latestNext, normalizeDayBlock);
   }, origin);
   return true;
 }
@@ -8542,6 +8587,31 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback");
     await saveState("已更新协作块");
+    render();
+    return;
+  }
+  const moveButton = event.target.closest("[data-move-day-block]");
+  if (moveButton) {
+    event.preventDefault();
+    const blockId = moveButton.dataset.moveDayBlock;
+    const direction = moveButton.dataset.direction === "up" ? "up" : "down";
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || !requireEdit("排序协作块")) return;
+    if (await moveDayBlockInDoc(day.id, blockId, direction, "local-day-block-reorder")) {
+      day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
+        updatedBy: getCollabName(),
+        updatedAt: new Date().toISOString(),
+      });
+      renderDayBlocks(day);
+      await logActivity(`排序协作块「${block.text.slice(0, 18)}」`);
+      await saveCollaborativePlanChange("已排序协作块");
+      return;
+    }
+    if (!mutate("排序协作块", () => {
+      currentDay().blocks = moveDayBlockList(currentDay().blocks || [], blockId, direction);
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-reorder-fallback");
+    await saveState("已排序协作块");
     render();
     return;
   }
