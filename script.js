@@ -3446,6 +3446,14 @@ async function requestWeatherForecast() {
   return { source: `Open-Meteo · ${place.name}`, days };
 }
 
+function weatherForDay(forecastDays, day, index) {
+  const datedForecasts = forecastDays.filter((item) => item.date);
+  if (day.date && datedForecasts.length) {
+    return datedForecasts.find((item) => item.date === day.date) || null;
+  }
+  return forecastDays[index] || null;
+}
+
 async function syncWeather() {
   if (!requireEdit("同步天气")) return;
   saveVersionSnapshot("同步天气前版本");
@@ -3454,7 +3462,7 @@ async function syncWeather() {
     const forecast = await requestWeatherForecast();
     let applied = 0;
     state.days.forEach((day, index) => {
-      const match = forecast.days.find((item) => item.date && item.date === day.date) || forecast.days[index];
+      const match = weatherForDay(forecast.days, day, index);
       if (!match) return;
       day.weather = match.text || match.weather || match.summary || day.weather;
       applied += 1;
@@ -5613,6 +5621,11 @@ async function boot() {
   const isPlaceholderAmapRouteEndpoint = /your-project\.supabase\.co\/functions\/v1\/amap-route-plan/.test(serviceConfig.amapRouteEndpoint || "");
   if ((!serviceConfig.amapRouteEndpoint || isPlaceholderAmapRouteEndpoint) && appConfig.amapRouteProxyUrl) {
     serviceConfig = { ...serviceConfig, amapRouteEndpoint: appConfig.amapRouteProxyUrl };
+    localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+  }
+  const isPlaceholderWeatherEndpoint = /your-domain\.com\/api\/weather|your-project\.supabase\.co\/functions\/v1\/amap-weather/.test(serviceConfig.weatherEndpoint || "");
+  if ((!serviceConfig.weatherEndpoint || isPlaceholderWeatherEndpoint) && appConfig.amapWeatherProxyUrl) {
+    serviceConfig = { ...serviceConfig, weatherEndpoint: appConfig.amapWeatherProxyUrl };
     localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
   }
   dom.ctripEndpointInput.value = ctripConfig.endpoint || "";

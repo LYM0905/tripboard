@@ -7,5 +7,6 @@ window.TRIPBOARD_CONFIG = {
   aiRouteProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/ai-route-optimize",
   amapPlaceProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/amap-place-search",
   amapRouteProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/amap-route-plan",
+  amapWeatherProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/amap-weather",
   externalOrderParseProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/external-order-parse",
 };
