@@ -514,6 +514,12 @@ button:disabled {
   font-weight: 800;
 }
 
+.budget-settlement strong {
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
 .day-form input {
   width: 100%;
   min-width: 0;
