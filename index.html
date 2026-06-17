@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-live-plan-quotes" />
+    <link rel="stylesheet" href="styles.css?v=20260617-live-plan-candidates" />
   </head>
   <body>
     <div class="app-shell">
@@ -314,6 +314,7 @@
             </label>
             <div class="quick-actions full">
               <button type="button" class="text-btn" id="openAmapBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
+              <button type="button" class="text-btn" id="addCandidateBtn"><i data-lucide="bookmark-plus"></i>加入备选池</button>
               <button type="submit" class="primary-btn"><i data-lucide="map-pin-plus"></i>加入当天</button>
               <button type="button" class="text-btn" id="optimizeRouteBtn"><i data-lucide="wand-sparkles"></i>AI 优化路径</button>
             </div>
@@ -598,7 +599,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-live-plan-quotes"></script>
-    <script src="script.js?v=20260617-live-plan-quotes"></script>
+    <script src="config.js?v=20260617-live-plan-candidates"></script>
+    <script src="script.js?v=20260617-live-plan-candidates"></script>
   </body>
 </html>

@@ -953,12 +953,42 @@ function normalizeTransportQuotes(quotes = []) {
     .slice(0, 80);
 }
 
+function normalizeCandidateStops(candidates = []) {
+  const seen = new Set();
+  return (candidates || [])
+    .filter(Boolean)
+    .map((stop) => ({
+      ...clone(stop),
+      id: stop.id || uid(),
+      title: String(stop.title || "备选地点").trim(),
+      type: stop.type || "Idea",
+      address: stop.address || state.destination || "地址待确认",
+      note: stop.note || "备选池地点，可加入任意一天继续编辑。",
+      tags: normalizeTags(stop.tags || ["备选"]),
+      budget: numberValue(stop.budget),
+      image: stop.image || state.cover || images.city,
+      createdBy: stop.createdBy || "",
+      createdAt: stop.createdAt || new Date().toISOString(),
+    }))
+    .filter((stop) => {
+      if (!stop.title) return false;
+      const key = stop.id || `${stop.title}:${stop.address}:${stop.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 80);
+}
+
 function buildInitialPlanUpdate(Y, plan) {
   const seedDoc = new Y.Doc();
   seedDoc.clientID = stableTextClientId(`${tripId}:plan`);
   const quoteArray = seedDoc.getArray("transportQuotes");
   const quotes = normalizeTransportQuotes(plan.transportQuotes || []);
   if (quotes.length) quoteArray.insert(0, quotes);
+  const candidateArray = seedDoc.getArray("candidates");
+  const candidates = normalizeCandidateStops(plan.candidates || []);
+  if (candidates.length) candidateArray.insert(0, candidates);
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -1022,19 +1052,28 @@ function readTransportQuotesFromDoc() {
   return normalizeTransportQuotes(collabTransportQuotesArray ? collabTransportQuotesArray.toArray() : state.transportQuotes || []);
 }
 
+function readCandidatesFromDoc() {
+  return normalizeCandidateStops(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || []);
+}
+
 function refreshRealtimePlanViews() {
   renderShell();
   renderTransport();
+  renderCandidates();
   renderActivities();
   refreshIcons();
 }
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步") {
-  if (!collabPlanDoc || !collabTransportQuotesArray) return;
+  if (!collabPlanDoc || !collabTransportQuotesArray || !collabCandidatesArray) return;
   const nextQuotes = readTransportQuotesFromDoc();
-  const changed = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
+  const nextCandidates = readCandidatesFromDoc();
+  const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
+  const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
+  const changed = quotesChanged || candidatesChanged;
   if (!changed) return;
   state.transportQuotes = nextQuotes;
+  state.candidates = nextCandidates;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   dom.collabStatus.textContent = label;
   refreshRealtimePlanViews();
@@ -1341,6 +1380,7 @@ function destroyCollabPlanDoc() {
   collabPlanSaveTimer = null;
   collabPlanTripId = "";
   collabTransportQuotesArray = null;
+  collabCandidatesArray = null;
   if (collabPlanDoc) {
     collabPlanDoc.destroy();
     collabPlanDoc = null;
@@ -1363,6 +1403,7 @@ async function bindCollabPlanDoc() {
   collabPlanDoc = new Y.Doc();
   Y.applyUpdate(collabPlanDoc, buildInitialPlanUpdate(Y, state), "restore");
   collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
+  collabCandidatesArray = collabPlanDoc.getArray("candidates");
   collabPlanDoc.on("update", (update, origin) => {
     if (origin === "remote") {
       persistCurrentPlanFromDoc("收到协作者交通报价更新");
@@ -1387,6 +1428,20 @@ async function addCollaborativeTransportQuote(quote) {
   collabPlanDoc.transact(() => {
     collabTransportQuotesArray.insert(0, [normalized]);
   }, "local-transport-quote");
+  return true;
+}
+
+async function addCollaborativeCandidate(stop) {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabCandidatesArray || isApplyingCollabPlanRemote) return false;
+  const normalized = normalizeCandidateStops([{ ...stop, createdBy: getCollabName(), createdAt: new Date().toISOString() }])[0];
+  if (!normalized) return true;
+  const existingIds = new Set(readCandidatesFromDoc().map((item) => item.id));
+  if (existingIds.has(normalized.id)) return true;
+  collabPlanDoc.transact(() => {
+    collabCandidatesArray.insert(0, [normalized]);
+  }, "local-candidate");
   return true;
 }
 
@@ -1745,6 +1800,7 @@ function applyRemotePlan(remotePlan, meta = {}) {
   const remoteActiveStop = activeStopId ? remotePlan.days?.flatMap((day) => day.stops || []).find((stop) => stop.id === activeStopId) : null;
   const currentTextState = activeStopId === collabTextStopId ? currentStop()?.textYjs || currentStop()?.noteYjs || "" : "";
   const currentTransportQuotes = normalizeTransportQuotes(state.transportQuotes || []);
+  const currentCandidates = normalizeCandidateStops(state.candidates || []);
   state = ensurePlanDates(clone(remotePlan));
   lastSyncedState = clone(state);
   lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
@@ -1752,7 +1808,10 @@ function applyRemotePlan(remotePlan, meta = {}) {
   if (remoteTextState && remoteTextState !== currentTextState) {
     destroyCollabTextDoc();
   }
-  if (!sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || []))) {
+  if (
+    !sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || [])) ||
+    !sameSerialized(currentCandidates, normalizeCandidateStops(state.candidates || []))
+  ) {
     destroyCollabPlanDoc();
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -1914,6 +1973,7 @@ const dom = {
   quickBudget: document.querySelector("#quickBudget"),
   quickAddress: document.querySelector("#quickAddress"),
   openAmapBtn: document.querySelector("#openAmapBtn"),
+  addCandidateBtn: document.querySelector("#addCandidateBtn"),
   quickAmapLink: document.querySelector("#quickAmapLink"),
   optimizeRouteBtn: document.querySelector("#optimizeRouteBtn"),
   optimizeHint: document.querySelector("#optimizeHint"),
@@ -2051,6 +2111,7 @@ let isApplyingCollabTextRemote = false;
 let collabTextSaveTimer = null;
 let collabPlanDoc = null;
 let collabTransportQuotesArray = null;
+let collabCandidatesArray = null;
 let collabPlanTripId = "";
 let collabPlanSaveTimer = null;
 let isApplyingCollabPlanRemote = false;
@@ -2313,6 +2374,7 @@ function applyReadonlyUi() {
     dom.moveDayUpBtn,
     dom.moveDayDownBtn,
     dom.deleteDayBtn,
+    dom.addCandidateBtn,
     dom.applyGuideBtn,
     dom.recommendedPlanBtn,
     dom.blankPlanBtn,
@@ -3783,6 +3845,28 @@ function makeBlankDay(index = state.days.length) {
   };
 }
 
+function quickPlaceDraft(extra = {}) {
+  const name = dom.quickPlaceName.value.trim();
+  if (!name) return null;
+  const keyword = dom.quickAmapKeyword.value.trim() || `${state.destination || ""} ${name}`.trim();
+  const locatedPlace = quickAmapPlace && (quickAmapPlace.keyword === keyword || quickAmapPlace.title === name) ? quickAmapPlace : null;
+  return makeStop({
+    time: dom.quickTime.value.trim() || "10:00",
+    title: name,
+    type: extra.type || "Scenic",
+    address: dom.quickAddress.value.trim() || locatedPlace?.address || keyword,
+    note: extra.note || `从快速录入加入。高德关键词：${keyword}`,
+    tags: extra.tags || ["自定义", "待优化"],
+    budget: Number(dom.quickBudget.value || 0),
+    amapKeyword: keyword,
+    lng: locatedPlace?.lng || "",
+    lat: locatedPlace?.lat || "",
+    x: extra.x ?? 50,
+    y: extra.y ?? 50,
+    image: state.cover || images.city,
+  });
+}
+
 dom.dayList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-day]");
   if (!button) return;
@@ -3960,29 +4044,18 @@ dom.addStopBtn.addEventListener("click", () => {
 
 dom.quickAddForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const name = dom.quickPlaceName.value.trim();
-  if (!name) return;
-  const keyword = dom.quickAmapKeyword.value.trim() || `${state.destination || ""} ${name}`.trim();
-  const locatedPlace = quickAmapPlace && (quickAmapPlace.keyword === keyword || quickAmapPlace.title === name) ? quickAmapPlace : null;
+  const draft = quickPlaceDraft();
+  if (!draft) return;
+  const name = draft.title;
   let createdStop = null;
   let createdDayId = "";
   mutate(`加入景点「${name}」`, () => {
     const day = currentDay();
-    createdStop = makeStop({
-      time: dom.quickTime.value.trim() || "10:00",
-      title: name,
-      type: "Scenic",
-      address: dom.quickAddress.value.trim() || locatedPlace?.address || keyword,
-      note: `从快速录入加入。高德关键词：${keyword}`,
-      tags: ["自定义", "待优化"],
-      budget: Number(dom.quickBudget.value || 0),
-      amapKeyword: keyword,
-      lng: locatedPlace?.lng || "",
-      lat: locatedPlace?.lat || "",
+    createdStop = {
+      ...draft,
       x: 30 + ((day.stops.length * 17) % 52),
       y: 28 + ((day.stops.length * 13) % 42),
-      image: state.cover || images.city,
-    });
+    };
     createdDayId = day.id;
     day.stops.push(createdStop);
     activeStop = day.stops.length - 1;
@@ -3995,6 +4068,33 @@ dom.quickAddForm.addEventListener("submit", (event) => {
     quickAmapPlace = null;
   }, { requireUnlocked: false });
   if (createdStop) broadcastStopCreated(createdDayId, createdStop);
+});
+
+dom.addCandidateBtn.addEventListener("click", async () => {
+  const draft = quickPlaceDraft({
+    note: "从快速录入加入备选池，可稍后安排到任意一天。",
+    tags: ["备选", "自定义"],
+  });
+  if (!draft || !requireEdit("加入备选池")) return;
+  if (await addCollaborativeCandidate(draft)) {
+    dom.quickPlaceName.value = "";
+    dom.quickAmapKeyword.value = "";
+    dom.quickTime.value = "";
+    dom.quickBudget.value = "";
+    dom.quickAddress.value = "";
+    quickAmapPlace = null;
+    dom.saveState.textContent = `已加入备选池「${draft.title}」`;
+    return;
+  }
+  mutate(`加入备选池「${draft.title}」`, () => {
+    state.candidates = [draft, ...(state.candidates || [])].slice(0, 80);
+    dom.quickPlaceName.value = "";
+    dom.quickAmapKeyword.value = "";
+    dom.quickTime.value = "";
+    dom.quickBudget.value = "";
+    dom.quickAddress.value = "";
+    quickAmapPlace = null;
+  }, { requireUnlocked: false });
 });
 
 dom.openAmapBtn.addEventListener("click", async () => {
