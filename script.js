@@ -1068,6 +1068,28 @@ function normalizeCandidateStops(candidates = []) {
     .slice(0, 80);
 }
 
+function normalizeActivities(activities = []) {
+  const seen = new Set();
+  return (activities || [])
+    .filter(Boolean)
+    .map((activity) => (typeof activity === "string" ? { text: activity } : activity))
+    .map((activity) => ({
+      id: activity.id || uid(),
+      text: String(activity.text || "").trim(),
+      at: activity.at || new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+      createdAt: activity.createdAt || new Date().toISOString(),
+      createdBy: activity.createdBy || "",
+    }))
+    .filter((activity) => {
+      if (!activity.text) return false;
+      const key = activity.id || `${activity.text}:${activity.createdAt || activity.at}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 20);
+}
+
 function buildInitialPlanUpdate(Y, plan) {
   const seedDoc = new Y.Doc();
   seedDoc.clientID = stableTextClientId(`${tripId}:plan`);
@@ -1077,6 +1099,9 @@ function buildInitialPlanUpdate(Y, plan) {
   const candidateArray = seedDoc.getArray("candidates");
   const candidates = normalizeCandidateStops(plan.candidates || []);
   if (candidates.length) candidateArray.insert(0, candidates);
+  const activityArray = seedDoc.getArray("activities");
+  const activities = normalizeActivities(plan.activities || []);
+  if (activities.length) activityArray.insert(0, activities);
   const settingsMap = seedDoc.getMap("settings");
   PLAN_SETTING_FIELDS.forEach((meta) => {
     settingsMap.set(meta.field, planSettingValue(plan, meta));
@@ -1148,6 +1173,10 @@ function readCandidatesFromDoc() {
   return normalizeCandidateStops(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || []);
 }
 
+function readActivitiesFromDoc() {
+  return normalizeActivities(collabActivitiesArray ? collabActivitiesArray.toArray() : state.activities || []);
+}
+
 function readSettingsFromDoc() {
   const values = {};
   PLAN_SETTING_FIELDS.forEach((meta) => {
@@ -1169,17 +1198,20 @@ function refreshRealtimePlanViews() {
 }
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步") {
-  if (!collabPlanDoc || !collabTransportQuotesArray || !collabCandidatesArray || !collabSettingsMap) return;
+  if (!collabPlanDoc || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
   const nextQuotes = readTransportQuotesFromDoc();
   const nextCandidates = readCandidatesFromDoc();
+  const nextActivities = readActivitiesFromDoc();
   const nextSettings = readSettingsFromDoc();
   const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
   const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
+  const activitiesChanged = !sameSerialized(normalizeActivities(state.activities || []), nextActivities);
   const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
-  const changed = quotesChanged || candidatesChanged || settingsChanged;
+  const changed = quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   if (!changed) return;
   state.transportQuotes = nextQuotes;
   state.candidates = nextCandidates;
+  state.activities = nextActivities;
   PLAN_SETTING_FIELDS.forEach((meta) => {
     state[meta.field] = clone(nextSettings[meta.field]);
   });
@@ -1191,7 +1223,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    pushRemoteState("交通报价协作内容已实时同步");
+    pushRemoteState("计划结构协作内容已实时同步");
   }, 900);
 }
 
@@ -1505,6 +1537,7 @@ function destroyCollabPlanDoc() {
   collabPlanTripId = "";
   collabTransportQuotesArray = null;
   collabCandidatesArray = null;
+  collabActivitiesArray = null;
   collabSettingsMap = null;
   if (collabPlanDoc) {
     collabPlanDoc.destroy();
@@ -1529,6 +1562,7 @@ async function bindCollabPlanDoc() {
   Y.applyUpdate(collabPlanDoc, buildInitialPlanUpdate(Y, state), "restore");
   collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
   collabCandidatesArray = collabPlanDoc.getArray("candidates");
+  collabActivitiesArray = collabPlanDoc.getArray("activities");
   collabSettingsMap = collabPlanDoc.getMap("settings");
   collabPlanDoc.transact(() => {
     PLAN_SETTING_FIELDS.forEach((meta) => {
@@ -1573,6 +1607,26 @@ async function addCollaborativeCandidate(stop) {
   collabPlanDoc.transact(() => {
     collabCandidatesArray.insert(0, [normalized]);
   }, "local-candidate");
+  return true;
+}
+
+async function addCollaborativeActivity(text) {
+  if (!canEdit() || isReadonlyMode || !tripId) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabActivitiesArray || isApplyingCollabPlanRemote) return false;
+  const activity = normalizeActivities([{
+    text,
+    createdBy: getCollabName(),
+    createdAt: new Date().toISOString(),
+    at: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+  }])[0];
+  if (!activity) return true;
+  collabPlanDoc.transact(() => {
+    collabActivitiesArray.insert(0, [activity]);
+    if (collabActivitiesArray.length > 20) {
+      collabActivitiesArray.delete(20, collabActivitiesArray.length - 20);
+    }
+  }, "local-activity");
   return true;
 }
 
@@ -1977,6 +2031,7 @@ function applyRemotePlan(remotePlan, meta = {}) {
   const currentTextState = activeStopId === collabTextStopId ? currentStop()?.textYjs || currentStop()?.noteYjs || "" : "";
   const currentTransportQuotes = normalizeTransportQuotes(state.transportQuotes || []);
   const currentCandidates = normalizeCandidateStops(state.candidates || []);
+  const currentActivities = normalizeActivities(state.activities || []);
   const currentSettings = {
     ...currentPlanMeta(),
     partySize: Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1),
@@ -1992,6 +2047,7 @@ function applyRemotePlan(remotePlan, meta = {}) {
   if (
     !sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || [])) ||
     !sameSerialized(currentCandidates, normalizeCandidateStops(state.candidates || [])) ||
+    !sameSerialized(currentActivities, normalizeActivities(state.activities || [])) ||
     !sameSerialized(currentSettings, {
       ...currentPlanMeta(),
       partySize: Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1),
@@ -2299,6 +2355,7 @@ let collabTextSaveTimer = null;
 let collabPlanDoc = null;
 let collabTransportQuotesArray = null;
 let collabCandidatesArray = null;
+let collabActivitiesArray = null;
 let collabSettingsMap = null;
 let collabPlanTripId = "";
 let collabPlanSaveTimer = null;
@@ -2433,7 +2490,17 @@ async function saveState(label = "已保存到本地") {
 }
 
 function logActivity(text) {
-  state.activities = [{ text, at: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) }, ...(state.activities || [])].slice(0, 6);
+  const localActivity = {
+    id: uid(),
+    text,
+    at: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+    createdAt: new Date().toISOString(),
+    createdBy: getCollabName(),
+  };
+  state.activities = normalizeActivities([localActivity, ...(state.activities || [])]).slice(0, 6);
+  if (tripId && canEdit() && !isReadonlyMode) {
+    addCollaborativeActivity(text).catch((error) => console.warn("Collaborative activity failed", error));
+  }
 }
 
 function getCollabName() {
