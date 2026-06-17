@@ -917,6 +917,53 @@ function buildInitialTextUpdate(Y, stop) {
   return update;
 }
 
+function currentPlanRoomId() {
+  return tripId ? `plan:${tripId}` : "";
+}
+
+function normalizeTransportQuotes(quotes = []) {
+  const seen = new Set();
+  return (quotes || [])
+    .filter(Boolean)
+    .map((quote) => ({
+      id: quote.id || uid(),
+      dayId: quote.dayId || "",
+      date: quote.date || "",
+      type: quote.type === "train" ? "train" : "flight",
+      code: String(quote.code || quote.flightNo || quote.trainNo || "").trim(),
+      from: String(quote.from || "").trim(),
+      to: String(quote.to || "").trim(),
+      depart: quote.depart || quote.departTime || "--:--",
+      arrive: quote.arrive || quote.arriveTime || "--:--",
+      duration: Number(quote.duration || 0),
+      price: numberValue(quote.price || quote.amount || quote.lowestPrice),
+      source: quote.source || "手动保存",
+      carrier: quote.carrier || quote.airline || "",
+      stops: Number(quote.stops || 0),
+      createdBy: quote.createdBy || "",
+      createdAt: quote.createdAt || new Date().toISOString(),
+    }))
+    .filter((quote) => {
+      if (!quote.code || !quote.price) return false;
+      const key = quote.id || `${quote.date}:${quote.type}:${quote.code}:${quote.depart}:${quote.price}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 80);
+}
+
+function buildInitialPlanUpdate(Y, plan) {
+  const seedDoc = new Y.Doc();
+  seedDoc.clientID = stableTextClientId(`${tripId}:plan`);
+  const quoteArray = seedDoc.getArray("transportQuotes");
+  const quotes = normalizeTransportQuotes(plan.transportQuotes || []);
+  if (quotes.length) quoteArray.insert(0, quotes);
+  const update = Y.encodeStateAsUpdate(seedDoc);
+  seedDoc.destroy();
+  return update;
+}
+
 async function ensureYjs() {
   if (yjsModule) return yjsModule;
   if (!yjsReadyPromise) {
@@ -969,6 +1016,48 @@ function persistCurrentTextFromDoc(label = "地点协作内容已实时同步") 
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
     pushRemoteState("地点协作内容已实时同步");
   }, 900);
+}
+
+function readTransportQuotesFromDoc() {
+  return normalizeTransportQuotes(collabTransportQuotesArray ? collabTransportQuotesArray.toArray() : state.transportQuotes || []);
+}
+
+function refreshRealtimePlanViews() {
+  renderShell();
+  renderTransport();
+  renderActivities();
+  refreshIcons();
+}
+
+function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步") {
+  if (!collabPlanDoc || !collabTransportQuotesArray) return;
+  const nextQuotes = readTransportQuotesFromDoc();
+  const changed = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
+  if (!changed) return;
+  state.transportQuotes = nextQuotes;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  dom.collabStatus.textContent = label;
+  refreshRealtimePlanViews();
+  clearTimeout(collabPlanSaveTimer);
+  collabPlanSaveTimer = setTimeout(() => {
+    if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
+    pushRemoteState("交通报价协作内容已实时同步");
+  }, 900);
+}
+
+function broadcastPlanYjsUpdate(update) {
+  if (!realtimeChannel || !collabPlanDoc || !tripId || isApplyingCollabPlanRemote) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "plan-yjs-update",
+    payload: {
+      roomId: currentPlanRoomId(),
+      update: bytesToBase64(update),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
 }
 
 function broadcastTextUpdate(update) {
@@ -1247,6 +1336,60 @@ function destroyCollabTextDoc() {
   }
 }
 
+function destroyCollabPlanDoc() {
+  clearTimeout(collabPlanSaveTimer);
+  collabPlanSaveTimer = null;
+  collabPlanTripId = "";
+  collabTransportQuotesArray = null;
+  if (collabPlanDoc) {
+    collabPlanDoc.destroy();
+    collabPlanDoc = null;
+  }
+}
+
+async function bindCollabPlanDoc() {
+  if (!tripId || isReadonlyMode || collabPlanTripId === tripId) return;
+  const requestId = collabPlanBindRequestId + 1;
+  collabPlanBindRequestId = requestId;
+  destroyCollabPlanDoc();
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return;
+  }
+  if (requestId !== collabPlanBindRequestId || !tripId || isReadonlyMode) return;
+  collabPlanTripId = tripId;
+  collabPlanDoc = new Y.Doc();
+  Y.applyUpdate(collabPlanDoc, buildInitialPlanUpdate(Y, state), "restore");
+  collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
+  collabPlanDoc.on("update", (update, origin) => {
+    if (origin === "remote") {
+      persistCurrentPlanFromDoc("收到协作者交通报价更新");
+      return;
+    }
+    broadcastPlanYjsUpdate(update);
+    persistCurrentPlanFromDoc("交通报价协作内容实时同步中");
+  });
+  persistCurrentPlanFromDoc("已载入计划结构协作状态");
+  renderTransport();
+  refreshIcons();
+}
+
+async function addCollaborativeTransportQuote(quote) {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabTransportQuotesArray || isApplyingCollabPlanRemote) return false;
+  const normalized = normalizeTransportQuotes([{ ...quote, createdBy: getCollabName(), createdAt: new Date().toISOString() }])[0];
+  if (!normalized) return true;
+  const existingIds = new Set(readTransportQuotesFromDoc().map((item) => item.id));
+  if (existingIds.has(normalized.id)) return true;
+  collabPlanDoc.transact(() => {
+    collabTransportQuotesArray.insert(0, [normalized]);
+  }, "local-transport-quote");
+  return true;
+}
+
 async function bindCollabTextDoc() {
   const stop = currentStop();
   if (!stop?.id || collabTextStopId === stop.id) return;
@@ -1355,6 +1498,25 @@ async function applyRemoteTextUpdate(payload = {}) {
     setNoteCollabStatus(`${payload.name || "协作者"} 正在同步地点协作内容`);
   } finally {
     isApplyingCollabTextRemote = false;
+  }
+}
+
+async function applyRemotePlanYjsUpdate(payload = {}) {
+  if (!payload.update || payload.roomId !== currentPlanRoomId()) return;
+  if (!collabPlanDoc || collabPlanTripId !== tripId) await bindCollabPlanDoc();
+  if (!collabPlanDoc) return;
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return;
+  }
+  isApplyingCollabPlanRemote = true;
+  try {
+    Y.applyUpdate(collabPlanDoc, base64ToBytes(payload.update), "remote");
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 正在同步交通报价`;
+  } finally {
+    isApplyingCollabPlanRemote = false;
   }
 }
 
@@ -1582,12 +1744,16 @@ function applyRemotePlan(remotePlan, meta = {}) {
   const activeStopId = currentStop()?.id || "";
   const remoteActiveStop = activeStopId ? remotePlan.days?.flatMap((day) => day.stops || []).find((stop) => stop.id === activeStopId) : null;
   const currentTextState = activeStopId === collabTextStopId ? currentStop()?.textYjs || currentStop()?.noteYjs || "" : "";
+  const currentTransportQuotes = normalizeTransportQuotes(state.transportQuotes || []);
   state = ensurePlanDates(clone(remotePlan));
   lastSyncedState = clone(state);
   lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
   const remoteTextState = remoteActiveStop?.textYjs || remoteActiveStop?.noteYjs || "";
   if (remoteTextState && remoteTextState !== currentTextState) {
     destroyCollabTextDoc();
+  }
+  if (!sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || []))) {
+    destroyCollabPlanDoc();
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   isApplyingRemote = false;
@@ -1883,6 +2049,12 @@ let collabCommentsArray = null;
 let collabTextStopId = "";
 let isApplyingCollabTextRemote = false;
 let collabTextSaveTimer = null;
+let collabPlanDoc = null;
+let collabTransportQuotesArray = null;
+let collabPlanTripId = "";
+let collabPlanSaveTimer = null;
+let isApplyingCollabPlanRemote = false;
+let collabPlanBindRequestId = 0;
 let presenceTrackTimer = null;
 let yjsModule = null;
 let yjsReadyPromise = null;
@@ -2446,6 +2618,10 @@ function subscribeRemoteState() {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteTextUpdate(payload);
     })
+    .on("broadcast", { event: "plan-yjs-update" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemotePlanYjsUpdate(payload);
+    })
     .on("broadcast", { event: "stop-text-selection-update" }, ({ payload }) => {
       if (!payload || payload.memberId === (memberProfile?.id || sessionId)) return;
       if (payload.roomId !== currentTextRoomId(payload.stopId)) return;
@@ -2513,6 +2689,7 @@ async function connectSharedTrip(id) {
   tripId = id;
   lastRemoteUpdatedAt = "";
   lastSyncedState = null;
+  destroyCollabPlanDoc();
   hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
   const url = new URL(window.location.href);
@@ -2537,6 +2714,7 @@ async function createSharedTrip() {
   tripId = id;
   lastRemoteUpdatedAt = "";
   lastSyncedState = null;
+  destroyCollabPlanDoc();
   hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
   await pushRemoteState("已创建共享计划");
@@ -2825,7 +3003,7 @@ function manualTransportQuotes() {
 }
 
 function currentManualQuotes(day) {
-  return manualTransportQuotes().filter((item) => item.date === day?.date || (!item.date && item.dayId === day?.id));
+  return manualTransportQuotes().filter((item) => item.dayId === day?.id || item.date === day?.date);
 }
 
 function normalizeImportCategory(value, provider = "") {
@@ -3103,7 +3281,15 @@ function renderTransport() {
   dom.flightAvgPrice.textContent = money(averagePrice(options, "flight"));
   dom.trainAvgPrice.textContent = money(averagePrice(options, "train"));
   const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
-  dom.transportProviderStatus.textContent = manualQuotes.length ? "手动报价" : transportProviderItems.length ? (isDemoProxy ? "代理示例" : "真实接口") : "本地示例";
+  dom.transportProviderStatus.textContent = manualQuotes.length
+    ? tripId && collabPlanDoc
+      ? "协作报价"
+      : "手动报价"
+    : transportProviderItems.length
+    ? isDemoProxy
+      ? "代理示例"
+      : "真实接口"
+    : "本地示例";
   dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} · ${route.from} 到 ${route.to}，${
     manualQuotes.length
       ? `已保存 ${manualQuotes.length} 条手动报价；也可以继续打开官方页面查询。`
@@ -3550,6 +3736,7 @@ function render() {
   applyReadonlyUi();
   renderDayEditor();
   renderEditorLockState();
+  bindCollabPlanDoc();
   bindCollabTextDoc();
   refreshIcons();
 }
@@ -4298,29 +4485,38 @@ dom.transportFilterForm.addEventListener("submit", (event) => {
   refreshIcons();
 });
 
-dom.manualQuoteForm.addEventListener("submit", (event) => {
+dom.manualQuoteForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const code = dom.manualQuoteCode.value.trim();
   const price = numberValue(dom.manualQuotePrice.value);
   if (!code || !price) return;
   const day = currentDay();
   const route = defaultTransportRoute(day);
+  const quote = {
+    id: uid(),
+    dayId: day.id,
+    date: day.date || "",
+    type: dom.manualQuoteType.value,
+    code,
+    from: dom.transportFrom.value.trim() || route.from,
+    to: dom.transportTo.value.trim() || route.to,
+    depart: dom.manualQuoteDepart.value || "--:--",
+    arrive: dom.manualQuoteArrive.value || "--:--",
+    duration: durationFromTimes(dom.manualQuoteDepart.value, dom.manualQuoteArrive.value),
+    price,
+    source: "手动保存",
+  };
+  if (await addCollaborativeTransportQuote(quote)) {
+    transportFilterApplied = true;
+    dom.manualQuoteCode.value = "";
+    dom.manualQuoteDepart.value = "";
+    dom.manualQuoteArrive.value = "";
+    dom.manualQuotePrice.value = "";
+    return;
+  }
   mutate(`保存交通报价「${code}」`, () => {
     state.transportQuotes = [
-      {
-        id: uid(),
-        dayId: day.id,
-        date: day.date || "",
-        type: dom.manualQuoteType.value,
-        code,
-        from: dom.transportFrom.value.trim() || route.from,
-        to: dom.transportTo.value.trim() || route.to,
-        depart: dom.manualQuoteDepart.value || "--:--",
-        arrive: dom.manualQuoteArrive.value || "--:--",
-        duration: durationFromTimes(dom.manualQuoteDepart.value, dom.manualQuoteArrive.value),
-        price,
-        source: "手动保存",
-      },
+      quote,
       ...manualTransportQuotes(),
     ].slice(0, 40);
     transportFilterApplied = true;
