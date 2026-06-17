@@ -1090,9 +1090,34 @@ function normalizeActivities(activities = []) {
     .slice(0, 20);
 }
 
+function normalizeDayMetas(days = []) {
+  const seen = new Set();
+  return (days || [])
+    .filter(Boolean)
+    .map((day, index) => ({
+      id: day.id || uid(),
+      label: day.label || `D${index + 1}`,
+      date: day.date || "",
+      title: day.title || day.label || `第${index + 1}天`,
+      route: day.route || "待填写路线",
+      weather: day.weather || "天气待确认",
+      transport: day.transport || "交通待规划",
+      amapRoute: day.amapRoute || null,
+    }))
+    .filter((day) => {
+      if (seen.has(day.id)) return false;
+      seen.add(day.id);
+      return true;
+    })
+    .slice(0, 30);
+}
+
 function buildInitialPlanUpdate(Y, plan) {
   const seedDoc = new Y.Doc();
   seedDoc.clientID = stableTextClientId(`${tripId}:plan`);
+  const dayArray = seedDoc.getArray("dayMetas");
+  const dayMetas = normalizeDayMetas(plan.days || []);
+  if (dayMetas.length) dayArray.insert(0, dayMetas);
   const quoteArray = seedDoc.getArray("transportQuotes");
   const quotes = normalizeTransportQuotes(plan.transportQuotes || []);
   if (quotes.length) quoteArray.insert(0, quotes);
@@ -1169,6 +1194,10 @@ function readTransportQuotesFromDoc() {
   return normalizeTransportQuotes(collabTransportQuotesArray ? collabTransportQuotesArray.toArray() : state.transportQuotes || []);
 }
 
+function readDayMetasFromDoc() {
+  return normalizeDayMetas(collabDayMetasArray ? collabDayMetasArray.toArray() : state.days || []);
+}
+
 function readCandidatesFromDoc() {
   return normalizeCandidateStops(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || []);
 }
@@ -1189,8 +1218,30 @@ function readSettingsFromDoc() {
   return values;
 }
 
+function applyDayMetasToState(dayMetas = []) {
+  const byId = new Map(normalizeDayMetas(dayMetas).map((day) => [day.id, day]));
+  let changed = false;
+  state.days.forEach((day) => {
+    const meta = byId.get(day.id);
+    if (!meta) return;
+    ["label", "date", "title", "route", "weather", "transport", "amapRoute"].forEach((field) => {
+      if (!sameSerialized(day[field], meta[field])) {
+        day[field] = clone(meta[field]);
+        changed = true;
+      }
+    });
+  });
+  if (changed) resequencePlanDays();
+  return changed;
+}
+
 function refreshRealtimePlanViews() {
   renderShell();
+  renderDays();
+  renderDaySummary();
+  renderTimeline();
+  renderMap();
+  renderDayEditor();
   renderTransport();
   renderCandidates();
   renderActivities();
@@ -1198,17 +1249,20 @@ function refreshRealtimePlanViews() {
 }
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步") {
-  if (!collabPlanDoc || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
+  if (!collabPlanDoc || !collabDayMetasArray || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
+  const nextDayMetas = readDayMetasFromDoc();
   const nextQuotes = readTransportQuotesFromDoc();
   const nextCandidates = readCandidatesFromDoc();
   const nextActivities = readActivitiesFromDoc();
   const nextSettings = readSettingsFromDoc();
+  const dayMetasChanged = !sameSerialized(normalizeDayMetas(state.days || []), nextDayMetas);
   const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
   const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
   const activitiesChanged = !sameSerialized(normalizeActivities(state.activities || []), nextActivities);
   const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
-  const changed = quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
+  const changed = dayMetasChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   if (!changed) return;
+  if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   state.transportQuotes = nextQuotes;
   state.candidates = nextCandidates;
   state.activities = nextActivities;
@@ -1535,6 +1589,7 @@ function destroyCollabPlanDoc() {
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = null;
   collabPlanTripId = "";
+  collabDayMetasArray = null;
   collabTransportQuotesArray = null;
   collabCandidatesArray = null;
   collabActivitiesArray = null;
@@ -1560,6 +1615,7 @@ async function bindCollabPlanDoc() {
   collabPlanTripId = tripId;
   collabPlanDoc = new Y.Doc();
   Y.applyUpdate(collabPlanDoc, buildInitialPlanUpdate(Y, state), "restore");
+  collabDayMetasArray = collabPlanDoc.getArray("dayMetas");
   collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
   collabCandidatesArray = collabPlanDoc.getArray("candidates");
   collabActivitiesArray = collabPlanDoc.getArray("activities");
@@ -1653,6 +1709,19 @@ async function syncPlanMetaToDoc(origin = "local-plan-meta") {
     entries.forEach(([field, value]) => {
       collabSettingsMap.set(field, clone(value));
     });
+  }, origin);
+  return true;
+}
+
+async function syncDayMetasToDoc(origin = "local-day-metas") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabDayMetasArray || isApplyingCollabPlanRemote) return false;
+  const nextDayMetas = normalizeDayMetas(state.days || []);
+  if (sameSerialized(readDayMetasFromDoc(), nextDayMetas)) return true;
+  collabPlanDoc.transact(() => {
+    if (collabDayMetasArray.length) collabDayMetasArray.delete(0, collabDayMetasArray.length);
+    if (nextDayMetas.length) collabDayMetasArray.insert(0, nextDayMetas);
   }, origin);
   return true;
 }
@@ -1785,7 +1854,7 @@ async function applyRemotePlanYjsUpdate(payload = {}) {
   isApplyingCollabPlanRemote = true;
   try {
     Y.applyUpdate(collabPlanDoc, base64ToBytes(payload.update), "remote");
-    dom.collabStatus.textContent = `${payload.name || "协作者"} 正在同步交通报价`;
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 正在同步计划结构`;
   } finally {
     isApplyingCollabPlanRemote = false;
   }
@@ -2029,6 +2098,7 @@ function applyRemotePlan(remotePlan, meta = {}) {
   const activeStopId = currentStop()?.id || "";
   const remoteActiveStop = activeStopId ? remotePlan.days?.flatMap((day) => day.stops || []).find((stop) => stop.id === activeStopId) : null;
   const currentTextState = activeStopId === collabTextStopId ? currentStop()?.textYjs || currentStop()?.noteYjs || "" : "";
+  const currentDayMetas = normalizeDayMetas(state.days || []);
   const currentTransportQuotes = normalizeTransportQuotes(state.transportQuotes || []);
   const currentCandidates = normalizeCandidateStops(state.candidates || []);
   const currentActivities = normalizeActivities(state.activities || []);
@@ -2045,6 +2115,7 @@ function applyRemotePlan(remotePlan, meta = {}) {
     destroyCollabTextDoc();
   }
   if (
+    !sameSerialized(currentDayMetas, normalizeDayMetas(state.days || [])) ||
     !sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || [])) ||
     !sameSerialized(currentCandidates, normalizeCandidateStops(state.candidates || [])) ||
     !sameSerialized(currentActivities, normalizeActivities(state.activities || [])) ||
@@ -2353,6 +2424,7 @@ let collabTextStopId = "";
 let isApplyingCollabTextRemote = false;
 let collabTextSaveTimer = null;
 let collabPlanDoc = null;
+let collabDayMetasArray = null;
 let collabTransportQuotesArray = null;
 let collabCandidatesArray = null;
 let collabActivitiesArray = null;
@@ -4185,12 +4257,13 @@ dom.dayForm.addEventListener("submit", async (event) => {
     updatedDay = clone(currentDay());
   }, { requireUnlocked: false });
   if (updatedDay) {
+    await syncDayMetasToDoc("local-day-update");
     await syncPlanMetaToDoc("local-day-date-meta");
     broadcastDayUpdated(updatedDay);
   }
 });
 
-dom.addDayBtn.addEventListener("click", () => {
+dom.addDayBtn.addEventListener("click", async () => {
   let createdDay = null;
   let createdIndex = 0;
   mutate("新增一天", () => {
@@ -4202,10 +4275,14 @@ dom.addDayBtn.addEventListener("click", () => {
     reflowPlanDates();
     createdDay = clone(state.days[createdIndex]);
   }, { requireUnlocked: false });
-  if (createdDay) broadcastDayCreated(createdDay, createdIndex);
+  if (createdDay) {
+    await syncDayMetasToDoc("local-day-create");
+    await syncPlanMetaToDoc("local-day-create-meta");
+    broadcastDayCreated(createdDay, createdIndex);
+  }
 });
 
-dom.deleteDayBtn.addEventListener("click", () => {
+dom.deleteDayBtn.addEventListener("click", async () => {
   if (state.days.length <= 1) {
     dom.saveState.textContent = "计划至少保留一天";
     return;
@@ -4218,10 +4295,12 @@ dom.deleteDayBtn.addEventListener("click", () => {
     destroyCollabTextDoc();
     reflowPlanDates();
   }, { requireUnlocked: false });
+  await syncDayMetasToDoc("local-day-delete");
+  await syncPlanMetaToDoc("local-day-delete-meta");
   broadcastDayDeleted(deletedDay);
 });
 
-dom.moveDayUpBtn.addEventListener("click", () => {
+dom.moveDayUpBtn.addEventListener("click", async () => {
   if (activeDay <= 0) return;
   let changed = false;
   mutate("上移当天", () => {
@@ -4231,10 +4310,14 @@ dom.moveDayUpBtn.addEventListener("click", () => {
     reflowPlanDates();
     changed = true;
   }, { requireUnlocked: false });
-  if (changed) broadcastDaysReordered();
+  if (changed) {
+    await syncDayMetasToDoc("local-day-reorder");
+    await syncPlanMetaToDoc("local-day-reorder-meta");
+    broadcastDaysReordered();
+  }
 });
 
-dom.moveDayDownBtn.addEventListener("click", () => {
+dom.moveDayDownBtn.addEventListener("click", async () => {
   if (activeDay >= state.days.length - 1) return;
   let changed = false;
   mutate("下移当天", () => {
@@ -4244,7 +4327,11 @@ dom.moveDayDownBtn.addEventListener("click", () => {
     reflowPlanDates();
     changed = true;
   }, { requireUnlocked: false });
-  if (changed) broadcastDaysReordered();
+  if (changed) {
+    await syncDayMetasToDoc("local-day-reorder");
+    await syncPlanMetaToDoc("local-day-reorder-meta");
+    broadcastDaysReordered();
+  }
 });
 
 dom.stopForm.addEventListener("submit", (event) => {
@@ -4979,6 +5066,7 @@ async function createRecommendedPlan() {
     transportFilterApplied = false;
   }, { requireUnlocked: false });
   destroyCollabPlanDoc();
+  await syncDayMetasToDoc("local-recommended-plan-days");
   await syncPlanMetaToDoc("local-recommended-plan-meta");
   broadcastPlanReplaced("生成推荐计划");
   closeCreateChoice();
@@ -5003,6 +5091,7 @@ async function createBlankTemplate() {
     transportFilterApplied = false;
   }, { requireUnlocked: false });
   destroyCollabPlanDoc();
+  await syncDayMetasToDoc("local-blank-plan-days");
   await syncPlanMetaToDoc("local-blank-plan-meta");
   broadcastPlanReplaced("生成空白模板");
   closeCreateChoice();
@@ -5173,6 +5262,7 @@ dom.resetBtn.addEventListener("click", async () => {
   saveState("已重置示例");
   render();
   destroyCollabPlanDoc();
+  await syncDayMetasToDoc("local-reset-plan-days");
   await syncPlanMetaToDoc("local-reset-plan-meta");
   broadcastPlanReplaced("重置示例计划");
 });
