@@ -185,6 +185,58 @@ function dateRangeText(startValue, endValue) {
   return `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
 }
 
+function resequencePlanDays(plan = state) {
+  if (!plan?.days?.length) return plan;
+  plan.days.forEach((day, index) => {
+    day.label = `D${index + 1}`;
+  });
+  const dates = plan.days.map((day) => day.date).filter(Boolean).sort();
+  if (dates.length) {
+    plan.startDate = dates[0];
+    plan.endDate = dates[dates.length - 1];
+    plan.dateRange = dateRangeText(plan.startDate, plan.endDate);
+  } else if (plan.startDate) {
+    plan.endDate = formatIsoDate(addDays(parseIsoDate(plan.startDate), plan.days.length - 1));
+    plan.dateRange = dateRangeText(plan.startDate, plan.endDate);
+  }
+  return plan;
+}
+
+function reflowPlanDates(plan = state, startDateValue = plan?.startDate || plan?.days?.[0]?.date) {
+  if (!plan?.days?.length) return plan;
+  const start = parseIsoDate(startDateValue) || parseIsoDate(plan.days[0]?.date) || new Date();
+  plan.days.forEach((day, index) => {
+    const date = addDays(start, index);
+    day.date = formatIsoDate(date);
+    day.label = `D${index + 1}`;
+    day.title = formatDatedTitle(day.date, day.title, index);
+  });
+  plan.startDate = formatIsoDate(start);
+  plan.endDate = formatIsoDate(addDays(start, plan.days.length - 1));
+  plan.dateRange = dateRangeText(plan.startDate, plan.endDate);
+  return plan;
+}
+
+function currentPlanMeta() {
+  return {
+    name: state.name,
+    destination: state.destination,
+    origin: state.origin,
+    dateRange: state.dateRange,
+    startDate: state.startDate,
+    endDate: state.endDate,
+    budgetLimit: state.budgetLimit,
+    partySize: state.partySize,
+    cover: state.cover,
+  };
+}
+
+function applyPlanMeta(meta = {}) {
+  ["name", "destination", "origin", "dateRange", "startDate", "endDate", "budgetLimit", "partySize", "cover"].forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(meta, field)) state[field] = clone(meta[field]);
+  });
+}
+
 function defaultGuideDates() {
   const start = addDays(new Date(), 14);
   const end = addDays(start, 5);
@@ -1058,6 +1110,130 @@ function broadcastStopCreated(dayId, stop) {
   });
 }
 
+function broadcastStopDeleted(dayId, stop) {
+  if (!realtimeChannel || !tripId || !stop?.id) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "stop-deleted",
+    payload: {
+      tripId,
+      dayId,
+      stopId: stop.id,
+      title: stop.title || "地点",
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function broadcastStopsReordered(dayId, stops) {
+  if (!realtimeChannel || !tripId || !dayId) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "stops-reordered",
+    payload: {
+      tripId,
+      dayId,
+      stopOrder: (stops || []).map((stop) => stop.id).filter(Boolean),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function broadcastDayUpdated(day) {
+  if (!realtimeChannel || !tripId || !day?.id) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "day-updated",
+    payload: {
+      tripId,
+      dayId: day.id,
+      day: clone({
+        id: day.id,
+        label: day.label,
+        date: day.date || "",
+        title: day.title || "",
+        route: day.route || "",
+        weather: day.weather || "",
+        transport: day.transport || "",
+      }),
+      planMeta: currentPlanMeta(),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function broadcastDayCreated(day, index) {
+  if (!realtimeChannel || !tripId || !day?.id) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "day-created",
+    payload: {
+      tripId,
+      day: clone(day),
+      index,
+      planMeta: currentPlanMeta(),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function broadcastDayDeleted(day) {
+  if (!realtimeChannel || !tripId || !day?.id) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "day-deleted",
+    payload: {
+      tripId,
+      dayId: day.id,
+      title: day.title || day.label || "当天",
+      planMeta: currentPlanMeta(),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function broadcastDaysReordered() {
+  if (!realtimeChannel || !tripId) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "days-reordered",
+    payload: {
+      tripId,
+      dayOrder: state.days.map((day) => day.id).filter(Boolean),
+      planMeta: currentPlanMeta(),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function broadcastPlanReplaced(reason = "更新整份计划") {
+  if (!realtimeChannel || !tripId || !state?.days?.length) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "plan-replaced",
+    payload: {
+      tripId,
+      state: clone(state),
+      reason,
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
 function destroyCollabTextDoc() {
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = null;
@@ -1197,6 +1373,149 @@ function applyRemoteStopCreated(payload = {}) {
   render();
 }
 
+function applyRemoteStopDeleted(payload = {}) {
+  if (!payload.stopId || payload.tripId !== tripId) return;
+  const dayIndex = state.days.findIndex((day) => day.id === payload.dayId || (day.stops || []).some((stop) => stop.id === payload.stopId));
+  if (dayIndex < 0) return;
+  const day = state.days[dayIndex];
+  const stopIndex = (day.stops || []).findIndex((stop) => stop.id === payload.stopId);
+  if (stopIndex < 0 || day.stops.length <= 1) return;
+  const wasActive = dayIndex === activeDay && stopIndex === activeStop;
+  day.stops.splice(stopIndex, 1);
+  if (dayIndex === activeDay) {
+    activeStop = wasActive ? Math.min(stopIndex, day.stops.length - 1) : activeStop > stopIndex ? activeStop - 1 : activeStop;
+    activeStop = Math.max(0, activeStop);
+  }
+  if (dayIndex === activeDay) clearCurrentAmapRoute();
+  destroyCollabTextDoc();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`);
+  dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了「${payload.title || "地点"}」`;
+  render();
+}
+
+function applyRemoteStopsReordered(payload = {}) {
+  if (!payload.dayId || !Array.isArray(payload.stopOrder) || payload.tripId !== tripId) return;
+  const dayIndex = state.days.findIndex((day) => day.id === payload.dayId);
+  if (dayIndex < 0) return;
+  const day = state.days[dayIndex];
+  const byId = new Map((day.stops || []).map((stop) => [stop.id, stop]).filter(([id]) => id));
+  const ordered = payload.stopOrder.map((id) => byId.get(id)).filter(Boolean);
+  const leftovers = (day.stops || []).filter((stop) => !payload.stopOrder.includes(stop.id));
+  if (!ordered.length) return;
+  const activeStopId = dayIndex === activeDay ? currentStop()?.id : "";
+  day.stops = [...ordered, ...leftovers];
+  if (dayIndex === activeDay && activeStopId) {
+    activeStop = Math.max(0, day.stops.findIndex((stop) => stop.id === activeStopId));
+  }
+  if (dayIndex === activeDay) clearCurrentAmapRoute();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  logActivity(`${payload.name || "协作者"} 调整地点顺序`);
+  dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了地点顺序`;
+  render();
+}
+
+function applyRemoteDayUpdated(payload = {}) {
+  if (!payload.day?.id || payload.tripId !== tripId) return;
+  const index = state.days.findIndex((day) => day.id === payload.day.id);
+  if (index < 0) return;
+  const current = state.days[index];
+  state.days[index] = {
+    ...current,
+    ...clone(payload.day),
+    stops: current.stops || [],
+    amapRoute: payload.day.amapRoute || current.amapRoute || null,
+  };
+  applyPlanMeta(payload.planMeta || {});
+  resequencePlanDays();
+  guideState.destination = state.destination || guideState.destination;
+  guideState.origin = state.origin || guideState.origin;
+  guideState.startDate = state.startDate || guideState.startDate;
+  guideState.endDate = state.endDate || guideState.endDate;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  logActivity(`${payload.name || "协作者"} 更新当天设置`);
+  dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了 ${state.days[index].label}`;
+  render();
+}
+
+function applyRemoteDayCreated(payload = {}) {
+  if (!payload.day?.id || payload.tripId !== tripId) return;
+  if (state.days.some((day) => day.id === payload.day.id)) return;
+  const activeDayId = currentDay()?.id || "";
+  const nextIndex = Math.min(Math.max(Number(payload.index ?? state.days.length), 0), state.days.length);
+  state.days.splice(nextIndex, 0, clone(payload.day));
+  applyPlanMeta(payload.planMeta || {});
+  resequencePlanDays();
+  if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
+  activeStop = Math.min(activeStop, currentDay()?.stops?.length - 1 || 0);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`);
+  dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了 ${payload.day.title || "一天"}`;
+  render();
+}
+
+function applyRemoteDayDeleted(payload = {}) {
+  if (!payload.dayId || payload.tripId !== tripId || state.days.length <= 1) return;
+  const index = state.days.findIndex((day) => day.id === payload.dayId);
+  if (index < 0) return;
+  const activeDayId = currentDay()?.id || "";
+  state.days.splice(index, 1);
+  applyPlanMeta(payload.planMeta || {});
+  resequencePlanDays();
+  if (activeDayId === payload.dayId) {
+    activeDay = Math.min(index, state.days.length - 1);
+    activeStop = 0;
+    destroyCollabTextDoc();
+  } else if (activeDayId) {
+    activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`);
+  dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了 ${payload.title || "一天"}`;
+  render();
+}
+
+function applyRemoteDaysReordered(payload = {}) {
+  if (!Array.isArray(payload.dayOrder) || payload.tripId !== tripId) return;
+  const byId = new Map(state.days.map((day) => [day.id, day]).filter(([id]) => id));
+  const ordered = payload.dayOrder.map((id) => byId.get(id)).filter(Boolean);
+  const leftovers = state.days.filter((day) => !payload.dayOrder.includes(day.id));
+  if (!ordered.length) return;
+  const activeDayId = currentDay()?.id || "";
+  state.days = [...ordered, ...leftovers];
+  applyPlanMeta(payload.planMeta || {});
+  resequencePlanDays();
+  if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  logActivity(`${payload.name || "协作者"} 调整日期顺序`);
+  dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了日期顺序`;
+  render();
+}
+
+function applyRemotePlanReplaced(payload = {}) {
+  if (!payload.state?.days?.length || payload.tripId !== tripId) return;
+  const activeDayId = currentDay()?.id || "";
+  const activeStopId = currentStop()?.id || "";
+  state = ensurePlanDates(clone(payload.state));
+  if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
+  if (activeStopId && currentDay()?.stops?.length) {
+    const nextStopIndex = currentDay().stops.findIndex((stop) => stop.id === activeStopId);
+    activeStop = nextStopIndex >= 0 ? nextStopIndex : 0;
+  } else {
+    activeDay = Math.min(activeDay, state.days.length - 1);
+    activeStop = 0;
+  }
+  guideState.destination = state.destination || guideState.destination;
+  guideState.origin = state.origin || guideState.origin;
+  guideState.startDate = state.startDate || guideState.startDate;
+  guideState.endDate = state.endDate || guideState.endDate;
+  destroyCollabTextDoc();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`);
+  dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了整份计划`;
+  render();
+}
+
 function applyTextDiff(yText, nextValue) {
   const currentValue = yText.toString();
   if (currentValue === nextValue) return false;
@@ -1311,6 +1630,13 @@ async function resolveConflict(mode) {
 function handleRemotePlanUpdate(next) {
   if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
   const remotePlan = ensurePlanDates(clone(next.data));
+  if (pendingLocalRemoteUpdatedAt && next.updated_at === pendingLocalRemoteUpdatedAt && sameSerialized(state, remotePlan)) {
+    lastRemoteUpdatedAt = next.updated_at || lastRemoteUpdatedAt;
+    lastSyncedState = clone(remotePlan);
+    pendingLocalRemoteUpdatedAt = "";
+    hideConflictPanel();
+    return;
+  }
   if (hasLocalChanges() && !sameSerialized(state, remotePlan)) {
     savePlanSnapshot(remotePlan, "待合并的云端版本", next.updated_by || "协作者");
     showConflictPanel({
@@ -1365,6 +1691,17 @@ const dom = {
   saveState: document.querySelector("#saveState"),
   presenceText: document.querySelector("#presenceText"),
   dayPills: document.querySelector("#dayPills"),
+  dayForm: document.querySelector("#dayForm"),
+  dayEditorStatus: document.querySelector("#dayEditorStatus"),
+  fieldDayDate: document.querySelector("#fieldDayDate"),
+  fieldDayTitle: document.querySelector("#fieldDayTitle"),
+  fieldDayRoute: document.querySelector("#fieldDayRoute"),
+  fieldDayWeather: document.querySelector("#fieldDayWeather"),
+  fieldDayTransport: document.querySelector("#fieldDayTransport"),
+  addDayBtn: document.querySelector("#addDayBtn"),
+  moveDayUpBtn: document.querySelector("#moveDayUpBtn"),
+  moveDayDownBtn: document.querySelector("#moveDayDownBtn"),
+  deleteDayBtn: document.querySelector("#deleteDayBtn"),
   timeline: document.querySelector("#timeline"),
   candidateGrid: document.querySelector("#candidateGrid"),
   routeDistance: document.querySelector("#routeDistance"),
@@ -1534,6 +1871,7 @@ const isReadonlyMode = urlParams.get("mode") === "readonly";
 let isApplyingRemote = false;
 let lastRemoteUpdatedAt = "";
 let lastSyncedState = null;
+let pendingLocalRemoteUpdatedAt = "";
 let pendingConflict = null;
 let isResolvingConflict = false;
 let editLockEnabled = true;
@@ -1799,6 +2137,10 @@ function applyReadonlyUi() {
     dom.createSharedTripBtn,
     dom.partySizeInput,
     dom.addStopBtn,
+    dom.addDayBtn,
+    dom.moveDayUpBtn,
+    dom.moveDayDownBtn,
+    dom.deleteDayBtn,
     dom.applyGuideBtn,
     dom.recommendedPlanBtn,
     dom.blankPlanBtn,
@@ -1819,6 +2161,7 @@ function applyReadonlyUi() {
   });
   [
     dom.stopForm,
+    dom.dayForm,
     dom.quickAddForm,
     dom.importForm,
     dom.manualQuoteForm,
@@ -1986,6 +2329,7 @@ async function pushRemoteState(label = "已同步云端") {
     updated_at: new Date().toISOString(),
     updated_by: getCollabName(),
   };
+  pendingLocalRemoteUpdatedAt = payload.updated_at;
   let error = null;
   let data = null;
   if (lastRemoteUpdatedAt) {
@@ -2030,6 +2374,7 @@ async function pushRemoteState(label = "已同步云端") {
     data = result.data;
   }
   if (error) {
+    pendingLocalRemoteUpdatedAt = "";
     dom.collabStatus.textContent = `云端同步失败：${error.message}`;
     return;
   }
@@ -2111,6 +2456,34 @@ function subscribeRemoteState() {
     .on("broadcast", { event: "stop-created" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteStopCreated(payload);
+    })
+    .on("broadcast", { event: "stop-deleted" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteStopDeleted(payload);
+    })
+    .on("broadcast", { event: "stops-reordered" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteStopsReordered(payload);
+    })
+    .on("broadcast", { event: "day-updated" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteDayUpdated(payload);
+    })
+    .on("broadcast", { event: "day-created" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteDayCreated(payload);
+    })
+    .on("broadcast", { event: "day-deleted" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteDayDeleted(payload);
+    })
+    .on("broadcast", { event: "days-reordered" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteDaysReordered(payload);
+    })
+    .on("broadcast", { event: "plan-replaced" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemotePlanReplaced(payload);
     })
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
@@ -3034,6 +3407,20 @@ function renderDaySummary() {
   dom.routeDuration.textContent = day.amapRoute?.duration ? formatDurationText(day.amapRoute.duration) : `${Math.max(25, day.stops.length * 22)} min`;
 }
 
+function renderDayEditor() {
+  const day = currentDay();
+  if (!day) return;
+  dom.fieldDayDate.value = day.date || "";
+  dom.fieldDayTitle.value = day.title || "";
+  dom.fieldDayRoute.value = day.route || "";
+  dom.fieldDayWeather.value = day.weather || "";
+  dom.fieldDayTransport.value = day.transport || "";
+  dom.dayEditorStatus.textContent = isReadonlyMode ? "只读" : tripId ? "实时协作" : "本地保存";
+  dom.moveDayUpBtn.disabled = isReadonlyMode || activeDay === 0;
+  dom.moveDayDownBtn.disabled = isReadonlyMode || activeDay >= state.days.length - 1;
+  dom.deleteDayBtn.disabled = isReadonlyMode || state.days.length <= 1;
+}
+
 function renderTimeline() {
   const day = currentDay();
   dom.timeline.innerHTML = day.stops
@@ -3161,6 +3548,7 @@ function render() {
   renderMembers();
   renderVersionHistory();
   applyReadonlyUi();
+  renderDayEditor();
   renderEditorLockState();
   bindCollabTextDoc();
   refreshIcons();
@@ -3179,6 +3567,33 @@ function mutate(label, action, options = {}) {
 function clearCurrentAmapRoute() {
   const day = currentDay();
   if (day) day.amapRoute = null;
+}
+
+function makeBlankDay(index = state.days.length) {
+  const baseDate = currentDay()?.date || state.endDate || state.startDate || formatIsoDate(new Date());
+  const nextDate = parseIsoDate(baseDate) ? formatIsoDate(addDays(parseIsoDate(baseDate), 1)) : "";
+  const destination = state.destination || guideState.destination || "目的地";
+  return {
+    id: uid(),
+    label: `D${index + 1}`,
+    date: nextDate,
+    title: nextDate ? formatDatedTitle(nextDate, `第${index + 1}天`, index) : `第${index + 1}天`,
+    route: "待填写路线",
+    weather: "天气待确认",
+    transport: "交通待规划",
+    stops: [
+      makeStop({
+        time: "10:00",
+        title: "待填写地点",
+        type: "Draft",
+        address: destination,
+        note: "新增日期后，可在右侧继续补充地点、预算和备注。",
+        tags: ["新日期", "待填写"],
+        amapKeyword: destination,
+        image: state.cover || images.city,
+      }),
+    ],
+  };
 }
 
 dom.dayList.addEventListener("click", (event) => {
@@ -3204,6 +3619,86 @@ dom.mapCanvas.addEventListener("click", (event) => {
   activeStop = Number(pin.dataset.stop);
   render();
   trackPresence();
+});
+
+dom.dayForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  let updatedDay = null;
+  mutate("保存当天设置", () => {
+    const day = currentDay();
+    const previousDate = day.date || state.startDate || formatIsoDate(new Date());
+    day.date = dom.fieldDayDate.value || day.date || "";
+    day.title = dom.fieldDayTitle.value.trim() || day.title || day.label;
+    day.route = dom.fieldDayRoute.value.trim() || "待填写路线";
+    day.weather = dom.fieldDayWeather.value.trim() || "天气待确认";
+    day.transport = dom.fieldDayTransport.value.trim() || "交通待规划";
+    if (day.date !== previousDate) {
+      const changedDate = parseIsoDate(day.date);
+      const nextStartDate = changedDate ? formatIsoDate(addDays(changedDate, -activeDay)) : state.startDate;
+      reflowPlanDates(state, nextStartDate);
+    } else {
+      resequencePlanDays();
+    }
+    updatedDay = clone(currentDay());
+  }, { requireUnlocked: false });
+  if (updatedDay) broadcastDayUpdated(updatedDay);
+});
+
+dom.addDayBtn.addEventListener("click", () => {
+  let createdDay = null;
+  let createdIndex = 0;
+  mutate("新增一天", () => {
+    createdIndex = activeDay + 1;
+    createdDay = makeBlankDay(createdIndex);
+    state.days.splice(createdIndex, 0, createdDay);
+    activeDay = createdIndex;
+    activeStop = 0;
+    reflowPlanDates();
+    createdDay = clone(state.days[createdIndex]);
+  }, { requireUnlocked: false });
+  if (createdDay) broadcastDayCreated(createdDay, createdIndex);
+});
+
+dom.deleteDayBtn.addEventListener("click", () => {
+  if (state.days.length <= 1) {
+    dom.saveState.textContent = "计划至少保留一天";
+    return;
+  }
+  const deletedDay = clone(currentDay());
+  mutate(`删除「${deletedDay.title || deletedDay.label}」`, () => {
+    state.days.splice(activeDay, 1);
+    activeDay = Math.max(0, Math.min(activeDay, state.days.length - 1));
+    activeStop = 0;
+    destroyCollabTextDoc();
+    reflowPlanDates();
+  }, { requireUnlocked: false });
+  broadcastDayDeleted(deletedDay);
+});
+
+dom.moveDayUpBtn.addEventListener("click", () => {
+  if (activeDay <= 0) return;
+  let changed = false;
+  mutate("上移当天", () => {
+    [state.days[activeDay - 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay - 1]];
+    activeDay -= 1;
+    activeStop = 0;
+    reflowPlanDates();
+    changed = true;
+  }, { requireUnlocked: false });
+  if (changed) broadcastDaysReordered();
+});
+
+dom.moveDayDownBtn.addEventListener("click", () => {
+  if (activeDay >= state.days.length - 1) return;
+  let changed = false;
+  mutate("下移当天", () => {
+    [state.days[activeDay + 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay + 1]];
+    activeDay += 1;
+    activeStop = 0;
+    reflowPlanDates();
+    changed = true;
+  }, { requireUnlocked: false });
+  if (changed) broadcastDaysReordered();
 });
 
 dom.stopForm.addEventListener("submit", (event) => {
@@ -3414,32 +3909,46 @@ dom.deleteStopBtn.addEventListener("click", () => {
     dom.saveState.textContent = "每天至少保留一个地点";
     return;
   }
-  const title = currentStop().title;
-  mutate(`删除「${title}」`, () => {
+  const deletedStop = clone(currentStop());
+  mutate(`删除「${deletedStop.title}」`, () => {
     day.stops.splice(activeStop, 1);
     activeStop = Math.max(0, activeStop - 1);
     clearCurrentAmapRoute();
   });
+  broadcastStopDeleted(day.id, deletedStop);
 });
 
 dom.moveUpBtn.addEventListener("click", () => {
   if (activeStop === 0) return;
+  let dayId = "";
+  let nextStops = [];
   mutate("上移地点", () => {
-    const stops = currentDay().stops;
+    const day = currentDay();
+    const stops = day.stops;
     [stops[activeStop - 1], stops[activeStop]] = [stops[activeStop], stops[activeStop - 1]];
     activeStop -= 1;
+    dayId = day.id;
+    nextStops = [...stops];
     clearCurrentAmapRoute();
   });
+  broadcastStopsReordered(dayId, nextStops);
 });
 
 dom.moveDownBtn.addEventListener("click", () => {
   const stops = currentDay().stops;
   if (activeStop >= stops.length - 1) return;
+  let dayId = "";
+  let nextStops = [];
   mutate("下移地点", () => {
-    [stops[activeStop + 1], stops[activeStop]] = [stops[activeStop], stops[activeStop + 1]];
+    const day = currentDay();
+    const dayStops = day.stops;
+    [dayStops[activeStop + 1], dayStops[activeStop]] = [dayStops[activeStop], dayStops[activeStop + 1]];
     activeStop += 1;
+    dayId = day.id;
+    nextStops = [...dayStops];
     clearCurrentAmapRoute();
   });
+  broadcastStopsReordered(dayId, nextStops);
 });
 
 function localOptimizeStops(stops) {
@@ -3876,6 +4385,7 @@ function createRecommendedPlan() {
     dom.transportTo.value = "";
     transportFilterApplied = false;
   }, { requireUnlocked: false });
+  broadcastPlanReplaced("生成推荐计划");
   closeCreateChoice();
 }
 
@@ -3897,6 +4407,7 @@ function createBlankTemplate() {
     dom.transportTo.value = "";
     transportFilterApplied = false;
   }, { requireUnlocked: false });
+  broadcastPlanReplaced("生成空白模板");
   closeCreateChoice();
 }
 
@@ -4064,6 +4575,7 @@ dom.resetBtn.addEventListener("click", () => {
   transportFilterApplied = false;
   saveState("已重置示例");
   render();
+  broadcastPlanReplaced("重置示例计划");
 });
 
 document.querySelectorAll(".sync-card").forEach((card) => {

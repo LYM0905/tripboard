@@ -74,6 +74,7 @@ button {
 .side-block,
 .timeline-wrap,
 .candidate-panel,
+.day-editor-panel,
 .guide-panel,
 .quick-add-panel,
 .transport-panel,
@@ -275,6 +276,7 @@ button {
 .collab-panel,
 .timeline-wrap,
 .candidate-panel,
+.day-editor-panel,
 .guide-panel,
 .quick-add-panel,
 .transport-panel,
@@ -494,6 +496,41 @@ button:disabled {
   background: rgba(255, 255, 255, 0.74);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.day-form {
+  display: grid;
+  grid-template-columns: 140px repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.day-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.day-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 39px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.day-form-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 9px;
 }
 
 .day-summary > div,
@@ -2166,6 +2203,7 @@ svg {
   .guide-layout,
   .guide-controls,
   .connector-grid,
+  .day-form,
   .edit-form,
   .quick-add-form,
   .transport-summary,
@@ -2179,6 +2217,7 @@ svg {
 
   .destination-field,
   .guide-apply,
+  .day-form-actions,
   .quick-add-form .full {
     grid-column: auto;
   }
