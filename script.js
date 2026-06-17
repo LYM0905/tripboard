@@ -2612,6 +2612,39 @@ async function syncDayMetasToDoc(origin = "local-day-metas") {
   return true;
 }
 
+async function addDayMetaToDoc(day, index = -1, origin = "local-day-create") {
+  if (!canEdit() || isReadonlyMode || !day?.id) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabDayMetasArray || isApplyingCollabPlanRemote) return false;
+  const normalized = normalizeDayMetas([day])[0];
+  if (!normalized) return true;
+  const existingItems = collabDayMetasArray.toArray();
+  if (existingItems.some((item) => item?.id === normalized.id)) return true;
+  collabPlanDoc.transact(() => {
+    collabDayMetasArray.insert(Math.max(0, Math.min(index, collabDayMetasArray.length)), [normalized]);
+  }, origin);
+  return true;
+}
+
+async function reorderDayMetasInDoc(orderedDays = state.days || [], origin = "local-day-reorder") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabDayMetasArray || isApplyingCollabPlanRemote) return false;
+  const desiredDays = normalizeDayMetas(orderedDays);
+  if (!desiredDays.length) return false;
+  const latestDays = normalizeDayMetas(collabDayMetasArray.toArray());
+  const latestById = new Map(latestDays.map((day) => [day.id, day]));
+  const desiredIds = new Set(desiredDays.map((day) => day.id));
+  const orderedMerged = desiredDays.map((day) => latestById.get(day.id) || day);
+  const preservedExtras = latestDays.filter((day) => !desiredIds.has(day.id));
+  const nextDays = [...orderedMerged, ...preservedExtras];
+  if (sameSerialized(latestDays, nextDays)) return true;
+  collabPlanDoc.transact(() => {
+    syncYArrayById(collabDayMetasArray, nextDays, (day) => normalizeDayMetas([day])[0]);
+  }, origin);
+  return true;
+}
+
 async function patchDayMetaInDoc(dayId, patch = {}, origin = "local-day-meta-patch") {
   if (!canEdit() || isReadonlyMode || !dayId) return false;
   await bindCollabPlanDoc();
@@ -6033,7 +6066,9 @@ dom.addDayBtn.addEventListener("click", async () => {
     createdDay = clone(state.days[createdIndex]);
   }, { requireUnlocked: false, save: false, render: false })) return;
   if (createdDay) {
-    await syncDayMetasToDoc("local-day-create");
+    if (!(await addDayMetaToDoc(createdDay, createdIndex, "local-day-create"))) {
+      await syncDayMetasToDoc("local-day-create-fallback");
+    }
     await syncStopListToDoc(createdDay.id, "local-day-create-stops");
     await syncPlanMetaToDoc("local-day-create-meta");
     await saveState("新增一天");
@@ -6077,7 +6112,9 @@ dom.moveDayUpBtn.addEventListener("click", async () => {
     changed = true;
   }, { requireUnlocked: false, save: false, render: false })) return;
   if (changed) {
-    await syncDayMetasToDoc("local-day-reorder");
+    if (!(await reorderDayMetasInDoc(state.days, "local-day-reorder"))) {
+      await syncDayMetasToDoc("local-day-reorder-fallback");
+    }
     await syncPlanMetaToDoc("local-day-reorder-meta");
     await saveState("上移当天");
     broadcastDaysReordered();
@@ -6096,7 +6133,9 @@ dom.moveDayDownBtn.addEventListener("click", async () => {
     changed = true;
   }, { requireUnlocked: false, save: false, render: false })) return;
   if (changed) {
-    await syncDayMetasToDoc("local-day-reorder");
+    if (!(await reorderDayMetasInDoc(state.days, "local-day-reorder"))) {
+      await syncDayMetasToDoc("local-day-reorder-fallback");
+    }
     await syncPlanMetaToDoc("local-day-reorder-meta");
     await saveState("下移当天");
     broadcastDaysReordered();
