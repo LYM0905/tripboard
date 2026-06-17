@@ -85,6 +85,16 @@ function sameSerialized(a, b) {
   return serializePlan(a) === serializePlan(b);
 }
 
+function planContentSnapshot(plan) {
+  const snapshot = clone(plan || {});
+  delete snapshot.planYjs;
+  return snapshot;
+}
+
+function samePlanContent(a, b) {
+  return sameSerialized(planContentSnapshot(a), planContentSnapshot(b));
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   bytes.forEach((byte) => {
@@ -911,7 +921,7 @@ function ensurePlanDates(plan) {
 }
 
 function hasLocalChanges() {
-  return Boolean(lastSyncedState && !sameSerialized(state, lastSyncedState));
+  return Boolean(lastSyncedState && !samePlanContent(state, lastSyncedState));
 }
 
 function itemMergeKey(item, prefix = "item") {
@@ -1046,6 +1056,7 @@ function mergePlans(localPlan, remotePlan, basePlan = lastSyncedState) {
     activities: mergeUniqueList(localPlan?.activities || [], remotePlan?.activities || [], "activity").slice(0, 10),
     transportQuotes: mergeUniqueList(localPlan?.transportQuotes || [], remotePlan?.transportQuotes || [], "quote").slice(0, 60),
   };
+  clearPlanYjsState(merged);
   return ensurePlanDates(merged);
 }
 
@@ -1589,13 +1600,17 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
   const activitiesChanged = !sameSerialized(normalizeActivities(state.activities || []), nextActivities);
   const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
-  const changed = dayMetasChanged || stopListsChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
+  const nextPlanYjs = currentPlanYjsState();
+  const planYjsChanged = Boolean(nextPlanYjs && state.planYjs !== nextPlanYjs);
+  const changed = dayMetasChanged || stopListsChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
   if (!changed) return;
+  const visibleChanged = dayMetasChanged || stopListsChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
   state.transportQuotes = nextQuotes;
   state.candidates = nextCandidates;
   state.activities = nextActivities;
+  if (nextPlanYjs) state.planYjs = nextPlanYjs;
   PLAN_SETTING_FIELDS.forEach((meta) => {
     state[meta.field] = clone(nextSettings[meta.field]);
   });
@@ -1603,12 +1618,62 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   syncGuideStateFromPlan();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   dom.collabStatus.textContent = label;
-  refreshRealtimePlanViews();
+  if (visibleChanged) refreshRealtimePlanViews();
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
     pushRemoteState("计划结构协作内容已实时同步");
   }, 900);
+}
+
+function currentPlanYjsState() {
+  if (!collabPlanDoc || !yjsModule) return state.planYjs || "";
+  try {
+    return bytesToBase64(yjsModule.encodeStateAsUpdate(collabPlanDoc));
+  } catch (error) {
+    console.warn("Plan Yjs state could not be encoded", error);
+    return state.planYjs || "";
+  }
+}
+
+function clearPlanYjsState(plan = state) {
+  if (plan && Object.prototype.hasOwnProperty.call(plan, "planYjs")) delete plan.planYjs;
+  return plan;
+}
+
+function attachCollabPlanRefs() {
+  collabDayMetasArray = collabPlanDoc.getArray("dayMetas");
+  collabStopListsMap = collabPlanDoc.getMap("stopLists");
+  collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
+  collabCandidatesArray = collabPlanDoc.getArray("candidates");
+  collabActivitiesArray = collabPlanDoc.getArray("activities");
+  collabSettingsMap = collabPlanDoc.getMap("settings");
+}
+
+function seedMissingPlanDocContent(Y) {
+  collabPlanDoc.transact(() => {
+    PLAN_SETTING_FIELDS.forEach((meta) => {
+      if (!collabSettingsMap.has(meta.field)) collabSettingsMap.set(meta.field, planSettingValue(state, meta));
+    });
+    (state.days || []).forEach((day) => {
+      if (!day?.id || collabStopListsMap.has(day.id)) return;
+      const stopArray = new Y.Array();
+      const stops = normalizeStopListsFromDays([day])[day.id] || [];
+      if (stops.length) stopArray.insert(0, stops);
+      collabStopListsMap.set(day.id, stopArray);
+    });
+  }, "restore");
+}
+
+function planDocMatchesCurrentState() {
+  return (
+    sameSerialized(normalizeDayMetas(state.days || []), readDayMetasFromDoc()) &&
+    sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(readStopListsFromDoc())) &&
+    sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), readTransportQuotesFromDoc()) &&
+    sameSerialized(normalizeCandidateStops(state.candidates || []), readCandidatesFromDoc()) &&
+    sameSerialized(normalizeActivities(state.activities || []), readActivitiesFromDoc()) &&
+    PLAN_SETTING_FIELDS.every((meta) => sameSerialized(planSettingValue(state, meta), readSettingsFromDoc()[meta.field]))
+  );
 }
 
 function broadcastPlanYjsUpdate(update) {
@@ -1945,25 +2010,27 @@ async function bindCollabPlanDoc() {
   if (requestId !== collabPlanBindRequestId || !tripId || isReadonlyMode) return;
   collabPlanTripId = tripId;
   collabPlanDoc = new Y.Doc();
-  Y.applyUpdate(collabPlanDoc, buildInitialPlanUpdate(Y, state), "restore");
-  collabDayMetasArray = collabPlanDoc.getArray("dayMetas");
-  collabStopListsMap = collabPlanDoc.getMap("stopLists");
-  collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
-  collabCandidatesArray = collabPlanDoc.getArray("candidates");
-  collabActivitiesArray = collabPlanDoc.getArray("activities");
-  collabSettingsMap = collabPlanDoc.getMap("settings");
-  collabPlanDoc.transact(() => {
-    PLAN_SETTING_FIELDS.forEach((meta) => {
-      if (!collabSettingsMap.has(meta.field)) collabSettingsMap.set(meta.field, planSettingValue(state, meta));
-    });
-    (state.days || []).forEach((day) => {
-      if (!day?.id || collabStopListsMap.has(day.id)) return;
-      const stopArray = new Y.Array();
-      const stops = normalizeStopListsFromDays([day])[day.id] || [];
-      if (stops.length) stopArray.insert(0, stops);
-      collabStopListsMap.set(day.id, stopArray);
-    });
-  }, "restore");
+  let restored = false;
+  if (state.planYjs) {
+    try {
+      Y.applyUpdate(collabPlanDoc, base64ToBytes(state.planYjs), "restore");
+      restored = true;
+    } catch (error) {
+      console.warn("Stored Yjs plan state could not be restored", error);
+    }
+  }
+  if (!restored) Y.applyUpdate(collabPlanDoc, buildInitialPlanUpdate(Y, state), "restore");
+  attachCollabPlanRefs();
+  seedMissingPlanDocContent(Y);
+  if (restored && !planDocMatchesCurrentState()) {
+    console.warn("Stored Yjs plan state did not match visible plan JSON; rebuilding from JSON");
+    collabPlanDoc.destroy();
+    collabPlanDoc = new Y.Doc();
+    Y.applyUpdate(collabPlanDoc, buildInitialPlanUpdate(Y, state), "restore");
+    attachCollabPlanRefs();
+    seedMissingPlanDocContent(Y);
+    restored = false;
+  }
   collabPlanDoc.on("update", (update, origin) => {
     if (origin === "remote") {
       persistCurrentPlanFromDoc("收到协作者计划结构更新");
@@ -2590,14 +2657,14 @@ async function resolveConflict(mode) {
 async function handleRemotePlanUpdate(next) {
   if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
   const remotePlan = ensurePlanDates(clone(next.data));
-  if (pendingLocalRemoteUpdatedAt && next.updated_at === pendingLocalRemoteUpdatedAt && sameSerialized(state, remotePlan)) {
+  if (pendingLocalRemoteUpdatedAt && next.updated_at === pendingLocalRemoteUpdatedAt && samePlanContent(state, remotePlan)) {
     lastRemoteUpdatedAt = next.updated_at || lastRemoteUpdatedAt;
     lastSyncedState = clone(remotePlan);
     pendingLocalRemoteUpdatedAt = "";
     hideConflictPanel();
     return;
   }
-  if (hasLocalChanges() && !sameSerialized(state, remotePlan)) {
+  if (hasLocalChanges() && !samePlanContent(state, remotePlan)) {
     savePlanSnapshot(remotePlan, "待合并的云端版本", next.updated_by || "协作者");
     showConflictPanel({
       remote: remotePlan,
@@ -2959,7 +3026,8 @@ function savePlanSnapshot(plan, reason = "保存前版本", by = getCollabName()
   if (!plan?.days?.length) return;
   const history = versionHistory();
   const last = history[0];
-  const serialized = serializePlan(plan);
+  const snapshot = planContentSnapshot(plan);
+  const serialized = serializePlan(snapshot);
   if (last?.serialized === serialized) return;
   const entry = {
     id: uid(),
@@ -2967,7 +3035,7 @@ function savePlanSnapshot(plan, reason = "保存前版本", by = getCollabName()
     at: new Date().toISOString(),
     by,
     serialized,
-    data: clone(plan),
+    data: snapshot,
   };
   localStorage.setItem(historyKey(), JSON.stringify([entry, ...history].slice(0, MAX_VERSION_HISTORY)));
   queueRemoteVersionSnapshot(entry);
@@ -3031,8 +3099,10 @@ function restoreVersion(versionId) {
   if (!entry?.data?.days?.length) return;
   saveVersionSnapshot("恢复前版本");
   state = ensurePlanDates(clone(entry.data));
+  clearPlanYjsState();
   activeDay = 0;
   activeStop = 0;
+  destroyCollabPlanDoc();
   logActivity(`恢复历史版本：${entry.reason || "旧版本"}`);
   saveState("已恢复历史版本");
   render();
@@ -3440,7 +3510,7 @@ async function pushRemoteState(label = "已同步云端") {
       if (remote?.error) return;
       if (remote?.data?.days?.length) {
         const remotePlan = ensurePlanDates(clone(remote.data));
-        if (sameSerialized(state, remotePlan)) {
+        if (samePlanContent(state, remotePlan)) {
           lastRemoteUpdatedAt = remote.updated_at || lastRemoteUpdatedAt;
           lastSyncedState = clone(remotePlan);
           dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
@@ -5667,9 +5737,11 @@ async function createRecommendedPlan() {
     dom.transportFrom.value = origin;
     dom.transportTo.value = "";
     transportFilterApplied = false;
+    clearPlanYjsState();
   }, { requireUnlocked: false });
   destroyCollabPlanDoc();
   await syncDayMetasToDoc("local-recommended-plan-days");
+  await syncStopListsToDoc("local-recommended-plan-stops");
   await syncPlanMetaToDoc("local-recommended-plan-meta");
   broadcastPlanReplaced("生成推荐计划");
   closeCreateChoice();
@@ -5692,9 +5764,11 @@ async function createBlankTemplate() {
     dom.transportFrom.value = origin;
     dom.transportTo.value = "";
     transportFilterApplied = false;
+    clearPlanYjsState();
   }, { requireUnlocked: false });
   destroyCollabPlanDoc();
   await syncDayMetasToDoc("local-blank-plan-days");
+  await syncStopListsToDoc("local-blank-plan-stops");
   await syncPlanMetaToDoc("local-blank-plan-meta");
   broadcastPlanReplaced("生成空白模板");
   closeCreateChoice();
@@ -5908,6 +5982,7 @@ dom.resetBtn.addEventListener("click", async () => {
   if (!requireEdit("重置计划")) return;
   saveVersionSnapshot("重置前版本");
   state = ensurePlanDates(buildKyotoPlan());
+  clearPlanYjsState();
   activeDay = 0;
   activeStop = 0;
   transportFilterApplied = false;
@@ -5915,6 +5990,7 @@ dom.resetBtn.addEventListener("click", async () => {
   render();
   destroyCollabPlanDoc();
   await syncDayMetasToDoc("local-reset-plan-days");
+  await syncStopListsToDoc("local-reset-plan-stops");
   await syncPlanMetaToDoc("local-reset-plan-meta");
   broadcastPlanReplaced("重置示例计划");
 });
