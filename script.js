@@ -2543,6 +2543,44 @@ async function syncDayMetasToDoc(origin = "local-day-metas") {
   return true;
 }
 
+async function patchDayMetaInDoc(dayId, patch = {}, origin = "local-day-meta-patch") {
+  if (!canEdit() || isReadonlyMode || !dayId) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabDayMetasArray || isApplyingCollabPlanRemote) return false;
+  const localDay = state.days.find((day) => day.id === dayId);
+  const sourceDay = localDay ? normalizeDayMetas([localDay])[0] : null;
+  const allowedFields = new Set(["date", "title", "route", "weather", "transport", "amapRoute"]);
+  const patchFields = Object.keys(patch).filter((field) => allowedFields.has(field));
+  if (!sourceDay || !patchFields.length) return false;
+  const currentItems = collabDayMetasArray.toArray();
+  const index = currentItems.findIndex((day) => day?.id === dayId);
+  if (index < 0) return syncDayMetasToDoc(origin);
+  const current = normalizeDayMetas([currentItems[index]])[0];
+  const next = normalizeDayMetas([{
+    ...current,
+    id: dayId,
+    label: current.label || sourceDay.label,
+    ...Object.fromEntries(patchFields.map((field) => [field, patch[field]])),
+  }])[0];
+  if (sameSerialized(current, next)) return true;
+  collabPlanDoc.transact(() => {
+    const latestItems = collabDayMetasArray.toArray();
+    const latestIndex = latestItems.findIndex((day) => day?.id === dayId);
+    if (latestIndex < 0) return;
+    const latest = normalizeDayMetas([latestItems[latestIndex]])[0];
+    const merged = normalizeDayMetas([{
+      ...latest,
+      id: dayId,
+      label: latest.label || sourceDay.label,
+      ...Object.fromEntries(patchFields.map((field) => [field, patch[field]])),
+    }])[0];
+    if (sameSerialized(latest, merged)) return;
+    collabDayMetasArray.delete(latestIndex, 1);
+    collabDayMetasArray.insert(latestIndex, [merged]);
+  }, origin);
+  return true;
+}
+
 async function syncStopTextStateToPlanDoc(stopId, textState, origin = "local-stop-text-state") {
   if (!canEdit() || isReadonlyMode || !stopId || !textState) return false;
   await bindCollabPlanDoc();
@@ -5531,14 +5569,24 @@ function dayEditorDraftValues(day = currentDay()) {
   };
 }
 
-function applyDayEditorDraftToState() {
+function dayEditorDraftChange(day = currentDay()) {
+  if (!day) return { draft: {}, patch: {} };
+  const draft = dayEditorDraftValues(day);
+  const patch = {};
+  ["date", "title", "route", "weather", "transport"].forEach((field) => {
+    if (!sameSerialized(day[field], draft[field])) patch[field] = draft[field];
+  });
+  return { draft, patch };
+}
+
+function applyDayEditorDraftToState(nextValues = null) {
   const day = currentDay();
   if (!day) return null;
   const previousDate = day.date || state.startDate || formatIsoDate(new Date());
-  const nextValues = dayEditorDraftValues(day);
-  const changed = ["date", "title", "route", "weather", "transport"].some((field) => day[field] !== nextValues[field]);
+  const draft = nextValues || dayEditorDraftValues(day);
+  const changed = ["date", "title", "route", "weather", "transport"].some((field) => day[field] !== draft[field]);
   if (!changed) return null;
-  Object.assign(day, nextValues);
+  Object.assign(day, draft);
   if (day.date !== previousDate) {
     const changedDate = parseIsoDate(day.date);
     const nextStartDate = changedDate ? formatIsoDate(addDays(changedDate, -activeDay)) : state.startDate;
@@ -5775,11 +5823,17 @@ dom.mapCanvas.addEventListener("click", (event) => {
 dom.dayForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let updatedDay = null;
+  const dayId = currentDay()?.id || "";
+  const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
   const changed = mutate("保存当天设置", () => {
-    updatedDay = applyDayEditorDraftToState();
+    updatedDay = applyDayEditorDraftToState(dayDraft);
   }, { requireUnlocked: false, save: false, render: false });
   if (updatedDay) {
-    await syncDayMetasToDoc("local-day-update");
+    if (Object.prototype.hasOwnProperty.call(dayPatch, "date")) {
+      await syncDayMetasToDoc("local-day-date-update");
+    } else {
+      await patchDayMetaInDoc(dayId, dayPatch, "local-day-update-patch");
+    }
     await syncPlanMetaToDoc("local-day-date-meta");
     await saveState("保存当天设置");
     broadcastDayUpdated(updatedDay);
@@ -5792,10 +5846,16 @@ dom.dayForm.addEventListener("submit", async (event) => {
 async function syncDayEditorDraftChange({ silent = false } = {}) {
   if (!requireEdit("同步当天设置")) return;
   if (!silent) saveVersionSnapshot("同步当天设置前版本");
-  const updatedDay = applyDayEditorDraftToState();
+  const dayId = currentDay()?.id || "";
+  const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
+  const updatedDay = applyDayEditorDraftToState(dayDraft);
   if (!updatedDay) return;
   if (!silent) logActivity("同步当天设置");
-  await syncDayMetasToDoc("local-day-field-change");
+  if (Object.prototype.hasOwnProperty.call(dayPatch, "date")) {
+    await syncDayMetasToDoc("local-day-date-field-change");
+  } else {
+    await patchDayMetaInDoc(dayId, dayPatch, "local-day-field-change-patch");
+  }
   await syncPlanMetaToDoc("local-day-field-change-meta");
   await saveState(silent ? "当天设置正在协作同步" : "已同步当天设置");
   broadcastDayUpdated(updatedDay);
