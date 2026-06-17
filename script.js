@@ -989,6 +989,9 @@ function buildInitialPlanUpdate(Y, plan) {
   const candidateArray = seedDoc.getArray("candidates");
   const candidates = normalizeCandidateStops(plan.candidates || []);
   if (candidates.length) candidateArray.insert(0, candidates);
+  const settingsMap = seedDoc.getMap("settings");
+  settingsMap.set("partySize", Math.max(1, Number.parseInt(plan.partySize || 1, 10) || 1));
+  settingsMap.set("budgetLimit", numberValue(plan.budgetLimit || 10000));
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -1056,6 +1059,13 @@ function readCandidatesFromDoc() {
   return normalizeCandidateStops(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || []);
 }
 
+function readSettingsFromDoc() {
+  return {
+    partySize: Math.max(1, Number.parseInt(collabSettingsMap?.get("partySize") || state.partySize || 1, 10) || 1),
+    budgetLimit: numberValue(collabSettingsMap?.get("budgetLimit") || state.budgetLimit || 10000),
+  };
+}
+
 function refreshRealtimePlanViews() {
   renderShell();
   renderTransport();
@@ -1065,15 +1075,19 @@ function refreshRealtimePlanViews() {
 }
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步") {
-  if (!collabPlanDoc || !collabTransportQuotesArray || !collabCandidatesArray) return;
+  if (!collabPlanDoc || !collabTransportQuotesArray || !collabCandidatesArray || !collabSettingsMap) return;
   const nextQuotes = readTransportQuotesFromDoc();
   const nextCandidates = readCandidatesFromDoc();
+  const nextSettings = readSettingsFromDoc();
   const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
   const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
-  const changed = quotesChanged || candidatesChanged;
+  const settingsChanged = numberValue(state.budgetLimit || 10000) !== nextSettings.budgetLimit || Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1) !== nextSettings.partySize;
+  const changed = quotesChanged || candidatesChanged || settingsChanged;
   if (!changed) return;
   state.transportQuotes = nextQuotes;
   state.candidates = nextCandidates;
+  state.partySize = nextSettings.partySize;
+  state.budgetLimit = nextSettings.budgetLimit;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   dom.collabStatus.textContent = label;
   refreshRealtimePlanViews();
@@ -1381,6 +1395,7 @@ function destroyCollabPlanDoc() {
   collabPlanTripId = "";
   collabTransportQuotesArray = null;
   collabCandidatesArray = null;
+  collabSettingsMap = null;
   if (collabPlanDoc) {
     collabPlanDoc.destroy();
     collabPlanDoc = null;
@@ -1404,6 +1419,11 @@ async function bindCollabPlanDoc() {
   Y.applyUpdate(collabPlanDoc, buildInitialPlanUpdate(Y, state), "restore");
   collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
   collabCandidatesArray = collabPlanDoc.getArray("candidates");
+  collabSettingsMap = collabPlanDoc.getMap("settings");
+  collabPlanDoc.transact(() => {
+    if (!collabSettingsMap.has("partySize")) collabSettingsMap.set("partySize", Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1));
+    if (!collabSettingsMap.has("budgetLimit")) collabSettingsMap.set("budgetLimit", numberValue(state.budgetLimit || 10000));
+  }, "restore");
   collabPlanDoc.on("update", (update, origin) => {
     if (origin === "remote") {
       persistCurrentPlanFromDoc("收到协作者交通报价更新");
@@ -1442,6 +1462,18 @@ async function addCollaborativeCandidate(stop) {
   collabPlanDoc.transact(() => {
     collabCandidatesArray.insert(0, [normalized]);
   }, "local-candidate");
+  return true;
+}
+
+async function syncPlanSettingToDoc(field, value) {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabSettingsMap || isApplyingCollabPlanRemote) return false;
+  const nextValue = field === "partySize" ? Math.max(1, Number.parseInt(value || 1, 10) || 1) : numberValue(value);
+  if (sameSerialized(collabSettingsMap.get(field), nextValue)) return true;
+  collabPlanDoc.transact(() => {
+    collabSettingsMap.set(field, nextValue);
+  }, "local-setting");
   return true;
 }
 
@@ -1801,6 +1833,10 @@ function applyRemotePlan(remotePlan, meta = {}) {
   const currentTextState = activeStopId === collabTextStopId ? currentStop()?.textYjs || currentStop()?.noteYjs || "" : "";
   const currentTransportQuotes = normalizeTransportQuotes(state.transportQuotes || []);
   const currentCandidates = normalizeCandidateStops(state.candidates || []);
+  const currentSettings = {
+    partySize: Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1),
+    budgetLimit: numberValue(state.budgetLimit || 10000),
+  };
   state = ensurePlanDates(clone(remotePlan));
   lastSyncedState = clone(state);
   lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
@@ -1810,7 +1846,11 @@ function applyRemotePlan(remotePlan, meta = {}) {
   }
   if (
     !sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || [])) ||
-    !sameSerialized(currentCandidates, normalizeCandidateStops(state.candidates || []))
+    !sameSerialized(currentCandidates, normalizeCandidateStops(state.candidates || [])) ||
+    !sameSerialized(currentSettings, {
+      partySize: Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1),
+      budgetLimit: numberValue(state.budgetLimit || 10000),
+    })
   ) {
     destroyCollabPlanDoc();
   }
@@ -1907,6 +1947,7 @@ const dom = {
   budgetMeter: document.querySelector("#budgetMeter"),
   budgetGrid: document.querySelector("#budgetGrid"),
   partySizeInput: document.querySelector("#partySizeInput"),
+  budgetLimitInput: document.querySelector("#budgetLimitInput"),
   budgetSettlement: document.querySelector("#budgetSettlement"),
   versionCount: document.querySelector("#versionCount"),
   versionList: document.querySelector("#versionList"),
@@ -2112,6 +2153,7 @@ let collabTextSaveTimer = null;
 let collabPlanDoc = null;
 let collabTransportQuotesArray = null;
 let collabCandidatesArray = null;
+let collabSettingsMap = null;
 let collabPlanTripId = "";
 let collabPlanSaveTimer = null;
 let isApplyingCollabPlanRemote = false;
@@ -2369,6 +2411,7 @@ function applyReadonlyUi() {
   const writeControls = [
     dom.createSharedTripBtn,
     dom.partySizeInput,
+    dom.budgetLimitInput,
     dom.addStopBtn,
     dom.addDayBtn,
     dom.moveDayUpBtn,
@@ -3614,6 +3657,7 @@ function renderShell() {
     .map(([key, value]) => `<span>${key} ${money(value)}</span>`)
     .join("");
   dom.partySizeInput.value = people;
+  dom.budgetLimitInput.value = limit;
   const payerRows = Object.entries(payerBudget())
     .map(([payer, value]) => `<span>${payer} 已付 ${money(value)}</span>`)
     .join("");
@@ -4627,10 +4671,19 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
   }, { requireUnlocked: false });
 });
 
-dom.partySizeInput.addEventListener("change", () => {
+dom.partySizeInput.addEventListener("change", async () => {
   if (!requireEdit("更新同行人数")) return;
+  if (await syncPlanSettingToDoc("partySize", dom.partySizeInput.value)) return;
   mutate("更新同行人数", () => {
     state.partySize = partySize();
+  }, { requireUnlocked: false });
+});
+
+dom.budgetLimitInput.addEventListener("change", async () => {
+  if (!requireEdit("更新预算上限")) return;
+  if (await syncPlanSettingToDoc("budgetLimit", dom.budgetLimitInput.value)) return;
+  mutate("更新预算上限", () => {
+    state.budgetLimit = numberValue(dom.budgetLimitInput.value);
   }, { requireUnlocked: false });
 });
 
