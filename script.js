@@ -4029,6 +4029,49 @@ function payerBudget() {
   return groups;
 }
 
+function settlementSuggestions() {
+  const total = totalBudget();
+  const people = partySize();
+  const perPerson = people ? Math.round(total / people) : 0;
+  const paidBy = payerBudget();
+  const participantNames = new Set(
+    [
+      memberProfile?.name,
+      ...onlineMembers.map((member) => member.name),
+      ...Object.keys(paidBy),
+    ]
+      .map((name) => String(name || "").trim())
+      .filter(Boolean),
+  );
+  while (participantNames.size < people) {
+    participantNames.add(`成员${participantNames.size + 1}`);
+  }
+  const balances = [...participantNames].map((name) => ({
+    name,
+    balance: numberValue(paidBy[name]) - perPerson,
+  }));
+  const debtors = balances.filter((item) => item.balance < -1).sort((a, b) => a.balance - b.balance);
+  const creditors = balances.filter((item) => item.balance > 1).sort((a, b) => b.balance - a.balance);
+  const transfers = [];
+  let debtorIndex = 0;
+  let creditorIndex = 0;
+  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+    const debtor = debtors[debtorIndex];
+    const creditor = creditors[creditorIndex];
+    const amount = Math.min(-debtor.balance, creditor.balance);
+    if (amount > 1) transfers.push({ from: debtor.name, to: creditor.name, amount: Math.round(amount) });
+    debtor.balance += amount;
+    creditor.balance -= amount;
+    if (debtor.balance >= -1) debtorIndex += 1;
+    if (creditor.balance <= 1) creditorIndex += 1;
+  }
+  return {
+    perPerson,
+    transfers,
+    missingPayer: numberValue(paidBy["未指定"]),
+  };
+}
+
 function categoryBudget() {
   const groups = { 交通: 0, 餐饮: 0, 门票: 0, 住宿: 0 };
   state.days.forEach((day) => {
@@ -4067,11 +4110,19 @@ function renderShell() {
   const payerRows = Object.entries(payerBudget())
     .map(([payer, value]) => `<span>${payer} 已付 ${money(value)}</span>`)
     .join("");
+  const settlement = settlementSuggestions();
+  const transferRows = settlement.transfers
+    .slice(0, 6)
+    .map((item) => `<span>${escapeHtml(item.from)} 转给 ${escapeHtml(item.to)} ${money(item.amount)}</span>`)
+    .join("");
   dom.budgetSettlement.innerHTML = `
     <span>已付 ${money(paid)}</span>
     <span>待付 ${money(Math.max(0, total - paid))}</span>
     <span>人均 ${money(Math.round(total / people))}</span>
     ${payerRows || "<span>暂无付款记录</span>"}
+    <strong>AA 结算建议</strong>
+    ${transferRows || "<span>当前无需转账或付款人信息不足</span>"}
+    ${settlement.missingPayer ? `<span>未指定付款人 ${money(settlement.missingPayer)}，建议先补充付款人</span>` : ""}
   `;
 }
 
