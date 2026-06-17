@@ -1878,8 +1878,17 @@ function readCommentsFromDoc() {
 }
 
 function renderStopComments(stop) {
+  const editable = canEdit();
   dom.commentList.innerHTML = (stop.comments || [])
-    .map((comment) => `<div class="comment-item"><span class="avatar a2">${escapeHtml(comment.author || "我")}</span><p>${escapeHtml(comment.text)}</p></div>`)
+    .map(
+      (comment) => `
+        <div class="comment-item" data-comment="${comment.id || ""}">
+          <span class="avatar a2">${escapeHtml(comment.author || "我")}</span>
+          <p>${escapeHtml(comment.text)}</p>
+          ${editable ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-comment="${comment.id}" aria-label="删除评论">${icon("trash-2")}</button>` : ""}
+        </div>
+      `,
+    )
     .join("") || `<div class="comment-item"><span class="avatar a1">我</span><p>还没有评论，可以先添加同行意见。</p></div>`;
 }
 
@@ -2848,6 +2857,18 @@ async function addCollaborativeComment(text) {
     collabCommentsArray.push([comment]);
   }, "local-comment-input");
   return comment;
+}
+
+async function deleteCollaborativeComment(commentId) {
+  if (!canEdit() || isReadonlyMode || !commentId) return false;
+  await bindCollabTextDoc();
+  if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
+  const index = collabCommentsArray.toArray().findIndex((comment) => comment?.id === commentId);
+  if (index < 0) return true;
+  collabTextDoc.transact(() => {
+    collabCommentsArray.delete(index, 1);
+  }, "local-comment-delete");
+  return true;
 }
 
 async function applyRemotePlan(remotePlan, meta = {}) {
@@ -5922,6 +5943,28 @@ dom.commentForm.addEventListener("submit", async (event) => {
   mutate(`评论「${currentStop().title}」`, () => {
     currentStop().comments = [...(currentStop().comments || []), { id: uid(), author: getCollabName(), text, at: new Date().toISOString() }];
     dom.commentInput.value = "";
+  });
+});
+
+dom.commentList.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest("[data-delete-comment]");
+  if (!deleteButton) return;
+  event.preventDefault();
+  const commentId = deleteButton.dataset.deleteComment;
+  const stop = currentStop();
+  const comment = (stop.comments || []).find((item) => item.id === commentId);
+  if (!comment || !requireEdit("删除评论")) return;
+  if (await deleteCollaborativeComment(commentId)) {
+    stop.comments = normalizeComments((stop.comments || []).filter((item) => item.id !== commentId));
+    renderStopComments(stop);
+    dom.commentCount.textContent = stop.comments.length;
+    logActivity(`删除评论「${stop.title}」`);
+    await syncStopSnapshotToPlanDoc(stop.id, "local-comment-delete-snapshot");
+    dom.saveState.textContent = `已删除「${stop.title}」的评论`;
+    return;
+  }
+  mutate(`删除评论「${stop.title}」`, () => {
+    currentStop().comments = (currentStop().comments || []).filter((item) => item.id !== commentId);
   });
 });
 
