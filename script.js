@@ -38,6 +38,14 @@ function safeJsonParse(value, fallback = null) {
   }
 }
 
+function serializePlan(plan) {
+  return JSON.stringify(plan || {});
+}
+
+function sameSerialized(a, b) {
+  return serializePlan(a) === serializePlan(b);
+}
+
 function money(value) {
   return `¥${Number(value || 0).toLocaleString("zh-CN")}`;
 }
@@ -545,6 +553,181 @@ function ensurePlanDates(plan) {
   return applyPlanDates(plan, startDate, endDate);
 }
 
+function hasLocalChanges() {
+  return Boolean(lastSyncedState && !sameSerialized(state, lastSyncedState));
+}
+
+function itemMergeKey(item, prefix = "item") {
+  if (!item || typeof item !== "object") return `${prefix}:${String(item ?? "")}`;
+  return String(item?.id || item?.orderNo || item?.code || `${prefix}:${item?.title || item?.name || ""}:${item?.date || item?.time || ""}:${item?.text || ""}`);
+}
+
+function mergeUniqueList(localItems = [], remoteItems = [], prefix = "item") {
+  const result = [];
+  const seen = new Set();
+  [...localItems, ...remoteItems].forEach((item) => {
+    if (!item) return;
+    const key = itemMergeKey(item, prefix);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(clone(item));
+  });
+  return result;
+}
+
+function mergeComments(localComments = [], remoteComments = []) {
+  const result = [];
+  const seen = new Set();
+  [...localComments, ...remoteComments].forEach((comment) => {
+    if (!comment) return;
+    const key = String(comment.id || `${comment.author || ""}:${comment.text || ""}`);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(clone(comment));
+  });
+  return result;
+}
+
+function mergeStops(localStops = [], remoteStops = []) {
+  const result = [];
+  const byLocalId = new Map(localStops.map((stop) => [stop.id, stop]).filter(([id]) => id));
+  const addedRemote = new Set();
+  localStops.forEach((localStop) => {
+    const remoteStop = localStop.id ? remoteStops.find((stop) => stop.id === localStop.id) : null;
+    if (remoteStop?.id) addedRemote.add(remoteStop.id);
+    result.push({
+      ...clone(remoteStop || {}),
+      ...clone(localStop),
+      comments: mergeComments(localStop.comments || [], remoteStop?.comments || []),
+      tags: mergeUniqueList((localStop.tags || []).map((tag) => ({ id: tag, title: tag })), (remoteStop?.tags || []).map((tag) => ({ id: tag, title: tag })), "tag").map((tag) => tag.title),
+    });
+  });
+  remoteStops.forEach((remoteStop) => {
+    if (remoteStop.id && (byLocalId.has(remoteStop.id) || addedRemote.has(remoteStop.id))) return;
+    result.push(clone(remoteStop));
+  });
+  return result;
+}
+
+function mergeDays(localDays = [], remoteDays = []) {
+  const result = [];
+  const usedRemote = new Set();
+  localDays.forEach((localDay, index) => {
+    const remoteIndex = remoteDays.findIndex((day) => (localDay.id && day.id === localDay.id) || (localDay.date && day.date === localDay.date));
+    const remoteDay = remoteIndex >= 0 ? remoteDays[remoteIndex] : remoteDays[index];
+    if (remoteDay?.id) usedRemote.add(remoteDay.id);
+    result.push({
+      ...clone(remoteDay || {}),
+      ...clone(localDay),
+      stops: mergeStops(localDay.stops || [], remoteDay?.stops || []),
+      amapRoute: localDay.amapRoute || remoteDay?.amapRoute || null,
+    });
+  });
+  remoteDays.forEach((remoteDay) => {
+    if (remoteDay.id && usedRemote.has(remoteDay.id)) return;
+    const alreadyIncluded = result.some((day) => (remoteDay.id && day.id === remoteDay.id) || (remoteDay.date && day.date === remoteDay.date));
+    if (!alreadyIncluded) result.push(clone(remoteDay));
+  });
+  return result;
+}
+
+function mergePlans(localPlan, remotePlan) {
+  const merged = {
+    ...clone(remotePlan || {}),
+    ...clone(localPlan || {}),
+    days: mergeDays(localPlan?.days || [], remotePlan?.days || []),
+    candidates: mergeUniqueList(localPlan?.candidates || [], remotePlan?.candidates || [], "candidate"),
+    activities: mergeUniqueList(localPlan?.activities || [], remotePlan?.activities || [], "activity").slice(0, 10),
+    transportQuotes: mergeUniqueList(localPlan?.transportQuotes || [], remotePlan?.transportQuotes || [], "quote").slice(0, 60),
+  };
+  return ensurePlanDates(merged);
+}
+
+function conflictSummary(conflict) {
+  const who = conflict?.updatedBy || "其他成员";
+  const when = conflict?.updatedAt ? new Date(conflict.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "刚刚";
+  return `${who} 在 ${when} 保存了云端版本，同时你本地也有未同步修改。`;
+}
+
+function showConflictPanel(conflict) {
+  pendingConflict = conflict;
+  if (!dom.conflictPanel) return;
+  dom.conflictPanel.hidden = false;
+  dom.conflictText.textContent = conflictSummary(conflict);
+  dom.conflictDetail.textContent = "请选择处理方式：智能合并会尽量保留双方新增的地点、评论、交通报价和活动记录。";
+  dom.collabMode.textContent = "待处理冲突";
+  dom.saveState.textContent = "发现协作冲突";
+  refreshIcons();
+}
+
+function hideConflictPanel() {
+  pendingConflict = null;
+  if (dom.conflictPanel) dom.conflictPanel.hidden = true;
+}
+
+function applyRemotePlan(remotePlan, meta = {}) {
+  isApplyingRemote = true;
+  state = ensurePlanDates(clone(remotePlan));
+  lastSyncedState = clone(state);
+  lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  isApplyingRemote = false;
+}
+
+async function resolveConflict(mode) {
+  if (!pendingConflict || !requireEdit("处理协作冲突")) return;
+  const conflict = pendingConflict;
+  const localPlan = clone(conflict.local || state);
+  const remotePlan = ensurePlanDates(clone(conflict.remote));
+  isResolvingConflict = true;
+  try {
+    savePlanSnapshot(localPlan, "冲突处理前：我的版本");
+    savePlanSnapshot(remotePlan, "冲突处理前：云端版本", conflict.updatedBy || "协作者");
+    if (mode === "remote") {
+      applyRemotePlan(remotePlan, { updatedAt: conflict.updatedAt || "" });
+      hideConflictPanel();
+      dom.saveState.textContent = "已使用云端版本";
+      dom.collabStatus.textContent = "已采用协作者保存的云端版本，你的旧版本已进入历史版本。";
+      render();
+      return;
+    }
+    state = mode === "merge" ? mergePlans(localPlan, remotePlan) : ensurePlanDates(localPlan);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    lastRemoteUpdatedAt = conflict.updatedAt || lastRemoteUpdatedAt;
+    hideConflictPanel();
+    logActivity(mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
+    await pushRemoteState(mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
+    render();
+  } catch (error) {
+    pendingConflict = conflict;
+    showConflictPanel(conflict);
+    dom.collabStatus.textContent = `处理冲突失败：${error.message}`;
+  } finally {
+    isResolvingConflict = false;
+  }
+}
+
+function handleRemotePlanUpdate(next) {
+  if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
+  const remotePlan = ensurePlanDates(clone(next.data));
+  if (hasLocalChanges() && !sameSerialized(state, remotePlan)) {
+    savePlanSnapshot(remotePlan, "待合并的云端版本", next.updated_by || "协作者");
+    showConflictPanel({
+      remote: remotePlan,
+      local: clone(state),
+      updatedAt: next.updated_at || "",
+      updatedBy: next.updated_by || "",
+      reason: "realtime",
+    });
+    return;
+  }
+  saveVersionSnapshot("协作者更新前版本");
+  applyRemotePlan(remotePlan, { updatedAt: next.updated_at || "" });
+  dom.saveState.textContent = "收到协作者更新";
+  dom.collabStatus.textContent = next.updated_by ? `${next.updated_by} 刚刚更新了计划` : "共享计划已更新";
+  render();
+}
+
 const dom = {
   tripName: document.querySelector("#tripName"),
   templateName: document.querySelector("#templateName"),
@@ -561,6 +744,12 @@ const dom = {
   createSharedTripBtn: document.querySelector("#createSharedTripBtn"),
   copySharedLinkBtn: document.querySelector("#copySharedLinkBtn"),
   copyReadonlyLinkBtn: document.querySelector("#copyReadonlyLinkBtn"),
+  conflictPanel: document.querySelector("#conflictPanel"),
+  conflictText: document.querySelector("#conflictText"),
+  conflictDetail: document.querySelector("#conflictDetail"),
+  mergeConflictBtn: document.querySelector("#mergeConflictBtn"),
+  keepLocalConflictBtn: document.querySelector("#keepLocalConflictBtn"),
+  useRemoteConflictBtn: document.querySelector("#useRemoteConflictBtn"),
   budgetTotal: document.querySelector("#budgetTotal"),
   budgetMeter: document.querySelector("#budgetMeter"),
   budgetGrid: document.querySelector("#budgetGrid"),
@@ -737,6 +926,9 @@ let tripId = urlParams.get("trip") || localStorage.getItem("tripboard-current-tr
 const isReadonlyMode = urlParams.get("mode") === "readonly";
 let isApplyingRemote = false;
 let lastRemoteUpdatedAt = "";
+let lastSyncedState = null;
+let pendingConflict = null;
+let isResolvingConflict = false;
 let remoteVersionHistoryEnabled = true;
 const initialGuideDates = defaultGuideDates();
 const guideState = {
@@ -767,22 +959,26 @@ function versionHistory() {
   return safeJsonParse(localStorage.getItem(historyKey()), []) || [];
 }
 
-function saveVersionSnapshot(reason = "保存前版本") {
-  if (!state?.days?.length) return;
+function savePlanSnapshot(plan, reason = "保存前版本", by = getCollabName()) {
+  if (!plan?.days?.length) return;
   const history = versionHistory();
   const last = history[0];
-  const serialized = JSON.stringify(state);
+  const serialized = serializePlan(plan);
   if (last?.serialized === serialized) return;
   const entry = {
     id: uid(),
     reason,
     at: new Date().toISOString(),
-    by: getCollabName(),
+    by,
     serialized,
-    data: clone(state),
+    data: clone(plan),
   };
   localStorage.setItem(historyKey(), JSON.stringify([entry, ...history].slice(0, MAX_VERSION_HISTORY)));
   queueRemoteVersionSnapshot(entry);
+}
+
+function saveVersionSnapshot(reason = "保存前版本") {
+  savePlanSnapshot(state, reason);
 }
 
 function queueRemoteVersionSnapshot(entry) {
@@ -853,7 +1049,7 @@ async function saveState(label = "已保存到本地") {
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   dom.saveState.textContent = label;
-  if (!isApplyingRemote && supabaseClient && tripId) {
+  if (!isApplyingRemote && !isResolvingConflict && supabaseClient && tripId) {
     await pushRemoteState(label);
   }
 }
@@ -993,6 +1189,11 @@ function applyReadonlyUi() {
     button.disabled = isReadonlyMode;
   });
   dom.copySharedLinkBtn.textContent = isReadonlyMode ? "复制当前只读链接" : "复制编辑链接";
+  if (pendingConflict) {
+    dom.collabMode.textContent = "待处理冲突";
+    dom.saveState.textContent = "发现协作冲突";
+    return;
+  }
   if (isReadonlyMode) {
     dom.collabMode.textContent = "只读查看";
     dom.saveState.textContent = "只读模式";
@@ -1075,35 +1276,77 @@ async function pushRemoteState(label = "已同步云端") {
     dom.collabStatus.textContent = "当前是只读链接，不能向云端写入计划。";
     return;
   }
+  if (pendingConflict) {
+    showConflictPanel(pendingConflict);
+    return;
+  }
   const payload = {
     id: tripId,
     data: state,
     updated_at: new Date().toISOString(),
     updated_by: getCollabName(),
   };
-  const { error } = await supabaseClient.from("trip_plans").upsert(payload, { onConflict: "id" });
+  let error = null;
+  let data = null;
+  if (lastRemoteUpdatedAt) {
+    const result = await supabaseClient
+      .from("trip_plans")
+      .update(payload)
+      .eq("id", tripId)
+      .eq("updated_at", lastRemoteUpdatedAt)
+      .select("data, updated_at, updated_by")
+      .maybeSingle();
+    error = result.error;
+    data = result.data;
+    if (!error && !data) {
+      const remote = await fetchRemotePlan();
+      if (remote?.error) return;
+      if (remote?.data?.days?.length) {
+        showConflictPanel({
+          remote: remote.data,
+          local: clone(state),
+          updatedAt: remote.updated_at || "",
+          updatedBy: remote.updated_by || "",
+          reason: "save",
+        });
+        return;
+      }
+      const insertResult = await supabaseClient.from("trip_plans").upsert(payload, { onConflict: "id" }).select("data, updated_at, updated_by").maybeSingle();
+      error = insertResult.error;
+      data = insertResult.data;
+    }
+  } else {
+    const result = await supabaseClient.from("trip_plans").upsert(payload, { onConflict: "id" }).select("data, updated_at, updated_by").maybeSingle();
+    error = result.error;
+    data = result.data;
+  }
   if (error) {
     dom.collabStatus.textContent = `云端同步失败：${error.message}`;
     return;
   }
+  lastRemoteUpdatedAt = data?.updated_at || payload.updated_at;
+  lastSyncedState = clone(state);
+  hideConflictPanel();
   dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
   dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
 }
 
-async function loadRemoteState() {
-  if (!supabaseClient || !tripId) return;
+async function fetchRemotePlan() {
+  if (!supabaseClient || !tripId) return null;
   const { data, error } = await supabaseClient.from("trip_plans").select("data, updated_at, updated_by").eq("id", tripId).maybeSingle();
   if (error) {
     dom.collabStatus.textContent = `读取共享计划失败：${error.message}`;
-    return;
+    return { error };
   }
+  return data;
+}
+
+async function loadRemoteState() {
+  if (!supabaseClient || !tripId) return;
+  const data = await fetchRemotePlan();
   if (data?.data?.days?.length) {
-    isApplyingRemote = true;
     saveVersionSnapshot("载入云端前版本");
-    state = data.data;
-    ensurePlanDates(state);
-    lastRemoteUpdatedAt = data.updated_at || "";
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    applyRemotePlan(data.data, { updatedAt: data.updated_at || "" });
     dom.saveState.textContent = `已载入共享计划`;
     dom.collabStatus.textContent = isReadonlyMode
       ? data.updated_by
@@ -1113,7 +1356,6 @@ async function loadRemoteState() {
         ? `最近由 ${data.updated_by} 更新`
         : `已连接共享计划`;
     render();
-    isApplyingRemote = false;
   } else if (!isReadonlyMode) {
     await pushRemoteState("已创建共享计划");
   } else {
@@ -1140,17 +1382,7 @@ function subscribeRemoteState() {
       { event: "*", schema: "public", table: "trip_plans", filter: `id=eq.${tripId}` },
       (payload) => {
         const next = payload.new;
-        if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
-        lastRemoteUpdatedAt = next.updated_at;
-        isApplyingRemote = true;
-        saveVersionSnapshot("协作者更新前版本");
-        state = next.data;
-        ensurePlanDates(state);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        dom.saveState.textContent = "收到协作者更新";
-        dom.collabStatus.textContent = next.updated_by ? `${next.updated_by} 刚刚更新了计划` : "共享计划已更新";
-        render();
-        isApplyingRemote = false;
+        handleRemotePlanUpdate(next);
       },
     )
     .on("presence", { event: "sync" }, () => {
@@ -1175,6 +1407,9 @@ function subscribeRemoteState() {
 
 async function connectSharedTrip(id) {
   tripId = id;
+  lastRemoteUpdatedAt = "";
+  lastSyncedState = null;
+  hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
@@ -1196,6 +1431,9 @@ async function createSharedTrip() {
   }
   const id = crypto.randomUUID ? crypto.randomUUID() : uid();
   tripId = id;
+  lastRemoteUpdatedAt = "";
+  lastSyncedState = null;
+  hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
   await pushRemoteState("已创建共享计划");
   subscribeRemoteState();
@@ -2962,6 +3200,10 @@ dom.copyReadonlyLinkBtn.addEventListener("click", async () => {
     dom.collabStatus.textContent = url;
   }
 });
+
+dom.mergeConflictBtn?.addEventListener("click", () => resolveConflict("merge"));
+dom.keepLocalConflictBtn?.addEventListener("click", () => resolveConflict("local"));
+dom.useRemoteConflictBtn?.addEventListener("click", () => resolveConflict("remote"));
 
 dom.versionList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-version]");

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-amap-route" />
+    <link rel="stylesheet" href="styles.css?v=20260617-conflict-resolve" />
   </head>
   <body>
     <div class="app-shell">
@@ -50,6 +50,19 @@
             <button class="text-btn" id="copyReadonlyLinkBtn"><i data-lucide="eye"></i>复制只读链接</button>
           </div>
           <p class="helper-text" id="collabStatus">未配置云端时，计划只保存在当前浏览器。</p>
+          <div class="conflict-panel" id="conflictPanel" hidden>
+            <div class="conflict-head">
+              <i data-lucide="git-merge"></i>
+              <strong>发现协作冲突</strong>
+            </div>
+            <p id="conflictText">云端计划和你的本地修改同时发生了变化。</p>
+            <div class="conflict-actions">
+              <button class="primary-btn" id="mergeConflictBtn" type="button"><i data-lucide="combine"></i>智能合并</button>
+              <button class="text-btn" id="keepLocalConflictBtn" type="button"><i data-lucide="cloud-upload"></i>保留我的</button>
+              <button class="text-btn" id="useRemoteConflictBtn" type="button"><i data-lucide="cloud-download"></i>使用云端</button>
+            </div>
+            <p class="helper-text" id="conflictDetail">合并会尽量保留双方新增的地点、评论和交通报价。</p>
+          </div>
         </section>
 
         <nav class="day-list" id="dayList" aria-label="日期列表"></nav>
@@ -560,7 +573,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-amap-route"></script>
-    <script src="script.js?v=20260617-amap-route"></script>
+    <script src="config.js?v=20260617-conflict-resolve"></script>
+    <script src="script.js?v=20260617-conflict-resolve"></script>
   </body>
 </html>
