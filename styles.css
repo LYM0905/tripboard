@@ -76,6 +76,7 @@ button {
 .candidate-panel,
 .day-editor-panel,
 .day-comments-panel,
+.day-blocks-panel,
 .guide-panel,
 .quick-add-panel,
 .transport-panel,
@@ -299,6 +300,7 @@ button {
 .candidate-panel,
 .day-editor-panel,
 .day-comments-panel,
+.day-blocks-panel,
 .guide-panel,
 .quick-add-panel,
 .transport-panel,
@@ -2050,6 +2052,73 @@ button:disabled {
   max-height: 150px;
 }
 
+.day-block-form {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 44px;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.day-block-form select,
+.day-block-form input,
+.day-block-text {
+  min-width: 0;
+  min-height: 39px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.day-block-list {
+  display: grid;
+  gap: 8px;
+}
+
+.day-block {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto 34px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.day-block.is-done .day-block-text {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.day-block-toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-height: 34px;
+  color: var(--green);
+  background: var(--green-2);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.day-block-toggle i {
+  width: 17px;
+  height: 17px;
+}
+
+.day-block-meta {
+  max-width: 112px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .comment-filters {
   position: sticky;
   top: 0;
@@ -2617,6 +2686,7 @@ svg {
   .sync-panel,
   .comments-panel,
   .day-comments-panel,
+  .day-blocks-panel,
   .transport-panel {
     grid-column: 1 / -1;
   }
