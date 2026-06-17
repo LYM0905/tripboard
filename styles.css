@@ -2102,6 +2102,27 @@ button:disabled {
   text-decoration: line-through;
 }
 
+.day-block-text-wrap {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.day-block-text-wrap .day-block-text {
+  width: 100%;
+}
+
+.day-block-text-presence {
+  top: 0;
+  bottom: auto;
+  height: 39px;
+}
+
+.day-block-text-presence b {
+  top: 0;
+  transform: translateY(-18px);
+}
+
 .day-block-drag {
   display: grid;
   place-items: center;
@@ -2218,7 +2239,7 @@ button:disabled {
     grid-row: 1;
   }
 
-  .day-block-text {
+  .day-block-text-wrap {
     grid-column: 3;
     grid-row: 1;
   }
