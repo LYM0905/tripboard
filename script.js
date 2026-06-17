@@ -5468,13 +5468,14 @@ function render() {
 }
 
 function mutate(label, action, options = {}) {
-  if (!requireEdit(label)) return;
-  if (options.requireUnlocked !== false && !requireStopUnlocked(label)) return;
+  if (!requireEdit(label)) return false;
+  if (options.requireUnlocked !== false && !requireStopUnlocked(label)) return false;
   saveVersionSnapshot(label);
   action();
   logActivity(label);
-  saveState(label);
-  render();
+  if (options.save !== false) saveState(label);
+  if (options.render !== false) render();
+  return true;
 }
 
 function clearCurrentAmapRoute() {
@@ -5559,13 +5560,17 @@ dom.mapCanvas.addEventListener("click", (event) => {
 dom.dayForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let updatedDay = null;
-  mutate("保存当天设置", () => {
+  const changed = mutate("保存当天设置", () => {
     updatedDay = applyDayEditorDraftToState();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false });
   if (updatedDay) {
     await syncDayMetasToDoc("local-day-update");
     await syncPlanMetaToDoc("local-day-date-meta");
+    await saveState("保存当天设置");
     broadcastDayUpdated(updatedDay);
+    render();
+  } else if (changed) {
+    render();
   }
 });
 
@@ -5607,7 +5612,7 @@ async function syncDayEditorDraftChange({ silent = false } = {}) {
 dom.addDayBtn.addEventListener("click", async () => {
   let createdDay = null;
   let createdIndex = 0;
-  mutate("新增一天", () => {
+  if (!mutate("新增一天", () => {
     createdIndex = activeDay + 1;
     createdDay = makeBlankDay(createdIndex);
     state.days.splice(createdIndex, 0, createdDay);
@@ -5615,12 +5620,14 @@ dom.addDayBtn.addEventListener("click", async () => {
     activeStop = 0;
     reflowPlanDates();
     createdDay = clone(state.days[createdIndex]);
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   if (createdDay) {
     await syncDayMetasToDoc("local-day-create");
     await syncStopListToDoc(createdDay.id, "local-day-create-stops");
     await syncPlanMetaToDoc("local-day-create-meta");
+    await saveState("新增一天");
     broadcastDayCreated(createdDay, createdIndex);
+    render();
   }
 });
 
@@ -5630,59 +5637,67 @@ dom.deleteDayBtn.addEventListener("click", async () => {
     return;
   }
   const deletedDay = clone(currentDay());
-  mutate(`删除「${deletedDay.title || deletedDay.label}」`, () => {
+  const label = `删除「${deletedDay.title || deletedDay.label}」`;
+  if (!mutate(label, () => {
     state.days.splice(activeDay, 1);
     activeDay = Math.max(0, Math.min(activeDay, state.days.length - 1));
     activeStop = 0;
     destroyCollabTextDoc();
     reflowPlanDates();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   await syncDayMetasToDoc("local-day-delete");
   await syncStopListsToDoc("local-day-delete-stops");
   await syncPlanMetaToDoc("local-day-delete-meta");
+  await saveState(label);
   broadcastDayDeleted(deletedDay);
+  render();
 });
 
 dom.moveDayUpBtn.addEventListener("click", async () => {
   if (activeDay <= 0) return;
   let changed = false;
-  mutate("上移当天", () => {
+  if (!mutate("上移当天", () => {
     [state.days[activeDay - 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay - 1]];
     activeDay -= 1;
     activeStop = 0;
     reflowPlanDates();
     changed = true;
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   if (changed) {
     await syncDayMetasToDoc("local-day-reorder");
     await syncStopListsToDoc("local-day-reorder-stops");
     await syncPlanMetaToDoc("local-day-reorder-meta");
+    await saveState("上移当天");
     broadcastDaysReordered();
+    render();
   }
 });
 
 dom.moveDayDownBtn.addEventListener("click", async () => {
   if (activeDay >= state.days.length - 1) return;
   let changed = false;
-  mutate("下移当天", () => {
+  if (!mutate("下移当天", () => {
     [state.days[activeDay + 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay + 1]];
     activeDay += 1;
     activeStop = 0;
     reflowPlanDates();
     changed = true;
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   if (changed) {
     await syncDayMetasToDoc("local-day-reorder");
     await syncStopListsToDoc("local-day-reorder-stops");
     await syncPlanMetaToDoc("local-day-reorder-meta");
+    await saveState("下移当天");
     broadcastDaysReordered();
+    render();
   }
 });
 
 dom.stopForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let dayId = currentDay()?.id || "";
-  mutate(`保存「${dom.fieldTitle.value || "地点"}」`, () => {
+  const label = `保存「${dom.fieldTitle.value || "地点"}」`;
+  if (!mutate(label, () => {
     const stop = currentStop();
     const collabValue = (field, domKey) => (collabTextStopId === stop.id && collabTextFields[field] ? collabTextFields[field].toString() : dom[domKey].value.trim());
     const structValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : null;
@@ -5702,8 +5717,10 @@ dom.stopForm.addEventListener("submit", async (event) => {
     stop.note = collabValue("note", "fieldNote");
     dayId = currentDay()?.id || dayId;
     clearCurrentAmapRoute();
-  });
+  }, { save: false, render: false })) return;
   await syncStopListToDoc(dayId, "local-stop-detail-save");
+  await saveState(label);
+  render();
 });
 
 COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
@@ -5734,7 +5751,7 @@ COLLAB_STRUCT_FIELDS.forEach((meta) => {
 dom.addStopBtn.addEventListener("click", async () => {
   let createdStop = null;
   let createdDayId = "";
-  mutate("新增地点", () => {
+  if (!mutate("新增地点", () => {
     const day = currentDay();
     createdStop = makeStop({
       time: "18:00",
@@ -5749,10 +5766,12 @@ dom.addStopBtn.addEventListener("click", async () => {
     day.stops.push(createdStop);
     activeStop = day.stops.length - 1;
     clearCurrentAmapRoute();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   if (createdStop) {
     await addStopToDoc(createdDayId, createdStop, "local-stop-create");
+    await saveState("新增地点");
     broadcastStopCreated(createdDayId, createdStop);
+    render();
   }
 });
 
@@ -5763,7 +5782,8 @@ dom.quickAddForm.addEventListener("submit", async (event) => {
   const name = draft.title;
   let createdStop = null;
   let createdDayId = "";
-  mutate(`加入景点「${name}」`, () => {
+  const label = `加入景点「${name}」`;
+  if (!mutate(label, () => {
     const day = currentDay();
     createdStop = {
       ...draft,
@@ -5775,10 +5795,12 @@ dom.quickAddForm.addEventListener("submit", async (event) => {
     activeStop = day.stops.length - 1;
     clearCurrentAmapRoute();
     clearQuickPlaceForm();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   if (createdStop) {
     await addStopToDoc(createdDayId, createdStop, "local-quick-stop-create");
+    await saveState(label);
     broadcastStopCreated(createdDayId, createdStop);
+    render();
   }
 });
 
@@ -5940,20 +5962,23 @@ dom.deleteStopBtn.addEventListener("click", async () => {
     return;
   }
   const deletedStop = clone(currentStop());
-  mutate(`删除「${deletedStop.title}」`, () => {
+  const label = `删除「${deletedStop.title}」`;
+  if (!mutate(label, () => {
     day.stops.splice(activeStop, 1);
     activeStop = Math.max(0, activeStop - 1);
     clearCurrentAmapRoute();
-  });
+  }, { save: false, render: false })) return;
   await deleteStopFromDoc(day.id, deletedStop.id, "local-stop-delete");
+  await saveState(label);
   broadcastStopDeleted(day.id, deletedStop);
+  render();
 });
 
 dom.moveUpBtn.addEventListener("click", async () => {
   if (activeStop === 0) return;
   let dayId = "";
   let nextStops = [];
-  mutate("上移地点", () => {
+  if (!mutate("上移地点", () => {
     const day = currentDay();
     const stops = day.stops;
     [stops[activeStop - 1], stops[activeStop]] = [stops[activeStop], stops[activeStop - 1]];
@@ -5961,9 +5986,11 @@ dom.moveUpBtn.addEventListener("click", async () => {
     dayId = day.id;
     nextStops = [...stops];
     clearCurrentAmapRoute();
-  });
+  }, { save: false, render: false })) return;
   await syncStopListToDoc(dayId, "local-stop-reorder");
+  await saveState("上移地点");
   broadcastStopsReordered(dayId, nextStops);
+  render();
 });
 
 dom.moveDownBtn.addEventListener("click", async () => {
@@ -5971,7 +5998,7 @@ dom.moveDownBtn.addEventListener("click", async () => {
   if (activeStop >= stops.length - 1) return;
   let dayId = "";
   let nextStops = [];
-  mutate("下移地点", () => {
+  if (!mutate("下移地点", () => {
     const day = currentDay();
     const dayStops = day.stops;
     [dayStops[activeStop + 1], dayStops[activeStop]] = [dayStops[activeStop], dayStops[activeStop + 1]];
@@ -5979,9 +6006,11 @@ dom.moveDownBtn.addEventListener("click", async () => {
     dayId = day.id;
     nextStops = [...dayStops];
     clearCurrentAmapRoute();
-  });
+  }, { save: false, render: false })) return;
   await syncStopListToDoc(dayId, "local-stop-reorder");
+  await saveState("下移地点");
   broadcastStopsReordered(dayId, nextStops);
+  render();
 });
 
 function localOptimizeStops(stops) {
@@ -6357,14 +6386,17 @@ dom.candidateGrid.addEventListener("click", async (event) => {
   const candidate = clone(state.candidates[Number(button.dataset.candidate)]);
   candidate.id = uid();
   let createdDayId = "";
-  mutate(`加入备选「${candidate.title}」`, () => {
+  const label = `加入备选「${candidate.title}」`;
+  if (!mutate(label, () => {
     const day = currentDay();
     createdDayId = day.id;
     day.stops.push(candidate);
     activeStop = currentDay().stops.length - 1;
-  });
+  }, { save: false, render: false })) return;
   await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop");
+  await saveState(label);
   broadcastStopCreated(createdDayId, candidate);
+  render();
 });
 
 dom.candidateGrid.addEventListener("keydown", (event) => {
@@ -6901,7 +6933,8 @@ dom.importForm.addEventListener("submit", async (event) => {
   const rawNote = dom.importNote.value.trim();
   const note = [metadataLines.join("\n"), rawNote].filter(Boolean).join("\n\n");
   let createdStop = null;
-  mutate(`导入${pendingProvider}记录`, () => {
+  const label = `导入${pendingProvider}记录`;
+  if (!mutate(label, () => {
     createdStop = makeStop({
       time: dom.importTime.value.trim() || "18:30",
       title,
@@ -6923,10 +6956,12 @@ dom.importForm.addEventListener("submit", async (event) => {
     dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已加入 ${targetDay.label}，可在右侧继续编辑。</span>`;
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, render: false })) return;
   if (createdStop) {
     await addStopToDoc(targetDay.id, createdStop, "local-import-stop");
+    await saveState(label);
     broadcastStopCreated(targetDay.id, createdStop);
+    render();
   }
 });
 
