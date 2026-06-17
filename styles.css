@@ -1260,7 +1260,14 @@ button:disabled {
   gap: 9px;
 }
 
-.member-form .primary-btn {
+.access-form {
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.member-form .primary-btn,
+.access-form .text-btn {
   width: 100%;
 }
 

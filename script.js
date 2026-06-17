@@ -3,6 +3,8 @@ const CTRIP_CONFIG_KEY = "tripboard-ctrip-connector-v1";
 const MEMBER_PROFILE_KEY = "tripboard-member-profile-v1";
 const SERVICE_CONFIG_KEY = "tripboard-service-connectors-v1";
 const EXTERNAL_IMPORT_CONFIG_KEY = "tripboard-external-import-v1";
+const EDIT_ACCESS_PREFIX = "tripboard-edit-access:";
+const EDIT_KEY_VALUE_PREFIX = "tripboard-edit-key-value:";
 const VERSION_PREFIX = "tripboard-version-history:";
 const MAX_VERSION_HISTORY = 12;
 const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
@@ -39,6 +41,8 @@ const PLAN_SETTING_FIELDS = [
   { field: "cover", type: "string" },
   { field: "partySize", type: "integer" },
   { field: "budgetLimit", type: "number" },
+  { field: "editKeyHash", type: "string" },
+  { field: "editKeyHint", type: "string" },
 ];
 
 const images = {
@@ -96,6 +100,20 @@ function base64ToBytes(value) {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+async function sha256Text(value) {
+  const text = String(value || "");
+  if (window.crypto?.subtle && window.TextEncoder) {
+    const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  let hash = 2166136261;
+  text.split("").forEach((char) => {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  });
+  return `fnv-${Math.abs(hash).toString(16)}`;
 }
 
 function money(value) {
@@ -2093,7 +2111,7 @@ async function addCollaborativeComment(text) {
   return true;
 }
 
-function applyRemotePlan(remotePlan, meta = {}) {
+async function applyRemotePlan(remotePlan, meta = {}) {
   isApplyingRemote = true;
   const activeStopId = currentStop()?.id || "";
   const remoteActiveStop = activeStopId ? remotePlan.days?.flatMap((day) => day.stops || []).find((stop) => stop.id === activeStopId) : null;
@@ -2128,6 +2146,7 @@ function applyRemotePlan(remotePlan, meta = {}) {
     destroyCollabPlanDoc();
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  await refreshEditAccessFromUrl();
   isApplyingRemote = false;
 }
 
@@ -2142,7 +2161,7 @@ async function resolveConflict(mode) {
     savePlanSnapshot(localPlan, "冲突处理前：我的版本");
     savePlanSnapshot(remotePlan, "冲突处理前：云端版本", conflict.updatedBy || "协作者");
     if (mode === "remote") {
-      applyRemotePlan(remotePlan, { updatedAt: conflict.updatedAt || "" });
+      await applyRemotePlan(remotePlan, { updatedAt: conflict.updatedAt || "" });
       hideConflictPanel();
       dom.saveState.textContent = "已使用云端版本";
       dom.collabStatus.textContent = "已采用协作者保存的云端版本，你的旧版本已进入历史版本。";
@@ -2165,7 +2184,7 @@ async function resolveConflict(mode) {
   }
 }
 
-function handleRemotePlanUpdate(next) {
+async function handleRemotePlanUpdate(next) {
   if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
   const remotePlan = ensurePlanDates(clone(next.data));
   if (pendingLocalRemoteUpdatedAt && next.updated_at === pendingLocalRemoteUpdatedAt && sameSerialized(state, remotePlan)) {
@@ -2188,7 +2207,7 @@ function handleRemotePlanUpdate(next) {
     return;
   }
   saveVersionSnapshot("协作者更新前版本");
-  applyRemotePlan(remotePlan, { updatedAt: next.updated_at || "" });
+  await applyRemotePlan(remotePlan, { updatedAt: next.updated_at || "" });
   dom.saveState.textContent = "收到协作者更新";
   dom.collabStatus.textContent = next.updated_by ? `${next.updated_by} 刚刚更新了计划` : "共享计划已更新";
   render();
@@ -2210,6 +2229,10 @@ const dom = {
   createSharedTripBtn: document.querySelector("#createSharedTripBtn"),
   copySharedLinkBtn: document.querySelector("#copySharedLinkBtn"),
   copyReadonlyLinkBtn: document.querySelector("#copyReadonlyLinkBtn"),
+  editAccessForm: document.querySelector("#editAccessForm"),
+  editAccessInput: document.querySelector("#editAccessInput"),
+  editAccessBtn: document.querySelector("#editAccessBtn"),
+  editAccessStatus: document.querySelector("#editAccessStatus"),
   conflictPanel: document.querySelector("#conflictPanel"),
   conflictText: document.querySelector("#conflictText"),
   conflictDetail: document.querySelector("#conflictDetail"),
@@ -2407,7 +2430,10 @@ let supabaseClient = null;
 let realtimeChannel = null;
 const urlParams = new URLSearchParams(window.location.search);
 let tripId = urlParams.get("trip") || localStorage.getItem("tripboard-current-trip-id") || "";
-const isReadonlyMode = urlParams.get("mode") === "readonly";
+const forcedReadonlyMode = urlParams.get("mode") === "readonly";
+let editAccessGranted = false;
+let editAccessRequired = false;
+let isReadonlyMode = forcedReadonlyMode;
 let isApplyingRemote = false;
 let lastRemoteUpdatedAt = "";
 let lastSyncedState = null;
@@ -2460,6 +2486,54 @@ function loadState() {
 
 function historyKey() {
   return `${VERSION_PREFIX}${tripId || "local"}`;
+}
+
+function editAccessKey() {
+  return `${EDIT_ACCESS_PREFIX}${tripId || "local"}`;
+}
+
+function localEditAccessHash() {
+  return localStorage.getItem(editAccessKey()) || "";
+}
+
+function editKeyValueKey() {
+  return `${EDIT_KEY_VALUE_PREFIX}${tripId || "local"}`;
+}
+
+function currentEditKeyValue() {
+  return sessionStorage.getItem(editKeyValueKey()) || "";
+}
+
+function setCurrentEditKeyValue(value = "") {
+  if (!tripId || !value) return;
+  sessionStorage.setItem(editKeyValueKey(), value);
+}
+
+function setLocalEditAccess(hash = "") {
+  if (!tripId || !hash) return;
+  localStorage.setItem(editAccessKey(), hash);
+}
+
+async function refreshEditAccessFromUrl() {
+  const hash = state.editKeyHash || "";
+  if (!hash || forcedReadonlyMode) {
+    editAccessRequired = Boolean(hash) && forcedReadonlyMode;
+    editAccessGranted = !forcedReadonlyMode && !hash;
+    isReadonlyMode = forcedReadonlyMode;
+    return;
+  }
+  editAccessRequired = true;
+  editAccessGranted = localEditAccessHash() === hash;
+  const editKey = urlParams.get("editKey") || "";
+  if (!editAccessGranted && editKey) {
+    const incomingHash = await sha256Text(`${tripId}:${editKey}`);
+    editAccessGranted = incomingHash === hash;
+    if (editAccessGranted) {
+      setLocalEditAccess(hash);
+      setCurrentEditKeyValue(editKey);
+    }
+  }
+  isReadonlyMode = !editAccessGranted;
 }
 
 function versionHistory() {
@@ -2705,6 +2779,24 @@ function renderMembers() {
   renderTextPresence();
 }
 
+function renderEditAccessState() {
+  if (!dom.editAccessStatus || !dom.editAccessBtn) return;
+  if (!tripId) {
+    dom.editAccessStatus.textContent = "创建共享计划后可设置编辑口令。";
+    dom.editAccessBtn.innerHTML = `${icon("key-round")}设置口令`;
+  } else if (state.editKeyHash && canEdit()) {
+    dom.editAccessStatus.textContent = "已启用编辑口令；复制编辑链接会带上编辑密钥，只读链接仍只能查看。";
+    dom.editAccessBtn.innerHTML = `${icon("key-round")}更新口令`;
+  } else if (state.editKeyHash) {
+    dom.editAccessStatus.textContent = state.editKeyHint ? `需要编辑口令，提示：${state.editKeyHint}` : "需要编辑口令才能修改计划。";
+    dom.editAccessBtn.innerHTML = `${icon("unlock-keyhole")}解锁编辑`;
+  } else {
+    dom.editAccessStatus.textContent = "未设置编辑口令，编辑链接可直接修改。";
+    dom.editAccessBtn.innerHTML = `${icon("key-round")}设置口令`;
+  }
+  refreshIcons();
+}
+
 function applyReadonlyUi() {
   document.body.classList.toggle("readonly-mode", isReadonlyMode);
   const writeControls = [
@@ -2761,15 +2853,18 @@ function applyReadonlyUi() {
   document.querySelectorAll(".sync-card").forEach((button) => {
     button.disabled = isReadonlyMode;
   });
+  if (dom.editAccessInput) dom.editAccessInput.disabled = forcedReadonlyMode || !tripId;
+  if (dom.editAccessBtn) dom.editAccessBtn.disabled = forcedReadonlyMode || !tripId;
   dom.copySharedLinkBtn.textContent = isReadonlyMode ? "复制当前只读链接" : "复制编辑链接";
+  renderEditAccessState();
   if (pendingConflict) {
     dom.collabMode.textContent = "待处理冲突";
     dom.saveState.textContent = "发现协作冲突";
     return;
   }
   if (isReadonlyMode) {
-    dom.collabMode.textContent = "只读查看";
-    dom.saveState.textContent = "只读模式";
+    dom.collabMode.textContent = editAccessRequired ? "需口令编辑" : "只读查看";
+    dom.saveState.textContent = editAccessRequired ? "需要编辑口令" : "只读模式";
     dom.presenceText.textContent = "你正在查看计划";
     dom.guideProgress.textContent = "只读";
   } else {
@@ -2856,6 +2951,9 @@ function getShareUrl() {
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
   url.searchParams.delete("mode");
+  const editKey = currentEditKeyValue();
+  if (state.editKeyHash && editKey) url.searchParams.set("editKey", editKey);
+  else url.searchParams.delete("editKey");
   return url.toString();
 }
 
@@ -2864,17 +2962,20 @@ function getReadonlyShareUrl() {
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
   url.searchParams.set("mode", "readonly");
+  url.searchParams.delete("editKey");
   return url.toString();
 }
 
 function canEdit() {
-  return !isReadonlyMode;
+  return !forcedReadonlyMode && !isReadonlyMode;
 }
 
 function requireEdit(actionLabel = "编辑") {
   if (canEdit()) return true;
-  dom.saveState.textContent = `只读模式不能${actionLabel}`;
-  dom.collabStatus.textContent = "当前是只读链接，可以查看计划和显示在线成员，但不能修改行程。";
+  dom.saveState.textContent = editAccessRequired ? "需要编辑口令" : `只读模式不能${actionLabel}`;
+  dom.collabStatus.textContent = editAccessRequired
+    ? "当前计划已启用编辑口令。请输入口令解锁后才能修改行程。"
+    : "当前是只读链接，可以查看计划和显示在线成员，但不能修改行程。";
   return false;
 }
 
@@ -2893,7 +2994,7 @@ function initSupabaseClient() {
 async function pushRemoteState(label = "已同步云端") {
   if (!supabaseClient || !tripId) return;
   if (!canEdit()) {
-    dom.collabStatus.textContent = "当前是只读链接，不能向云端写入计划。";
+    dom.collabStatus.textContent = editAccessRequired ? "需要编辑口令，不能向云端写入计划。" : "当前是只读链接，不能向云端写入计划。";
     return;
   }
   if (pendingConflict) {
@@ -2977,7 +3078,7 @@ async function loadRemoteState() {
   const data = await fetchRemotePlan();
   if (data?.data?.days?.length) {
     saveVersionSnapshot("载入云端前版本");
-    applyRemotePlan(data.data, { updatedAt: data.updated_at || "" });
+    await applyRemotePlan(data.data, { updatedAt: data.updated_at || "" });
     dom.saveState.textContent = `已载入共享计划`;
     dom.collabStatus.textContent = isReadonlyMode
       ? data.updated_by
@@ -3016,7 +3117,9 @@ function subscribeRemoteState() {
       { event: "*", schema: "public", table: "trip_plans", filter: `id=eq.${tripId}` },
       (payload) => {
         const next = payload.new;
-        handleRemotePlanUpdate(next);
+        handleRemotePlanUpdate(next).catch((error) => {
+          dom.collabStatus.textContent = `处理远端更新失败：${error.message}`;
+        });
       },
     )
     .on("broadcast", { event: "stop-text-yjs-update" }, ({ payload }) => {
@@ -3122,6 +3225,9 @@ async function createSharedTrip() {
   destroyCollabPlanDoc();
   hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
+  editAccessGranted = true;
+  editAccessRequired = Boolean(state.editKeyHash);
+  isReadonlyMode = false;
   await pushRemoteState("已创建共享计划");
   subscribeRemoteState();
   const url = new URL(window.location.href);
@@ -5177,6 +5283,55 @@ dom.copyReadonlyLinkBtn.addEventListener("click", async () => {
   }
 });
 
+dom.editAccessForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!tripId) {
+    dom.editAccessStatus.textContent = "请先创建共享计划，再设置编辑口令。";
+    return;
+  }
+  if (forcedReadonlyMode) {
+    dom.editAccessStatus.textContent = "当前是只读链接，不能解锁或设置编辑口令。";
+    return;
+  }
+  const editKey = dom.editAccessInput.value.trim();
+  if (!editKey) {
+    dom.editAccessStatus.textContent = "请输入编辑口令。";
+    return;
+  }
+  const hash = await sha256Text(`${tripId}:${editKey}`);
+  if (state.editKeyHash && !canEdit()) {
+    if (hash !== state.editKeyHash) {
+      dom.editAccessStatus.textContent = "编辑口令不正确。";
+      return;
+    }
+    setLocalEditAccess(hash);
+    setCurrentEditKeyValue(editKey);
+    editAccessGranted = true;
+    isReadonlyMode = false;
+    dom.editAccessInput.value = "";
+    dom.collabStatus.textContent = "编辑已解锁，可以修改计划。";
+    applyReadonlyUi();
+    render();
+    return;
+  }
+  if (!canEdit() && state.editKeyHash) {
+    dom.editAccessStatus.textContent = "请先输入正确口令解锁，再更新口令。";
+    return;
+  }
+  state.editKeyHash = hash;
+  state.editKeyHint = editKey.length >= 2 ? `${editKey.slice(0, 1)}***${editKey.slice(-1)}` : "已设置";
+  setLocalEditAccess(hash);
+  setCurrentEditKeyValue(editKey);
+  editAccessGranted = true;
+  isReadonlyMode = false;
+  dom.editAccessInput.value = "";
+  await syncPlanMetaToDoc("local-edit-access");
+  await saveState("编辑口令已更新");
+  dom.collabStatus.textContent = "编辑口令已更新；复制编辑链接会带上编辑密钥。";
+  applyReadonlyUi();
+  render();
+});
+
 dom.mergeConflictBtn?.addEventListener("click", () => resolveConflict("merge"));
 dom.keepLocalConflictBtn?.addEventListener("click", () => resolveConflict("local"));
 dom.useRemoteConflictBtn?.addEventListener("click", () => resolveConflict("remote"));
@@ -5423,6 +5578,7 @@ async function boot() {
   }
   syncGuideStateFromPlan();
   dom.partySizeInput.value = state.partySize || 1;
+  await refreshEditAccessFromUrl();
   initSupabaseClient();
   render();
   renderMembers();
