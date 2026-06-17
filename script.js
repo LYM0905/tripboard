@@ -15,6 +15,16 @@ const COLLAB_TEXT_FIELDS = [
   { field: "note", domKey: "fieldNote", label: "备注", presenceId: "fieldNotePresence" },
 ];
 const COLLAB_TEXT_FIELD_BY_FIELD = new Map(COLLAB_TEXT_FIELDS.map((item) => [item.field, item]));
+const COLLAB_STRUCT_FIELDS = [
+  { field: "time", domKey: "fieldTime", type: "string" },
+  { field: "budget", domKey: "fieldBudget", type: "number" },
+  { field: "paid", domKey: "fieldPaid", type: "number" },
+  { field: "payer", domKey: "fieldPayer", type: "string" },
+  { field: "lng", domKey: "fieldLng", type: "string" },
+  { field: "lat", domKey: "fieldLat", type: "string" },
+  { field: "image", domKey: "fieldImage", type: "string" },
+  { field: "tags", domKey: "fieldTags", type: "tags" },
+];
 
 const images = {
   kyoto:
@@ -844,6 +854,10 @@ function buildInitialTextUpdate(Y, stop) {
   COLLAB_TEXT_FIELDS.forEach(({ field }) => {
     seedDoc.getText(field).insert(0, stop[field] || "");
   });
+  const structMap = seedDoc.getMap("struct");
+  COLLAB_STRUCT_FIELDS.forEach((meta) => {
+    structMap.set(meta.field, stopStructValue(stop, meta));
+  });
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -867,7 +881,7 @@ async function ensureYjs() {
   return yjsReadyPromise;
 }
 
-function persistCurrentTextFromDoc(label = "文本已实时同步") {
+function persistCurrentTextFromDoc(label = "地点字段已实时同步") {
   if (!collabTextDoc || !collabTextStopId) return;
   const stop = state.days.flatMap((day) => day.stops || []).find((item) => item.id === collabTextStopId);
   if (!stop) return;
@@ -875,25 +889,28 @@ function persistCurrentTextFromDoc(label = "文本已实时同步") {
   COLLAB_TEXT_FIELDS.forEach(({ field }) => {
     nextValues[field] = collabTextFields[field]?.toString() || "";
   });
+  const nextStructValues = readStructFromDoc();
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabTextDoc)) : stop.textYjs || stop.noteYjs || "";
-  const changed = COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== nextValues[field]) || stop.textYjs !== nextYjs;
+  const textChanged = COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== nextValues[field]);
+  const structChanged = COLLAB_STRUCT_FIELDS.some(({ field }) => !sameSerialized(stop[field], nextStructValues[field]));
+  const changed = textChanged || structChanged || stop.textYjs !== nextYjs;
   if (!changed) return;
   COLLAB_TEXT_FIELDS.forEach(({ field }) => {
     stop[field] = nextValues[field];
   });
+  COLLAB_STRUCT_FIELDS.forEach(({ field }) => {
+    stop[field] = clone(nextStructValues[field]);
+  });
   stop.textYjs = nextYjs;
   stop.noteYjs = nextYjs;
-  dom.placeType.textContent = stop.type || "Place";
-  dom.placeTitle.textContent = stop.title || "未命名地点";
-  dom.placeAddress.textContent = stop.address || "地址待确认";
-  dom.placeNote.textContent = stop.note || "";
-  dom.commentTitle.textContent = stop.title || "当前地点";
+  applyStopRealtimeFields(stop);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   setNoteCollabStatus(label);
+  if (textChanged || structChanged) refreshRealtimeStopViews();
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    pushRemoteState("文本已实时同步");
+    pushRemoteState("地点字段已实时同步");
   }, 900);
 }
 
@@ -911,6 +928,58 @@ function broadcastTextUpdate(update) {
       sentAt: new Date().toISOString(),
     },
   });
+}
+
+function structDomValue({ domKey, type }) {
+  const element = dom[domKey];
+  if (!element) return type === "number" ? 0 : type === "tags" ? [] : "";
+  if (type === "number") return numberValue(element.value);
+  if (type === "tags") return normalizeTags(element.value);
+  return String(element.value || "").trim();
+}
+
+function stopStructValue(stop, { field, type }) {
+  if (type === "number") return numberValue(stop?.[field]);
+  if (type === "tags") return normalizeTags(stop?.[field]);
+  return String(stop?.[field] || "").trim();
+}
+
+function structDisplayValue(value, type) {
+  if (type === "tags") return normalizeTags(value).join(", ");
+  if (type === "number") return value || "";
+  return value || "";
+}
+
+function readStructFromDoc() {
+  const values = {};
+  if (!collabStructMap) return values;
+  COLLAB_STRUCT_FIELDS.forEach(({ field, type }) => {
+    const value = collabStructMap.get(field);
+    values[field] = type === "tags" ? normalizeTags(value) : type === "number" ? numberValue(value) : String(value || "");
+  });
+  return values;
+}
+
+function applyStopRealtimeFields(stop) {
+  dom.placeType.textContent = stop.type || "Place";
+  dom.placeTitle.textContent = stop.title || "未命名地点";
+  dom.placeAddress.textContent = stop.address || "地址待确认";
+  dom.placeNote.textContent = stop.note || "";
+  dom.commentTitle.textContent = stop.title || "当前地点";
+  dom.placePhoto.style.setProperty("--photo", `url("${stop.image || images.city}")`);
+  dom.favoriteBtn.classList.toggle("selected", Boolean(stop.favorite));
+  dom.mustVote.classList.toggle("is-active", Boolean(stop.userVoted));
+  dom.voteCount.textContent = stop.votes || 0;
+}
+
+function refreshRealtimeStopViews() {
+  renderShell();
+  renderDays();
+  renderDaySummary();
+  renderTimeline();
+  renderMap();
+  renderAmapRouteReport(currentDay()?.amapRoute || null);
+  refreshIcons();
 }
 
 function broadcastTextSelection() {
@@ -942,6 +1011,7 @@ function destroyCollabTextDoc() {
   collabTextSaveTimer = null;
   collabTextStopId = "";
   collabTextFields = {};
+  collabStructMap = null;
   if (collabTextDoc) {
     collabTextDoc.destroy();
     collabTextDoc = null;
@@ -994,22 +1064,32 @@ async function bindCollabTextDoc() {
   COLLAB_TEXT_FIELDS.forEach(({ field }) => {
     collabTextFields[field] = collabTextDoc.getText(field);
   });
+  collabStructMap = collabTextDoc.getMap("struct");
+  collabTextDoc.transact(() => {
+    COLLAB_STRUCT_FIELDS.forEach((meta) => {
+      if (!collabStructMap.has(meta.field)) collabStructMap.set(meta.field, stopStructValue(stop, meta));
+    });
+  }, "restore");
   COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
     const value = restored ? collabTextFields[field].toString() : stop[field] || "";
     if (dom[domKey] && dom[domKey].value !== value) dom[domKey].value = value;
   });
+  COLLAB_STRUCT_FIELDS.forEach((meta) => {
+    const value = collabStructMap.get(meta.field);
+    if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(value, meta.type);
+  });
   collabTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentTextFromDoc("收到协作者文本更新");
+      persistCurrentTextFromDoc("收到协作者地点字段更新");
       return;
     }
     broadcastTextUpdate(update);
-    persistCurrentTextFromDoc("文本逐字同步中");
+    persistCurrentTextFromDoc("地点字段实时同步中");
   });
   if (restored && COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== collabTextFields[field].toString())) {
     persistCurrentTextFromDoc("已载入文本协作状态");
   }
-  setNoteCollabStatus("文本逐字协作已开启");
+  setNoteCollabStatus("文本与结构字段协作已开启");
 }
 
 async function applyRemoteTextUpdate(payload = {}) {
@@ -1029,7 +1109,11 @@ async function applyRemoteTextUpdate(payload = {}) {
       const nextValue = collabTextFields[field]?.toString() || "";
       if (dom[domKey] && dom[domKey].value !== nextValue) dom[domKey].value = nextValue;
     });
-    setNoteCollabStatus(`${payload.name || "协作者"} 正在同步文本`);
+    COLLAB_STRUCT_FIELDS.forEach((meta) => {
+      const nextValue = collabStructMap?.get(meta.field);
+      if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(nextValue, meta.type);
+    });
+    setNoteCollabStatus(`${payload.name || "协作者"} 正在同步地点字段`);
   } finally {
     isApplyingCollabTextRemote = false;
   }
@@ -1066,6 +1150,17 @@ async function syncCollabTextFieldToDoc(field, value) {
   collabTextDoc.transact(() => {
     applyTextDiff(yText, value);
   }, "local-input");
+}
+
+async function syncCollabStructFieldToDoc(meta) {
+  if (!canEdit() || isReadonlyMode) return;
+  await bindCollabTextDoc();
+  if (!collabTextDoc || !collabStructMap || isApplyingCollabTextRemote) return;
+  const nextValue = structDomValue(meta);
+  if (sameSerialized(collabStructMap.get(meta.field), nextValue)) return;
+  collabTextDoc.transact(() => {
+    collabStructMap.set(meta.field, clone(nextValue));
+  }, "local-struct-input");
 }
 
 function applyRemotePlan(remotePlan, meta = {}) {
@@ -1350,6 +1445,7 @@ let editLockEnabled = true;
 let remoteVersionHistoryEnabled = true;
 let collabTextDoc = null;
 let collabTextFields = {};
+let collabStructMap = null;
 let collabTextStopId = "";
 let isApplyingCollabTextRemote = false;
 let collabTextSaveTimer = null;
@@ -1702,8 +1798,11 @@ function renderEditorLockState() {
   COLLAB_TEXT_FIELDS.forEach(({ domKey }) => {
     if (dom[domKey]) dom[domKey].disabled = isReadonlyMode;
   });
+  COLLAB_STRUCT_FIELDS.forEach(({ domKey }) => {
+    if (dom[domKey]) dom[domKey].disabled = isReadonlyMode;
+  });
   if (locked && dom.noteCollabStatus && !isReadonlyMode) {
-    dom.noteCollabStatus.textContent = "结构字段已锁定，名称、类型、地址、高德关键词和备注仍可多人逐字协作";
+    dom.noteCollabStatus.textContent = "移动、删除和回填操作已锁定，地点详情字段仍可多人实时协作";
   }
   [
     dom.amapLookupBtn,
@@ -2889,24 +2988,24 @@ function renderDetail() {
   dom.commentCount.textContent = (stop.comments || []).length;
   dom.commentTitle.textContent = stop.title;
 
-  dom.fieldTime.value = stop.time || "";
   if (collabTextStopId !== stop.id || !collabTextDoc) {
+    dom.fieldTime.value = stop.time || "";
     dom.fieldTitle.value = stop.title || "";
     dom.fieldType.value = stop.type || "";
     dom.fieldAddress.value = stop.address || "";
     dom.fieldAmapKeyword.value = stop.amapKeyword || `${state.destination || ""} ${stop.title}`.trim();
     dom.fieldNote.value = stop.note || "";
+    dom.fieldBudget.value = stop.budget || "";
+    dom.fieldPaid.value = stop.paid || "";
+    dom.fieldPayer.value = stop.payer || "";
+    dom.fieldLng.value = stop.lng || "";
+    dom.fieldLat.value = stop.lat || "";
+    dom.fieldImage.value = stop.image || "";
+    dom.fieldTags.value = (stop.tags || []).join(", ");
   }
-  dom.fieldBudget.value = stop.budget || "";
-  dom.fieldPaid.value = stop.paid || "";
-  dom.fieldPayer.value = stop.payer || "";
-  dom.fieldLng.value = stop.lng || "";
-  dom.fieldLat.value = stop.lat || "";
-  dom.fieldImage.value = stop.image || "";
   const detailKeyword = dom.fieldAmapKeyword.value || stop.title;
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
   dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
-  dom.fieldTags.value = (stop.tags || []).join(", ");
 
   dom.commentList.innerHTML = (stop.comments || [])
     .map((comment) => `<div class="comment-item"><span class="avatar a2">${comment.author || "我"}</span><p>${comment.text}</p></div>`)
@@ -3014,18 +3113,20 @@ dom.stopForm.addEventListener("submit", (event) => {
   mutate(`保存「${dom.fieldTitle.value || "地点"}」`, () => {
     const stop = currentStop();
     const collabValue = (field, domKey) => (collabTextStopId === stop.id && collabTextFields[field] ? collabTextFields[field].toString() : dom[domKey].value.trim());
-    stop.time = dom.fieldTime.value.trim();
+    const structValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : null;
+    const structValue = (field, fallback) => structValues && Object.prototype.hasOwnProperty.call(structValues, field) ? structValues[field] : fallback();
     stop.title = collabValue("title", "fieldTitle") || "未命名地点";
     stop.type = collabValue("type", "fieldType") || "Place";
-    stop.budget = numberValue(dom.fieldBudget.value);
-    stop.paid = numberValue(dom.fieldPaid.value);
-    stop.payer = dom.fieldPayer.value.trim();
+    stop.budget = structValue("budget", () => numberValue(dom.fieldBudget.value));
+    stop.paid = structValue("paid", () => numberValue(dom.fieldPaid.value));
+    stop.payer = structValue("payer", () => dom.fieldPayer.value.trim());
     stop.address = collabValue("address", "fieldAddress");
     stop.amapKeyword = collabValue("amapKeyword", "fieldAmapKeyword");
-    stop.lng = dom.fieldLng.value.trim();
-    stop.lat = dom.fieldLat.value.trim();
-    stop.image = dom.fieldImage.value.trim() || stop.image || images.city;
-    stop.tags = normalizeTags(dom.fieldTags.value);
+    stop.time = structValue("time", () => dom.fieldTime.value.trim());
+    stop.lng = structValue("lng", () => dom.fieldLng.value.trim());
+    stop.lat = structValue("lat", () => dom.fieldLat.value.trim());
+    stop.image = structValue("image", () => dom.fieldImage.value.trim()) || stop.image || images.city;
+    stop.tags = structValue("tags", () => normalizeTags(dom.fieldTags.value));
     stop.note = collabValue("note", "fieldNote");
     clearCurrentAmapRoute();
   });
@@ -3044,6 +3145,15 @@ COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
 
 document.addEventListener("selectionchange", () => {
   if (currentFocusedTextField()) schedulePresenceTrack(90);
+});
+
+COLLAB_STRUCT_FIELDS.forEach((meta) => {
+  ["input", "change"].forEach((eventName) => {
+    dom[meta.domKey]?.addEventListener(eventName, () => {
+      syncCollabStructFieldToDoc(meta);
+      schedulePresenceTrack();
+    });
+  });
 });
 
 dom.addStopBtn.addEventListener("click", () => {
@@ -3137,6 +3247,10 @@ dom.amapLookupBtn.addEventListener("click", async () => {
     if (place?.address) dom.fieldAddress.value = place.address;
     if (place?.lng) dom.fieldLng.value = place.lng;
     if (place?.lat) dom.fieldLat.value = place.lat;
+    await Promise.all([
+      place?.address ? syncCollabTextFieldToDoc("address", dom.fieldAddress.value) : Promise.resolve(),
+      ...COLLAB_STRUCT_FIELDS.filter(({ field }) => ["lng", "lat"].includes(field)).map((meta) => syncCollabStructFieldToDoc(meta)),
+    ]);
     dom.saveState.textContent = place?.lng && place?.lat ? `高德代理已回填定位：${keyword}` : `高德代理已响应：${keyword}`;
   } catch (error) {
     dom.saveState.textContent = `高德代理调用失败：${error.message}`;
