@@ -1205,6 +1205,16 @@ function currentTextRoomId(stopId = currentStop()?.id) {
   return tripId && stopId ? `text:${tripId}:${stopId}` : "";
 }
 
+function findStopLocation(stopId) {
+  if (!stopId) return null;
+  for (let dayIndex = 0; dayIndex < (state.days || []).length; dayIndex += 1) {
+    const day = state.days[dayIndex];
+    const stopIndex = (day?.stops || []).findIndex((stop) => stop?.id === stopId);
+    if (stopIndex >= 0) return { day, stop: day.stops[stopIndex], dayIndex, stopIndex };
+  }
+  return null;
+}
+
 function stableTextClientId(value) {
   let hash = 2166136261;
   String(value || "tripboard-text").split("").forEach((char) => {
@@ -1490,7 +1500,7 @@ function persistCurrentTextFromDoc(label = "地点协作内容已实时同步") 
   stop.comments = nextComments;
   stop.textYjs = nextYjs;
   stop.noteYjs = nextYjs;
-  syncStopTextStateToPlanDoc(stop.id, nextYjs, "local-stop-text-state");
+  syncStopSnapshotToPlanDoc(stop.id, "local-stop-detail-snapshot");
   applyStopRealtimeFields(stop);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   setNoteCollabStatus(label);
@@ -1595,9 +1605,11 @@ function applyStopListsToState(stopLists = {}) {
       const existing = byExistingId.get(remoteStop.id);
       if (!existing) return remoteStop;
       return {
-        ...remoteStop,
         ...existing,
+        ...remoteStop,
         id: remoteStop.id,
+        textYjs: remoteStop.textYjs || existing.textYjs || "",
+        noteYjs: remoteStop.noteYjs || remoteStop.textYjs || existing.noteYjs || existing.textYjs || "",
       };
     });
     if (!sameSerialized((day.stops || []).map((stop) => stop.id), nextStops.map((stop) => stop.id))) {
@@ -1666,7 +1678,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const nextActivities = readActivitiesFromDoc();
   const nextSettings = readSettingsFromDoc();
   const dayMetasChanged = !sameSerialized(normalizeDayMetas(state.days || []), nextDayMetas);
-  const stopListsChanged = !sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(nextStopLists));
+  const stopListsChanged = !sameSerialized(normalizeStopListsFromDays(state.days || []), nextStopLists);
   const stopTextStatesChanged = !sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), nextStopTextStates);
   const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
   const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
@@ -1738,6 +1750,20 @@ function seedMissingPlanDocContent(Y) {
     });
     Object.entries(stopTextStateSnapshotFromDays(state.days || [], Y)).forEach(([stopId, textState]) => {
       if (!collabStopTextStatesMap.has(stopId)) collabStopTextStatesMap.set(stopId, textState);
+    });
+    (state.days || []).forEach((day) => {
+      if (!day?.id) return;
+      const stopArray = collabStopListsMap.get(day.id);
+      if (!stopArray || typeof stopArray.toArray !== "function") return;
+      const localStops = normalizeStopListsFromDays([day])[day.id] || [];
+      const remoteStops = stopArray.toArray();
+      if (!sameSerialized(remoteStops.map((stop) => stop?.id), localStops.map((stop) => stop?.id))) return;
+      localStops.forEach((localStop, index) => {
+        const remoteStop = normalizeCollaborativeStop(remoteStops[index] || {});
+        if (sameSerialized(remoteStop, localStop)) return;
+        stopArray.delete(index, 1);
+        stopArray.insert(index, [localStop]);
+      });
     });
   }, "restore");
 }
@@ -2218,6 +2244,39 @@ async function syncStopTextStateToPlanDoc(stopId, textState, origin = "local-sto
   if (collabStopTextStatesMap.get(stopId) === textState) return true;
   collabPlanDoc.transact(() => {
     collabStopTextStatesMap.set(stopId, textState);
+  }, origin);
+  return true;
+}
+
+async function syncStopSnapshotToPlanDoc(stopId, origin = "local-stop-snapshot") {
+  if (!canEdit() || isReadonlyMode || !stopId) return false;
+  await bindCollabPlanDoc();
+  const location = findStopLocation(stopId);
+  if (!location?.day?.id || !location.stop || !collabPlanDoc || !collabStopListsMap || isApplyingCollabPlanRemote) return false;
+  const normalized = normalizeCollaborativeStop(location.stop);
+  const textState = normalized.textYjs || normalized.noteYjs || "";
+  let stopArray = collabStopListsMap.get(location.day.id);
+  const existingStops = stopArray && typeof stopArray.toArray === "function" ? stopArray.toArray() : [];
+  const existingIndex = existingStops.findIndex((stop) => stop?.id === stopId);
+  const existingStop = existingIndex >= 0 ? normalizeCollaborativeStop(existingStops[existingIndex]) : null;
+  const stopChanged = !existingStop || !sameSerialized(existingStop, normalized);
+  const textChanged = Boolean(textState && collabStopTextStatesMap?.get(stopId) !== textState);
+  if (!stopChanged && !textChanged) return true;
+  collabPlanDoc.transact(() => {
+    if (!stopArray) {
+      stopArray = new yjsModule.Array();
+      collabStopListsMap.set(location.day.id, stopArray);
+    }
+    const freshStops = stopArray.toArray();
+    const freshIndex = freshStops.findIndex((stop) => stop?.id === stopId);
+    const freshStop = freshIndex >= 0 ? normalizeCollaborativeStop(freshStops[freshIndex]) : null;
+    if (!freshStop || !sameSerialized(freshStop, normalized)) {
+      if (freshIndex >= 0) stopArray.delete(freshIndex, 1);
+      stopArray.insert(freshIndex >= 0 ? freshIndex : stopArray.length, [normalized]);
+    }
+    if (textState && collabStopTextStatesMap?.get(stopId) !== textState) {
+      collabStopTextStatesMap.set(stopId, textState);
+    }
   }, origin);
   return true;
 }
