@@ -32,6 +32,7 @@
   - 已完成：前端接入面板改为 Google Flights 报价接入，默认代理地址切到 `searchapi-flight-offers`。
   - 已完成：`SEARCHAPI_API_KEY` 已配置到 Supabase secrets。
   - 已完成：已用 `SHA -> LHW`、`2026-07-10` 测试国内航线，成功返回 10 条 Google Flights 航班报价。
+  - 已完成：Google Flights / SearchApi 返回的航班结果会保存为当天协作报价，写入计划级 Yjs Array；其他协作者和重新打开页面后都能看到同一批报价。
   - 当前限制：这是聚合搜索接口，不是航空公司或 12306 官方接口；适合先做航班价格可视化验证。
 - [~] 多出发地综合比较
   - 已完成：可填写多位成员的出发地/机场码，例如 `林: SHA; 王: PEK; 周: CAN`。

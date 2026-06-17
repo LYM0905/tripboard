@@ -4288,6 +4288,53 @@ function durationFromTimes(depart, arrive) {
   return Math.max(0, end >= start ? end - start : end + 24 * 60 - start);
 }
 
+function transportQuoteIdFromItem(item, day, source = "external") {
+  return [
+    "quote",
+    day?.id || day?.date || "day",
+    source || "provider",
+    item.type || "flight",
+    item.code || "",
+    item.from || "",
+    item.to || "",
+    item.depart || "",
+    item.arrive || "",
+    item.price || "",
+  ]
+    .map((part) => encodeURIComponent(String(part).trim().toLowerCase()))
+    .join("-");
+}
+
+function transportQuoteFromProviderItem(item, day, source = "") {
+  const normalizedSource = source || item.source || "Google Flights";
+  return normalizeTransportQuotes([{
+    ...item,
+    id: transportQuoteIdFromItem(item, day, normalizedSource),
+    dayId: day?.id || "",
+    date: day?.date || "",
+    source: normalizedSource,
+    createdBy: getCollabName(),
+    createdAt: new Date().toISOString(),
+  }])[0];
+}
+
+function transportOptionIdentity(item) {
+  return `${item.type || ""}:${item.code || ""}:${item.from || ""}:${item.to || ""}:${item.depart || ""}:${item.arrive || ""}`;
+}
+
+async function saveProviderTransportQuotes(items = [], day = currentDay(), source = "") {
+  const incoming = items
+    .map((item) => transportQuoteFromProviderItem(item, day, source))
+    .filter(Boolean);
+  if (!incoming.length) return 0;
+  const existing = normalizeTransportQuotes(state.transportQuotes || []);
+  const incomingKeys = new Set(incoming.map(transportOptionIdentity));
+  const preserved = existing.filter((item) => !incomingKeys.has(transportOptionIdentity(item)));
+  state.transportQuotes = normalizeTransportQuotes([...incoming, ...preserved]).slice(0, 80);
+  await syncTransportQuotesToDoc("local-provider-transport-quotes");
+  return incoming.length;
+}
+
 function manualTransportQuotes() {
   return state.transportQuotes || [];
 }
@@ -4557,7 +4604,9 @@ function renderTransport() {
   ensurePlanOrigin(state);
   const route = defaultTransportRoute(day);
   const manualQuotes = currentManualQuotes(day);
-  const baseOptions = transportProviderItems.length ? transportProviderItems : buildTransportOptions(day, activeDay);
+  const savedQuoteKeys = new Set(manualQuotes.map(transportOptionIdentity));
+  const providerOptions = transportProviderItems.filter((item) => !savedQuoteKeys.has(transportOptionIdentity(item)));
+  const baseOptions = transportProviderItems.length ? providerOptions : buildTransportOptions(day, activeDay);
   const options = [...manualQuotes, ...baseOptions];
   const filtered = options.filter(matchesTransportFilter);
   const visible = transportFilterApplied ? filtered : filtered.slice(0, 4);
@@ -4692,7 +4741,8 @@ async function syncCtripTransport() {
   }
   const data = await requestCtripTransport();
   if (!data) return;
-  const route = defaultTransportRoute(currentDay());
+  const day = currentDay();
+  const route = defaultTransportRoute(day);
   const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
   if (!rawItems.length) {
     transportProviderItems = [];
@@ -4702,12 +4752,13 @@ async function syncCtripTransport() {
   }
   transportProviderItems = rawItems.map((item, index) => normalizeTransportItem(item, index, route));
   transportProviderSource = data.source || "";
+  const savedCount = await saveProviderTransportQuotes(transportProviderItems, day, transportProviderSource || "Google Flights");
   transportFilterApplied = true;
   const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
-  setCtripStatus(isDemoProxy ? `后端代理已连通，返回 ${transportProviderItems.length} 条示例交通数据。` : `已同步 ${transportProviderItems.length} 条 Google Flights 航班报价，并更新当前交通列表。`, isDemoProxy ? "info" : "check-circle-2");
+  setCtripStatus(isDemoProxy ? `后端代理已连通，返回 ${transportProviderItems.length} 条示例交通数据，并保存 ${savedCount} 条到协作报价。` : `已同步 ${transportProviderItems.length} 条 Google Flights 航班报价，并保存 ${savedCount} 条到共享计划。`, isDemoProxy ? "info" : "check-circle-2");
   dom.syncBadge.textContent = isDemoProxy ? "代理示例" : "Google Flights";
-  logActivity(`同步 Google Flights 航班报价 ${transportProviderItems.length} 条`);
-  saveState("已同步 Google Flights 报价");
+  logActivity(`同步 Google Flights 航班报价 ${transportProviderItems.length} 条，保存 ${savedCount} 条`);
+  await saveState("已同步 Google Flights 报价");
   render();
 }
 
