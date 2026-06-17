@@ -3420,8 +3420,9 @@ async function applyRemotePlan(remotePlan, meta = {}) {
 
 async function resolveConflict(mode) {
   if (!pendingConflict || !requireEdit("处理协作冲突")) return;
+  persistCurrentPlanFromDoc("处理冲突前已同步当前协作结构");
   const conflict = pendingConflict;
-  const localPlan = clone(conflict.local || state);
+  const localPlan = clone(state);
   const remotePlan = ensurePlanDates(clone(conflict.remote));
   const basePlan = clone(conflict.base || lastSyncedState || {});
   isResolvingConflict = true;
@@ -3455,6 +3456,7 @@ async function resolveConflict(mode) {
 
 async function handleRemotePlanUpdate(next) {
   if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
+  persistCurrentPlanFromDoc("收到云端更新前已同步当前协作结构");
   const remotePlan = ensurePlanDates(clone(next.data));
   if (pendingLocalRemoteUpdatedAt && next.updated_at === pendingLocalRemoteUpdatedAt && samePlanContent(state, remotePlan)) {
     lastRemoteUpdatedAt = next.updated_at || lastRemoteUpdatedAt;
