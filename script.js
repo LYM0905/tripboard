@@ -1104,6 +1104,12 @@ function textSelectionLabel(selection = {}) {
   return `${label} · 光标 ${start}`;
 }
 
+function memberPresenceClass(member = {}, index = 0) {
+  const key = String(member.memberId || member.name || index);
+  const seed = Array.from(key).reduce((sum, char) => sum + char.charCodeAt(0), index);
+  return `a${(seed % 4) + 1}`;
+}
+
 function freshMember(member = {}, ttl = 45000) {
   const seenAt = Date.parse(member.seenAt || "");
   return Number.isNaN(seenAt) || Date.now() - seenAt < ttl;
@@ -1129,11 +1135,19 @@ function renderTextPresence() {
     target.innerHTML = editors
       .slice(0, 3)
       .map((member, index) => {
-        const selected = (member.textSelection?.end || 0) > (member.textSelection?.start || 0);
+        const selection = member.textSelection || {};
+        const start = Number(selection.start || 0);
+        const end = Number(selection.end || start);
+        const length = Math.max(1, Number(selection.length || 1));
+        const selected = end > start;
+        const left = Math.max(0, Math.min(96, Math.round((Math.min(start, length) / length) * 100)));
+        const width = selected ? Math.max(4, Math.min(96 - left, Math.round(((Math.min(end, length) - Math.min(start, length)) / length) * 100))) : 1;
+        const accentClass = memberPresenceClass(member, index);
         return `
-          <span class="text-presence-chip a${(index % 4) + 1}">
+          <span class="text-presence-chip ${accentClass}" style="--cursor-left:${left}%;--selection-width:${width}%">
+            <i class="text-presence-cursor" aria-hidden="true"></i>
             ${memberInitial(member.name)}
-            <span>${escapeHtml(member.name || "协作者")} ${selected ? `选中 ${member.textSelection.end - member.textSelection.start} 字` : `光标 ${member.textSelection?.start ?? 0}`}</span>
+            <span>${escapeHtml(member.name || "协作者")} ${selected ? `选中 ${end - start} 字` : `光标 ${start}`}</span>
           </span>
         `;
       })
