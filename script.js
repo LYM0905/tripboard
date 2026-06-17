@@ -6,7 +6,9 @@ const EXTERNAL_IMPORT_CONFIG_KEY = "tripboard-external-import-v1";
 const EDIT_ACCESS_PREFIX = "tripboard-edit-access:";
 const EDIT_KEY_VALUE_PREFIX = "tripboard-edit-key-value:";
 const VERSION_PREFIX = "tripboard-version-history:";
+const PENDING_PLAN_UPDATES_PREFIX = "tripboard-pending-plan-yjs:";
 const MAX_VERSION_HISTORY = 12;
+const MAX_PENDING_PLAN_UPDATES = 160;
 const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
 const YJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/yjs@13.6.27/+esm";
 const COLLAB_TEXT_FIELDS = [
@@ -1318,6 +1320,91 @@ function currentPlanRoomId() {
   return tripId ? `plan:${tripId}` : "";
 }
 
+function pendingPlanUpdatesKey(id = tripId) {
+  return id ? `${PENDING_PLAN_UPDATES_PREFIX}${id}` : "";
+}
+
+function pendingPlanUpdates(id = tripId) {
+  const key = pendingPlanUpdatesKey(id);
+  if (!key) return [];
+  return (safeJsonParse(localStorage.getItem(key), []) || [])
+    .filter((entry) => entry?.update)
+    .slice(-MAX_PENDING_PLAN_UPDATES);
+}
+
+function pendingPlanUpdateIds() {
+  return new Set(pendingPlanUpdates().map((entry) => entry.id).filter(Boolean));
+}
+
+function savePendingPlanUpdates(updates = [], id = tripId) {
+  const key = pendingPlanUpdatesKey(id);
+  if (!key) return;
+  const normalized = (updates || [])
+    .filter((entry) => entry?.update)
+    .slice(-MAX_PENDING_PLAN_UPDATES);
+  if (normalized.length) {
+    localStorage.setItem(key, JSON.stringify(normalized));
+  } else {
+    localStorage.removeItem(key);
+  }
+}
+
+function clearPendingPlanUpdatesById(ids = new Set()) {
+  if (!ids?.size) return;
+  savePendingPlanUpdates(pendingPlanUpdates().filter((entry) => !ids.has(entry.id)));
+}
+
+function queuePendingPlanUpdate(updateBase64, origin = "local-plan-yjs") {
+  if (!tripId || !updateBase64 || isReadonlyMode) return;
+  const updates = pendingPlanUpdates();
+  updates.push({
+    id: uid(),
+    update: updateBase64,
+    origin,
+    at: new Date().toISOString(),
+    by: getCollabName(),
+  });
+  savePendingPlanUpdates(updates);
+  dom.collabStatus.textContent = `网络不可用时已暂存 ${updates.length} 条计划协作更新，恢复连接后会自动同步。`;
+}
+
+async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
+  if (!tripId || !supabaseClient || isReadonlyMode || !canEdit() || pendingConflict) return false;
+  const updates = pendingPlanUpdates();
+  if (!updates.length) return true;
+  const replayedIds = new Set(updates.map((entry) => entry.id).filter(Boolean));
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc) return false;
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return false;
+  }
+  let applied = 0;
+  isApplyingCollabPlanRemote = true;
+  try {
+    updates.forEach((entry) => {
+      try {
+        Y.applyUpdate(collabPlanDoc, base64ToBytes(entry.update), `pending:${entry.origin || "local"}`);
+        applied += 1;
+      } catch (error) {
+        console.warn("Pending plan update could not be applied", error);
+      }
+    });
+  } finally {
+    isApplyingCollabPlanRemote = false;
+  }
+  if (!applied) return false;
+  persistCurrentPlanFromDoc(`${reason}：已合并 ${applied} 条离线协作更新`);
+  const pushed = await pushRemoteState(`${reason}：已同步 ${applied} 条离线协作更新`, { skipPendingFlush: true });
+  if (pushed) {
+    clearPendingPlanUpdatesById(replayedIds);
+    dom.collabStatus.textContent = `${reason}：${applied} 条离线协作更新已同步到云端。`;
+  }
+  return pushed;
+}
+
 function normalizeTransportQuotes(quotes = []) {
   const seen = new Set();
   return (quotes || [])
@@ -1786,12 +1873,13 @@ function planDocMatchesCurrentState() {
 
 function broadcastPlanYjsUpdate(update) {
   if (!realtimeChannel || !collabPlanDoc || !tripId || isApplyingCollabPlanRemote) return;
+  const encodedUpdate = typeof update === "string" ? update : bytesToBase64(update);
   realtimeChannel.send({
     type: "broadcast",
     event: "plan-yjs-update",
     payload: {
       roomId: currentPlanRoomId(),
-      update: bytesToBase64(update),
+      update: encodedUpdate,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -2154,7 +2242,13 @@ async function bindCollabPlanDoc() {
       persistCurrentPlanFromDoc("收到协作者计划结构更新");
       return;
     }
-    broadcastPlanYjsUpdate(update);
+    if (origin === "restore" || String(origin || "").startsWith("pending:")) {
+      persistCurrentPlanFromDoc(origin === "restore" ? "已载入计划结构协作状态" : "已重放离线协作更新");
+      return;
+    }
+    const updateBase64 = bytesToBase64(update);
+    queuePendingPlanUpdate(updateBase64, String(origin || "local-plan-yjs"));
+    broadcastPlanYjsUpdate(updateBase64);
     persistCurrentPlanFromDoc("计划结构协作内容实时同步中");
   });
   persistCurrentPlanFromDoc("已载入计划结构协作状态");
@@ -2687,6 +2781,11 @@ async function applyRemotePlanYjsUpdate(payload = {}) {
     dom.collabStatus.textContent = `${payload.name || "协作者"} 正在同步计划结构`;
   } finally {
     isApplyingCollabPlanRemote = false;
+  }
+  if (pendingPlanUpdates().length && !pendingConflict) {
+    flushPendingPlanUpdates("收到协作者更新后重放离线协作更新").catch((error) => {
+      dom.collabStatus.textContent = `重放离线协作更新失败：${error.message}`;
+    });
   }
 }
 
@@ -3838,16 +3937,18 @@ function initSupabaseClient() {
   dom.collabStatus.textContent = isReadonlyMode ? "当前是只读链接，可以查看计划和显示在线成员。" : tripId ? `已连接计划：${tripId}` : "已配置云端，可创建共享计划。";
 }
 
-async function pushRemoteState(label = "已同步云端") {
-  if (!supabaseClient || !tripId) return;
+async function pushRemoteState(label = "已同步云端", options = {}) {
+  if (!supabaseClient || !tripId) return false;
   if (!canEdit()) {
     dom.collabStatus.textContent = editAccessRequired ? "需要编辑口令，不能向云端写入计划。" : "当前是只读链接，不能向云端写入计划。";
-    return;
+    return false;
   }
   if (pendingConflict) {
     showConflictPanel(pendingConflict);
-    return;
+    return false;
   }
+  if (!options.skipPendingFlush) await flushPendingPlanUpdates("保存前重放离线协作更新");
+  const savingPendingIds = pendingPlanUpdateIds();
   const payload = {
     id: tripId,
     data: state,
@@ -3869,7 +3970,7 @@ async function pushRemoteState(label = "已同步云端") {
     data = result.data;
     if (!error && !data) {
       const remote = await fetchRemotePlan();
-      if (remote?.error) return;
+      if (remote?.error) return false;
       if (remote?.data?.days?.length) {
         const remotePlan = ensurePlanDates(clone(remote.data));
         if (samePlanContent(state, remotePlan)) {
@@ -3877,7 +3978,8 @@ async function pushRemoteState(label = "已同步云端") {
           lastSyncedState = clone(remotePlan);
           dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
           dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
-          return;
+          clearPendingPlanUpdatesById(savingPendingIds);
+          return true;
         }
         showConflictPanel({
           remote: remotePlan,
@@ -3887,7 +3989,7 @@ async function pushRemoteState(label = "已同步云端") {
           updatedBy: remote.updated_by || "",
           reason: "save",
         });
-        return;
+        return false;
       }
       const insertResult = await supabaseClient.from("trip_plans").upsert(payload, { onConflict: "id" }).select("data, updated_at, updated_by").maybeSingle();
       error = insertResult.error;
@@ -3900,14 +4002,19 @@ async function pushRemoteState(label = "已同步云端") {
   }
   if (error) {
     pendingLocalRemoteUpdatedAt = "";
-    dom.collabStatus.textContent = `云端同步失败：${error.message}`;
-    return;
+    const pendingCount = pendingPlanUpdates().length;
+    dom.collabStatus.textContent = pendingCount
+      ? `云端同步失败：${error.message}。已保留 ${pendingCount} 条本地协作更新，恢复连接后会重试。`
+      : `云端同步失败：${error.message}`;
+    return false;
   }
   lastRemoteUpdatedAt = data?.updated_at || payload.updated_at;
   lastSyncedState = clone(state);
+  clearPendingPlanUpdatesById(savingPendingIds);
   hideConflictPanel();
   dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
   dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
+  return true;
 }
 
 async function fetchRemotePlan() {
@@ -3935,6 +4042,7 @@ async function loadRemoteState() {
         ? `最近由 ${data.updated_by} 更新`
         : `已连接共享计划`;
     render();
+    await flushPendingPlanUpdates("载入共享计划后重放离线协作更新");
   } else if (!isReadonlyMode) {
     await pushRemoteState("已创建共享计划");
   } else {
@@ -4035,6 +4143,9 @@ function subscribeRemoteState() {
       if (status === "SUBSCRIBED") {
         dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "实时同步";
         bindCollabTextDoc();
+        flushPendingPlanUpdates("实时通道恢复后重放离线协作更新").catch((error) => {
+          dom.collabStatus.textContent = `重放离线协作更新失败：${error.message}`;
+        });
         trackPresence();
       }
     });
@@ -6882,7 +6993,14 @@ async function boot() {
   initSupabaseClient();
   render();
   renderMembers();
+  window.addEventListener("online", () => {
+    flushPendingPlanUpdates("网络恢复后重放离线协作更新").catch((error) => {
+      dom.collabStatus.textContent = `网络恢复后同步失败：${error.message}`;
+    });
+  });
   if (supabaseClient && tripId) {
+    const pendingCount = pendingPlanUpdates().length;
+    if (pendingCount) dom.collabStatus.textContent = `检测到 ${pendingCount} 条离线协作更新，连接共享计划后会自动同步。`;
     await connectSharedTrip(tripId);
   } else {
     saveState();
