@@ -1872,6 +1872,18 @@ function moveDayBlockList(blocks = [], blockId = "", direction = "down", patch =
   return normalizeDayBlocks(nextBlocks);
 }
 
+function reorderDayBlockList(blocks = [], blockId = "", targetIndex = 0, patch = {}) {
+  const normalized = normalizeDayBlocks(blocks);
+  const index = normalized.findIndex((block) => block.id === blockId);
+  if (index < 0) return normalized;
+  const boundedIndex = Math.max(0, Math.min(Number(targetIndex) || 0, normalized.length - 1));
+  if (index === boundedIndex) return normalized;
+  const nextBlocks = [...normalized];
+  const [moved] = nextBlocks.splice(index, 1);
+  nextBlocks.splice(boundedIndex, 0, normalizeDayBlock({ ...moved, ...patch, id: moved.id }) || moved);
+  return normalizeDayBlocks(nextBlocks);
+}
+
 function normalizeDayMetas(days = []) {
   const seen = new Set();
   return (days || [])
@@ -3124,6 +3136,7 @@ function renderDayBlocks(day = currentDay()) {
           const presenceHtml = renderDayBlockPresence(block);
           return `
             <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}">
+              <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <input class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" value="${escapeHtml(block.text)}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr} />
               <span class="day-block-meta">${escapeHtml(meta)}</span>
@@ -4151,6 +4164,28 @@ async function moveDayBlockInDoc(dayId, blockId, direction = "down", origin = "l
   collabPlanDoc.transact(() => {
     const latestBlocks = normalizeDayBlocks(blockArray.toArray());
     const latestNext = moveDayBlockList(latestBlocks, blockId, direction, {
+      updatedBy: getCollabName(),
+      updatedAt: movedAt,
+    });
+    if (sameSerialized(latestBlocks, latestNext)) return;
+    syncYArrayById(blockArray, latestNext, normalizeDayBlock);
+  }, origin);
+  return true;
+}
+
+async function reorderDayBlockInDoc(dayId, blockId, targetIndex = 0, origin = "local-day-block-drag-reorder") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const items = normalizeDayBlocks(blockArray.toArray());
+  const index = items.findIndex((block) => block.id === blockId);
+  if (index < 0) return false;
+  const boundedIndex = Math.max(0, Math.min(Number(targetIndex) || 0, items.length - 1));
+  if (index === boundedIndex) return true;
+  const movedAt = new Date().toISOString();
+  collabPlanDoc.transact(() => {
+    const latestBlocks = normalizeDayBlocks(blockArray.toArray());
+    const latestNext = reorderDayBlockList(latestBlocks, blockId, boundedIndex, {
       updatedBy: getCollabName(),
       updatedAt: movedAt,
     });
@@ -5404,6 +5439,7 @@ let dayBlockEditTimer = null;
 let blockReplyingCommentId = "";
 let blockCommentFilters = {};
 let activeBlockPresenceId = "";
+let draggingDayBlockId = "";
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
@@ -9045,6 +9081,91 @@ dom.dayBlockList?.addEventListener("focusout", (event) => {
     }
     schedulePresenceTrack(80);
   }, 0);
+});
+
+function clearDayBlockDragState() {
+  draggingDayBlockId = "";
+  dom.dayBlockList?.querySelectorAll(".is-dragging, .is-drag-over").forEach((item) => {
+    item.classList.remove("is-dragging", "is-drag-over");
+  });
+}
+
+dom.dayBlockList?.addEventListener("dragstart", (event) => {
+  const blockElement = event.target.closest?.("[data-day-block]");
+  const dragHandle = event.target.closest?.("[data-drag-day-block]");
+  if (!blockElement?.dataset.dayBlock || !dragHandle || isReadonlyMode || !canEdit()) {
+    event.preventDefault();
+    return;
+  }
+  draggingDayBlockId = blockElement.dataset.dayBlock;
+  activeBlockPresenceId = draggingDayBlockId;
+  blockElement.classList.add("is-dragging");
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", draggingDayBlockId);
+  schedulePresenceTrack(0);
+});
+
+dom.dayBlockList?.addEventListener("dragover", (event) => {
+  if (!draggingDayBlockId) return;
+  const blockElement = event.target.closest?.("[data-day-block]");
+  if (!blockElement?.dataset.dayBlock || blockElement.dataset.dayBlock === draggingDayBlockId) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  dom.dayBlockList.querySelectorAll(".is-drag-over").forEach((item) => item.classList.remove("is-drag-over"));
+  blockElement.classList.add("is-drag-over");
+});
+
+dom.dayBlockList?.addEventListener("dragleave", (event) => {
+  const blockElement = event.target.closest?.("[data-day-block]");
+  if (!blockElement || blockElement.contains(event.relatedTarget)) return;
+  blockElement.classList.remove("is-drag-over");
+});
+
+dom.dayBlockList?.addEventListener("drop", async (event) => {
+  if (!draggingDayBlockId) return;
+  const day = currentDay();
+  const targetElement = event.target.closest?.("[data-day-block]");
+  const targetBlockId = targetElement?.dataset.dayBlock || "";
+  if (!day || !targetBlockId || targetBlockId === draggingDayBlockId || !requireEdit("拖拽排序协作块")) {
+    clearDayBlockDragState();
+    return;
+  }
+  event.preventDefault();
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  const targetIndex = blocks.findIndex((block) => block.id === targetBlockId);
+  const draggedBlock = blocks.find((block) => block.id === draggingDayBlockId);
+  if (targetIndex < 0 || !draggedBlock) {
+    clearDayBlockDragState();
+    return;
+  }
+  const draggedId = draggingDayBlockId;
+  activeBlockPresenceId = draggedId;
+  if (await reorderDayBlockInDoc(day.id, draggedId, targetIndex, "local-day-block-drag-reorder")) {
+    day.blocks = reorderDayBlockList(day.blocks || [], draggedId, targetIndex, {
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    clearDayBlockDragState();
+    renderDayBlocks(day);
+    await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`);
+    await saveCollaborativePlanChange("已拖拽排序协作块");
+    return;
+  }
+  if (!mutate("拖拽排序协作块", () => {
+    currentDay().blocks = reorderDayBlockList(currentDay().blocks || [], draggedId, targetIndex);
+  }, { requireUnlocked: false, save: false, render: false })) {
+    clearDayBlockDragState();
+    return;
+  }
+  await syncDayBlocksToDoc(currentDay().id, "local-day-block-drag-reorder-fallback");
+  clearDayBlockDragState();
+  await saveState("已拖拽排序协作块");
+  render();
+});
+
+dom.dayBlockList?.addEventListener("dragend", () => {
+  clearDayBlockDragState();
+  schedulePresenceTrack(120);
 });
 
 dom.dayBlockList?.addEventListener("input", (event) => {
