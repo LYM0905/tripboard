@@ -6330,13 +6330,16 @@ dom.mustVote.addEventListener("click", async () => {
   const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
   const nextVoteValues = toggleVoteValues(currentValues, actorId);
   if (await syncCollabStructValuesToDoc(nextVoteValues, "local-vote-toggle")) return;
-  mutate("更新必去投票", () => {
+  if (!mutate("更新必去投票", () => {
     const fallbackStop = currentStop();
     const fallbackValues = toggleVoteValues(fallbackStop, actorId);
     fallbackStop.voters = fallbackValues.voters;
     fallbackStop.userVoted = fallbackValues.userVoted;
     fallbackStop.votes = fallbackValues.votes;
-  });
+  }, { save: false, render: false })) return;
+  await syncStopSnapshotToPlanDoc(currentStop().id, "local-vote-toggle-fallback");
+  await saveState("更新必去投票");
+  render();
 });
 
 dom.favoriteBtn.addEventListener("click", async () => {
@@ -6344,9 +6347,12 @@ dom.favoriteBtn.addEventListener("click", async () => {
   const stop = currentStop();
   const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
   if (await syncCollabStructValuesToDoc({ favorite: !Boolean(currentValues.favorite) }, "local-favorite-toggle")) return;
-  mutate("更新收藏", () => {
+  if (!mutate("更新收藏", () => {
     currentStop().favorite = !currentStop().favorite;
-  });
+  }, { save: false, render: false })) return;
+  await syncStopSnapshotToPlanDoc(currentStop().id, "local-favorite-toggle-fallback");
+  await saveState("更新收藏");
+  render();
 });
 
 dom.commentForm.addEventListener("submit", async (event) => {
@@ -6365,10 +6371,14 @@ dom.commentForm.addEventListener("submit", async (event) => {
     dom.saveState.textContent = `已评论「${stop.title}」`;
     return;
   }
-  mutate(`评论「${currentStop().title}」`, () => {
+  const fallbackTitle = currentStop().title;
+  if (!mutate(`评论「${fallbackTitle}」`, () => {
     currentStop().comments = [...(currentStop().comments || []), { id: uid(), author: getCollabName(), text, at: new Date().toISOString() }];
     dom.commentInput.value = "";
-  });
+  }, { save: false, render: false })) return;
+  await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-fallback-snapshot");
+  await saveState(`评论「${fallbackTitle}」`);
+  render();
 });
 
 dom.commentList.addEventListener("click", async (event) => {
@@ -6388,9 +6398,12 @@ dom.commentList.addEventListener("click", async (event) => {
     dom.saveState.textContent = `已删除「${stop.title}」的评论`;
     return;
   }
-  mutate(`删除评论「${stop.title}」`, () => {
+  if (!mutate(`删除评论「${stop.title}」`, () => {
     currentStop().comments = (currentStop().comments || []).filter((item) => item.id !== commentId);
-  });
+  }, { save: false, render: false })) return;
+  await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot");
+  await saveState(`删除评论「${stop.title}」`);
+  render();
 });
 
 dom.commentFocusBtn.addEventListener("click", () => {
