@@ -980,6 +980,10 @@ function mergeComments(localComments = [], remoteComments = []) {
   return result;
 }
 
+function mergeDayBlocks(localBlocks = [], remoteBlocks = []) {
+  return normalizeDayBlocks(mergeUniqueList(localBlocks || [], remoteBlocks || [], "block")).slice(0, 80);
+}
+
 function mergeScalarField(baseValue, localValue, remoteValue) {
   const localChanged = !sameSerialized(localValue, baseValue);
   const remoteChanged = !sameSerialized(remoteValue, baseValue);
@@ -1052,6 +1056,7 @@ function mergeDays(localDays = [], remoteDays = [], baseDays = []) {
       weather: mergeScalarField(baseDay.weather, localDay.weather, remoteDay?.weather),
       transport: mergeScalarField(baseDay.transport, localDay.transport, remoteDay?.transport),
       comments: mergeComments(localDay.comments || [], remoteDay?.comments || []),
+      blocks: mergeDayBlocks(localDay.blocks || [], remoteDay?.blocks || []),
       stops: mergeStops(localDay.stops || [], remoteDay?.stops || [], baseDay.stops || []),
       amapRoute: mergeScalarField(baseDay.amapRoute, localDay.amapRoute, remoteDay?.amapRoute) || null,
     });
@@ -1761,6 +1766,44 @@ function normalizeActivities(activities = []) {
     .slice(0, 20);
 }
 
+function normalizeDayBlock(block = {}) {
+  if (!block) return null;
+  const type = ["todo", "note", "decision"].includes(block.type) ? block.type : "todo";
+  const text = String(block.text || block.title || "").trim();
+  if (!text) return null;
+  return {
+    id: block.id || uid(),
+    type,
+    text,
+    done: Boolean(block.done),
+    createdBy: block.createdBy || "",
+    createdAt: block.createdAt || new Date().toISOString(),
+    updatedBy: block.updatedBy || "",
+    updatedAt: block.updatedAt || "",
+  };
+}
+
+function normalizeDayBlocks(blocks = []) {
+  const seen = new Set();
+  return (blocks || [])
+    .map((block) => normalizeDayBlock(block))
+    .filter((block) => {
+      if (!block?.id || seen.has(block.id)) return false;
+      seen.add(block.id);
+      return true;
+    })
+    .slice(0, 80);
+}
+
+function normalizeDayBlocksFromDays(days = []) {
+  const lists = {};
+  (days || []).forEach((day) => {
+    if (!day?.id) return;
+    lists[day.id] = normalizeDayBlocks(day.blocks || []);
+  });
+  return lists;
+}
+
 function normalizeDayMetas(days = []) {
   const seen = new Set();
   return (days || [])
@@ -1805,6 +1848,14 @@ function buildInitialPlanUpdate(Y, plan) {
   const stopTextStatesMap = seedDoc.getMap("stopTextStates");
   Object.entries(stopTextStateSnapshotFromDays(plan.days || [], Y)).forEach(([stopId, textState]) => {
     stopTextStatesMap.set(stopId, textState);
+  });
+  const dayBlocksMap = seedDoc.getMap("dayBlocks");
+  (plan.days || []).forEach((day) => {
+    if (!day?.id) return;
+    const blockArray = new Y.Array();
+    const blocks = normalizeDayBlocks(day.blocks || []);
+    if (blocks.length) blockArray.insert(0, blocks);
+    dayBlocksMap.set(day.id, blockArray);
   });
   const quoteArray = seedDoc.getArray("transportQuotes");
   const quotes = normalizeTransportQuotes(plan.transportQuotes || []);
@@ -1994,6 +2045,21 @@ function readDayTextStatesFromDoc() {
   return normalizeDayTextStateEntries(Array.from(collabDayTextStatesMap.entries()));
 }
 
+function readDayBlocksFromDoc() {
+  const fallback = normalizeDayBlocksFromDays(state.days || []);
+  if (!collabDayBlocksMap) return fallback;
+  const lists = {};
+  const dayIds = new Set([
+    ...(state.days || []).map((day) => day.id).filter(Boolean),
+    ...Array.from(collabDayBlocksMap.keys()),
+  ]);
+  dayIds.forEach((dayId) => {
+    const blockArray = collabDayBlocksMap.get(dayId);
+    lists[dayId] = blockArray && typeof blockArray.toArray === "function" ? normalizeDayBlocks(blockArray.toArray()) : fallback[dayId] || [];
+  });
+  return lists;
+}
+
 function readCandidatesFromDoc() {
   return normalizeCandidateStops(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || []);
 }
@@ -2165,6 +2231,18 @@ function applyDayTextStatesToState(textStates = {}) {
   return changed;
 }
 
+function applyDayBlocksToState(dayBlocks = {}) {
+  let changed = false;
+  state.days.forEach((day) => {
+    const nextBlocks = normalizeDayBlocks(dayBlocks[day.id] || []);
+    if (!sameSerialized(normalizeDayBlocks(day.blocks || []), nextBlocks)) {
+      day.blocks = nextBlocks;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
 function stopListOrderSnapshot(stopLists = {}) {
   const snapshot = {};
   Object.entries(stopLists || {}).forEach(([dayId, stops]) => {
@@ -2181,6 +2259,7 @@ function refreshRealtimePlanViews() {
   renderMap();
   renderDayEditor();
   renderDayComments(currentDay());
+  renderDayBlocks(currentDay());
   renderTransport();
   renderCandidates();
   renderActivities();
@@ -2189,11 +2268,12 @@ function refreshRealtimePlanViews() {
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步", options = {}) {
   const { refreshViews = true, scheduleSave = true, updateStatus = true } = options;
-  if (!collabPlanDoc || !collabDayMetasArray || !collabDayTextStatesMap || !collabStopListsMap || !collabStopTextStatesMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
+  if (!collabPlanDoc || !collabDayMetasArray || !collabDayTextStatesMap || !collabStopListsMap || !collabStopTextStatesMap || !collabDayBlocksMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
   const nextDayMetas = readDayMetasFromDoc();
   const nextDayTextStates = readDayTextStatesFromDoc();
   const nextStopLists = readStopListsFromDoc();
   const nextStopTextStates = readStopTextStatesFromDoc();
+  const nextDayBlocks = readDayBlocksFromDoc();
   const nextQuotes = readTransportQuotesFromDoc();
   const nextCandidates = readCandidatesFromDoc();
   const nextActivities = readActivitiesFromDoc();
@@ -2202,19 +2282,21 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const dayTextStatesChanged = !sameSerialized(dayTextStateSnapshotFromDays(state.days || [], yjsModule), nextDayTextStates);
   const stopListsChanged = !sameSerialized(normalizeStopListsFromDays(state.days || []), nextStopLists);
   const stopTextStatesChanged = !sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), nextStopTextStates);
+  const dayBlocksChanged = !sameSerialized(normalizeDayBlocksFromDays(state.days || []), nextDayBlocks);
   const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
   const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
   const activitiesChanged = !sameSerialized(normalizeActivities(state.activities || []), nextActivities);
   const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
   const nextPlanYjs = currentPlanYjsState();
   const planYjsChanged = Boolean(nextPlanYjs && state.planYjs !== nextPlanYjs);
-  const changed = dayMetasChanged || dayTextStatesChanged || stopListsChanged || stopTextStatesChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
+  const changed = dayMetasChanged || dayTextStatesChanged || stopListsChanged || stopTextStatesChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
   if (!changed) return;
-  const visibleChanged = dayMetasChanged || dayTextStatesChanged || stopListsChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
+  const visibleChanged = dayMetasChanged || dayTextStatesChanged || stopListsChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   if (dayTextStatesChanged) applyDayTextStatesToState(nextDayTextStates);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
   if (stopTextStatesChanged) applyStopTextStatesToState(nextStopTextStates);
+  if (dayBlocksChanged) applyDayBlocksToState(nextDayBlocks);
   state.transportQuotes = nextQuotes;
   state.candidates = nextCandidates;
   state.activities = nextActivities;
@@ -2295,6 +2377,7 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
     dayTextStates: collabDayTextStatesMap,
     stopLists: collabStopListsMap,
     stopTextStates: collabStopTextStatesMap,
+    dayBlocks: collabDayBlocksMap,
     transportQuotes: collabTransportQuotesArray,
     candidates: collabCandidatesArray,
     activities: collabActivitiesArray,
@@ -2317,6 +2400,7 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
     collabDayTextStatesMap = previousRefs.dayTextStates;
     collabStopListsMap = previousRefs.stopLists;
     collabStopTextStatesMap = previousRefs.stopTextStates;
+    collabDayBlocksMap = previousRefs.dayBlocks;
     collabTransportQuotesArray = previousRefs.transportQuotes;
     collabCandidatesArray = previousRefs.candidates;
     collabActivitiesArray = previousRefs.activities;
@@ -2335,6 +2419,7 @@ function attachCollabPlanRefs() {
   collabDayTextStatesMap = collabPlanDoc.getMap("dayTextStates");
   collabStopListsMap = collabPlanDoc.getMap("stopLists");
   collabStopTextStatesMap = collabPlanDoc.getMap("stopTextStates");
+  collabDayBlocksMap = collabPlanDoc.getMap("dayBlocks");
   collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
   collabCandidatesArray = collabPlanDoc.getArray("candidates");
   collabActivitiesArray = collabPlanDoc.getArray("activities");
@@ -2360,6 +2445,13 @@ function seedMissingPlanDocContent(Y) {
       if (!collabDayTextStatesMap.has(dayId)) collabDayTextStatesMap.set(dayId, textState);
     });
     (state.days || []).forEach((day) => {
+      if (!day?.id || collabDayBlocksMap.has(day.id)) return;
+      const blockArray = new Y.Array();
+      const blocks = normalizeDayBlocks(day.blocks || []);
+      if (blocks.length) blockArray.insert(0, blocks);
+      collabDayBlocksMap.set(day.id, blockArray);
+    });
+    (state.days || []).forEach((day) => {
       if (!day?.id) return;
       const stopArray = collabStopListsMap.get(day.id);
       if (!stopArray || typeof stopArray.toArray !== "function") return;
@@ -2382,6 +2474,7 @@ function planDocMatchesCurrentState() {
     sameSerialized(dayTextStateSnapshotFromDays(state.days || [], yjsModule), readDayTextStatesFromDoc()) &&
     sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(readStopListsFromDoc())) &&
     sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), readStopTextStatesFromDoc()) &&
+    sameSerialized(normalizeDayBlocksFromDays(state.days || []), readDayBlocksFromDoc()) &&
     sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), readTransportQuotesFromDoc()) &&
     sameSerialized(normalizeCandidateStops(state.candidates || []), readCandidatesFromDoc()) &&
     sameSerialized(normalizeActivities(state.activities || []), readActivitiesFromDoc()) &&
@@ -2895,6 +2988,47 @@ function renderDayComments(day = currentDay()) {
   refreshIcons();
 }
 
+function dayBlockTypeLabel(type = "todo") {
+  if (type === "note") return "备注";
+  if (type === "decision") return "决定";
+  return "待办";
+}
+
+function dayBlockIcon(type = "todo") {
+  if (type === "note") return "notebook-text";
+  if (type === "decision") return "badge-check";
+  return "check-square";
+}
+
+function renderDayBlocks(day = currentDay()) {
+  if (!day || !dom.dayBlockList) return;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  const disabledAttr = isReadonlyMode ? " disabled" : "";
+  if (dom.dayBlocksStatus) {
+    const openCount = blocks.filter((block) => block.type === "todo" && !block.done).length;
+    dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办` : "可添加块";
+  }
+  dom.dayBlockList.innerHTML = blocks.length
+    ? blocks
+        .map((block) => {
+          const doneClass = block.done ? " is-done" : "";
+          const meta = block.updatedBy || block.createdBy
+            ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+            : dayBlockTypeLabel(block.type);
+          return `
+            <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}">
+              <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
+              <input class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" value="${escapeHtml(block.text)}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr} />
+              <span class="day-block-meta">${escapeHtml(meta)}</span>
+              <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
+            </article>
+          `;
+        })
+        .join("")
+    : `<div class="empty-state">还没有协作块，可以添加待办、备注或决定。</div>`;
+  refreshIcons();
+}
+
 function applyStopRealtimeFields(stop) {
   dom.placeType.textContent = stop.type || "Place";
   dom.placeTitle.textContent = stop.title || "未命名地点";
@@ -3133,6 +3267,7 @@ function destroyCollabPlanDoc() {
   collabDayTextStatesMap = null;
   collabStopListsMap = null;
   collabStopTextStatesMap = null;
+  collabDayBlocksMap = null;
   collabTransportQuotesArray = null;
   collabCandidatesArray = null;
   collabActivitiesArray = null;
@@ -3458,6 +3593,12 @@ async function addDayMetaToDoc(day, index = -1, origin = "local-day-create") {
   collabPlanDoc.transact(() => {
     collabDayMetasArray.insert(Math.max(0, Math.min(index, collabDayMetasArray.length)), [normalized]);
     if (textState) collabDayTextStatesMap?.set(day.id, textState);
+    if (collabDayBlocksMap && !collabDayBlocksMap.has(day.id)) {
+      const blockArray = new yjsModule.Array();
+      const blocks = normalizeDayBlocks(day.blocks || []);
+      if (blocks.length) blockArray.insert(0, blocks);
+      collabDayBlocksMap.set(day.id, blockArray);
+    }
   }, origin);
   return true;
 }
@@ -3661,8 +3802,99 @@ async function deleteDayFromDoc(dayId, origin = "local-day-delete") {
   collabPlanDoc.transact(() => {
     if (dayMetaIndex >= 0) collabDayMetasArray.delete(dayMetaIndex, 1);
     collabDayTextStatesMap?.delete(dayId);
+    collabDayBlocksMap?.delete(dayId);
     collabStopListsMap.delete(dayId);
     existingStopIds.forEach((stopId) => collabStopTextStatesMap?.delete(stopId));
+  }, origin);
+  return true;
+}
+
+async function ensureDayBlockArray(dayId) {
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabDayBlocksMap || !dayId) return null;
+  let blockArray = collabDayBlocksMap.get(dayId);
+  if (!blockArray) {
+    collabPlanDoc.transact(() => {
+      blockArray = new yjsModule.Array();
+      collabDayBlocksMap.set(dayId, blockArray);
+    }, "ensure-day-blocks");
+  }
+  return blockArray;
+}
+
+async function addDayBlockToDoc(dayId, block, origin = "local-day-block-add") {
+  if (!canEdit() || isReadonlyMode || !dayId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const normalized = normalizeDayBlock({
+    ...block,
+    createdBy: block?.createdBy || getCollabName(),
+    createdAt: block?.createdAt || new Date().toISOString(),
+  });
+  if (!normalized) return true;
+  if (blockArray.toArray().some((item) => item?.id === normalized.id)) return true;
+  collabPlanDoc.transact(() => {
+    blockArray.insert(blockArray.length, [normalized]);
+  }, origin);
+  return normalized;
+}
+
+async function updateDayBlockInDoc(dayId, blockId, patch = {}, origin = "local-day-block-update") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const items = blockArray.toArray();
+  const index = items.findIndex((block) => block?.id === blockId);
+  if (index < 0) return false;
+  const next = normalizeDayBlock({
+    ...items[index],
+    ...patch,
+    id: blockId,
+    updatedBy: getCollabName(),
+    updatedAt: new Date().toISOString(),
+  });
+  if (!next) return false;
+  if (sameSerialized(normalizeDayBlock(items[index]), next)) return true;
+  collabPlanDoc.transact(() => {
+    const latestItems = blockArray.toArray();
+    const latestIndex = latestItems.findIndex((block) => block?.id === blockId);
+    if (latestIndex < 0) return;
+    const latest = normalizeDayBlock({
+      ...latestItems[latestIndex],
+      ...patch,
+      id: blockId,
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!latest || sameSerialized(normalizeDayBlock(latestItems[latestIndex]), latest)) return;
+    blockArray.delete(latestIndex, 1);
+    blockArray.insert(latestIndex, [latest]);
+  }, origin);
+  return true;
+}
+
+async function deleteDayBlockFromDoc(dayId, blockId, origin = "local-day-block-delete") {
+  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const index = blockArray.toArray().findIndex((block) => block?.id === blockId);
+  if (index < 0) return true;
+  collabPlanDoc.transact(() => {
+    blockArray.delete(index, 1);
+  }, origin);
+  return true;
+}
+
+async function syncDayBlocksToDoc(dayId, origin = "local-day-blocks") {
+  if (!canEdit() || isReadonlyMode || !dayId) return false;
+  const blockArray = await ensureDayBlockArray(dayId);
+  if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const day = state.days.find((item) => item.id === dayId);
+  if (!day) return false;
+  const nextBlocks = normalizeDayBlocks(day.blocks || []);
+  if (sameSerialized(normalizeDayBlocks(blockArray.toArray()), nextBlocks)) return true;
+  collabPlanDoc.transact(() => {
+    syncYArrayById(blockArray, nextBlocks, normalizeDayBlock);
   }, origin);
   return true;
 }
@@ -3693,6 +3925,29 @@ async function syncStopListsToDoc(origin = "local-stop-lists") {
     });
     Object.entries(nextTextStates).forEach(([stopId, textState]) => {
       if (collabStopTextStatesMap.get(stopId) !== textState) collabStopTextStatesMap.set(stopId, textState);
+    });
+  }, origin);
+  return true;
+}
+
+async function syncAllDayBlocksToDoc(origin = "local-day-blocks-all") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabDayBlocksMap || isApplyingCollabPlanRemote) return false;
+  const nextLists = normalizeDayBlocksFromDays(state.days || []);
+  if (sameSerialized(readDayBlocksFromDoc(), nextLists)) return true;
+  collabPlanDoc.transact(() => {
+    Array.from(collabDayBlocksMap.keys()).forEach((dayId) => {
+      if (!Object.prototype.hasOwnProperty.call(nextLists, dayId)) collabDayBlocksMap.delete(dayId);
+    });
+    Object.entries(nextLists).forEach(([dayId, blocks]) => {
+      let blockArray = collabDayBlocksMap.get(dayId);
+      if (!blockArray) {
+        blockArray = new yjsModule.Array();
+        collabDayBlocksMap.set(dayId, blockArray);
+      }
+      if (sameSerialized(normalizeDayBlocks(blockArray.toArray()), blocks)) return;
+      syncYArrayById(blockArray, blocks, normalizeDayBlock);
     });
   }, origin);
   return true;
@@ -3742,6 +3997,7 @@ async function replacePlanCollabDoc(origin = "local-plan-replace") {
   await bindCollabPlanDoc();
   await syncDayMetasToDoc(`${origin}-days`);
   await syncStopListsToDoc(`${origin}-stops`);
+  await syncAllDayBlocksToDoc(`${origin}-blocks`);
   await syncTransportQuotesToDoc(`${origin}-quotes`);
   await syncCandidatesToDoc(`${origin}-candidates`);
   await syncActivitiesToDoc(`${origin}-activities`);
@@ -4489,6 +4745,7 @@ async function applyRemotePlan(remotePlan, meta = {}) {
   const remoteActiveStop = activeStopId ? remotePlan.days?.flatMap((day) => day.stops || []).find((stop) => stop.id === activeStopId) : null;
   const currentTextState = activeStopId === collabTextStopId ? currentStop()?.textYjs || currentStop()?.noteYjs || "" : "";
   const currentDayMetas = normalizeDayMetas(state.days || []);
+  const currentDayBlocks = normalizeDayBlocksFromDays(state.days || []);
   const currentTransportQuotes = normalizeTransportQuotes(state.transportQuotes || []);
   const currentCandidates = normalizeCandidateStops(state.candidates || []);
   const currentActivities = normalizeActivities(state.activities || []);
@@ -4507,6 +4764,7 @@ async function applyRemotePlan(remotePlan, meta = {}) {
   destroyCollabDayTextDoc();
   if (
     !sameSerialized(currentDayMetas, normalizeDayMetas(state.days || [])) ||
+    !sameSerialized(currentDayBlocks, normalizeDayBlocksFromDays(state.days || [])) ||
     !sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || [])) ||
     !sameSerialized(currentCandidates, normalizeCandidateStops(state.candidates || [])) ||
     !sameSerialized(currentActivities, normalizeActivities(state.activities || [])) ||
@@ -4641,6 +4899,11 @@ const dom = {
   dayCommentAnchorHint: document.querySelector("#dayCommentAnchorHint"),
   dayCommentForm: document.querySelector("#dayCommentForm"),
   dayCommentInput: document.querySelector("#dayCommentInput"),
+  dayBlocksStatus: document.querySelector("#dayBlocksStatus"),
+  dayBlockForm: document.querySelector("#dayBlockForm"),
+  dayBlockType: document.querySelector("#dayBlockType"),
+  dayBlockInput: document.querySelector("#dayBlockInput"),
+  dayBlockList: document.querySelector("#dayBlockList"),
   addDayBtn: document.querySelector("#addDayBtn"),
   moveDayUpBtn: document.querySelector("#moveDayUpBtn"),
   moveDayDownBtn: document.querySelector("#moveDayDownBtn"),
@@ -4852,6 +5115,7 @@ let collabDayMetasArray = null;
 let collabDayTextStatesMap = null;
 let collabStopListsMap = null;
 let collabStopTextStatesMap = null;
+let collabDayBlocksMap = null;
 let collabTransportQuotesArray = null;
 let collabCandidatesArray = null;
 let collabActivitiesArray = null;
@@ -4861,6 +5125,7 @@ let collabPlanSaveTimer = null;
 let isApplyingCollabPlanRemote = false;
 let collabPlanBindRequestId = 0;
 let dayFieldSyncTimer = null;
+let dayBlockEditTimer = null;
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
@@ -5264,6 +5529,12 @@ function applyReadonlyUi() {
     control.disabled = isReadonlyMode;
   });
   dom.dayCommentForm?.querySelectorAll("input, button").forEach((control) => {
+    control.disabled = isReadonlyMode;
+  });
+  dom.dayBlockForm?.querySelectorAll("input, select, button").forEach((control) => {
+    control.disabled = isReadonlyMode;
+  });
+  dom.dayBlockList?.querySelectorAll("input, button").forEach((control) => {
     control.disabled = isReadonlyMode;
   });
   document.querySelectorAll(".guide-controls input, .guide-controls button, .choice-card").forEach((control) => {
@@ -7005,6 +7276,7 @@ function render() {
   applyReadonlyUi();
   renderDayEditor();
   renderDayComments(currentDay());
+  renderDayBlocks(currentDay());
   renderEditorLockState();
   bindCollabPlanDoc();
   bindCollabTextDoc();
@@ -7040,6 +7312,13 @@ function makeBlankDay(index = state.days.length) {
     route: "待填写路线",
     weather: "天气待确认",
     transport: "交通待规划",
+    blocks: [
+      normalizeDayBlock({
+        type: "todo",
+        text: "补充当天关键预订、集合点或分工",
+        createdBy: getCollabName(),
+      }),
+    ].filter(Boolean),
     stops: [
       makeStop({
         time: "10:00",
@@ -8207,6 +8486,108 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-delete-fallback-snapshot");
   await saveState(`删除当天批注「${day.title}」`);
   render();
+});
+
+dom.dayBlockForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const day = currentDay();
+  const text = dom.dayBlockInput.value.trim();
+  if (!day || !text || !requireEdit("添加协作块")) return;
+  const block = normalizeDayBlock({
+    id: uid(),
+    type: dom.dayBlockType.value || "todo",
+    text,
+    createdBy: getCollabName(),
+    createdAt: new Date().toISOString(),
+  });
+  if (!block) return;
+  const added = await addDayBlockToDoc(day.id, block, "local-day-block-add");
+  if (added) {
+    day.blocks = normalizeDayBlocks([...(day.blocks || []), added === true ? block : added]);
+    dom.dayBlockInput.value = "";
+    renderDayBlocks(day);
+    await logActivity(`添加协作块「${day.title}」`);
+    await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
+    dom.saveState.textContent = "已添加协作块";
+    return;
+  }
+  if (!mutate(`添加协作块「${day.title}」`, () => {
+    currentDay().blocks = normalizeDayBlocks([...(currentDay().blocks || []), block]);
+    dom.dayBlockInput.value = "";
+  }, { requireUnlocked: false, save: false, render: false })) return;
+  await syncDayBlocksToDoc(currentDay().id, "local-day-block-add-fallback");
+  await saveState(`添加协作块「${day.title}」`);
+  render();
+});
+
+dom.dayBlockList?.addEventListener("click", async (event) => {
+  const day = currentDay();
+  if (!day) return;
+  const toggleButton = event.target.closest("[data-toggle-day-block]");
+  if (toggleButton) {
+    event.preventDefault();
+    const blockId = toggleButton.dataset.toggleDayBlock;
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || !requireEdit("更新协作块")) return;
+    const nextDone = !block.done;
+    if (await updateDayBlockInDoc(day.id, blockId, { done: nextDone }, "local-day-block-toggle")) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      renderDayBlocks(day);
+      await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`);
+      await saveCollaborativePlanChange("已更新协作块");
+      return;
+    }
+    if (!mutate("更新协作块", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone } : item)));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback");
+    await saveState("已更新协作块");
+    render();
+    return;
+  }
+  const deleteButton = event.target.closest("[data-delete-day-block]");
+  if (deleteButton) {
+    event.preventDefault();
+    const blockId = deleteButton.dataset.deleteDayBlock;
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || !requireEdit("删除协作块")) return;
+    if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-delete")) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
+      renderDayBlocks(day);
+      await logActivity(`删除协作块「${block.text.slice(0, 18)}」`);
+      await saveCollaborativePlanChange("已删除协作块");
+      return;
+    }
+    if (!mutate("删除协作块", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).filter((item) => item.id !== blockId));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-delete-fallback");
+    await saveState("已删除协作块");
+    render();
+  }
+});
+
+dom.dayBlockList?.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-edit-day-block]");
+  if (!input || !canEdit() || isReadonlyMode) return;
+  clearTimeout(dayBlockEditTimer);
+  dayBlockEditTimer = setTimeout(async () => {
+    const day = currentDay();
+    const blockId = input.dataset.editDayBlock;
+    const text = input.value.trim();
+    if (!day || !blockId || !text) return;
+    if (await updateDayBlockInDoc(day.id, blockId, { text }, "local-day-block-text")) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      renderDayBlocks(day);
+      await saveCollaborativePlanChange("协作块已更新");
+      return;
+    }
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block) return;
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text } : item)));
+    await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback");
+    await saveState("协作块已更新");
+  }, 650);
 });
 
 document.addEventListener("click", (event) => {

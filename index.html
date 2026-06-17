@@ -157,6 +157,23 @@
           </form>
         </section>
 
+        <section class="day-blocks-panel">
+          <div class="section-title">
+            <span>协作块</span>
+            <strong id="dayBlocksStatus">按天保存</strong>
+          </div>
+          <form class="day-block-form" id="dayBlockForm">
+            <select id="dayBlockType" aria-label="块类型">
+              <option value="todo">待办</option>
+              <option value="note">备注</option>
+              <option value="decision">决定</option>
+            </select>
+            <input id="dayBlockInput" placeholder="例如：预约莫高窟门票 / 确认包车司机" />
+            <button class="primary-btn" type="submit"><i data-lucide="plus"></i></button>
+          </form>
+          <div class="day-block-list" id="dayBlockList"></div>
+        </section>
+
         <section class="guide-panel">
           <div class="guide-head">
             <div>
