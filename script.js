@@ -2411,31 +2411,101 @@ function readStructFromDoc() {
   return values;
 }
 
+function normalizeCommentEntry(comment = {}) {
+  if (!comment) return null;
+  const anchor = normalizeCommentAnchor(comment.anchor);
+  const parentId = String(comment.parentId || "").trim();
+  const normalized = {
+    id: comment.id || uid(),
+    author: comment.author || "我",
+    text: String(comment.text || "").trim(),
+    at: comment.at || new Date().toISOString(),
+  };
+  if (parentId && parentId !== normalized.id) normalized.parentId = parentId;
+  if (!normalized.parentId && anchor) normalized.anchor = anchor;
+  if (!normalized.parentId && comment.resolved === false) {
+    delete normalized.resolved;
+    delete normalized.resolvedAt;
+    delete normalized.resolvedBy;
+  } else if (!normalized.parentId && comment.resolved) {
+    normalized.resolved = true;
+    normalized.resolvedAt = comment.resolvedAt || new Date().toISOString();
+    normalized.resolvedBy = comment.resolvedBy || "";
+  }
+  return normalized.text ? normalized : null;
+}
+
 function normalizeComments(comments = []) {
   const seen = new Set();
-  return (comments || [])
-    .filter(Boolean)
-    .map((comment) => {
-      const anchor = normalizeCommentAnchor(comment.anchor);
-      return {
-        id: comment.id || uid(),
-        author: comment.author || "我",
-        text: String(comment.text || "").trim(),
-        at: comment.at || new Date().toISOString(),
-        ...(anchor ? { anchor } : {}),
-      };
-    })
+  const normalized = (comments || [])
+    .map((comment) => normalizeCommentEntry(comment))
     .filter((comment) => {
-      if (!comment.text) return false;
+      if (!comment?.text) return false;
       const key = comment.id || `${comment.author}:${comment.text}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
+  const byId = new Map(normalized.map((comment) => [comment.id, comment]));
+  return normalized.map((comment) => {
+    if (!comment.parentId) return comment;
+    const parent = byId.get(comment.parentId);
+    if (!parent || parent.id === comment.id) {
+      const { parentId, ...rootComment } = comment;
+      return rootComment;
+    }
+    const rootParentId = parent.parentId && byId.has(parent.parentId) ? parent.parentId : parent.id;
+    const { anchor, resolved, resolvedAt, resolvedBy, ...reply } = comment;
+    return { ...reply, parentId: rootParentId };
+  });
 }
 
 function readCommentsFromDoc() {
   return normalizeComments(collabCommentsArray ? collabCommentsArray.toArray() : []);
+}
+
+function commentsWithoutThread(comments = [], commentId = "") {
+  const normalized = normalizeComments(comments);
+  const target = normalized.find((comment) => comment.id === commentId);
+  if (!target) return normalized;
+  const removeIds = new Set([commentId]);
+  if (!target.parentId) {
+    normalized.forEach((comment) => {
+      if (comment.parentId === commentId) removeIds.add(comment.id);
+    });
+  }
+  return normalizeComments(normalized.filter((comment) => !removeIds.has(comment.id)));
+}
+
+function commentsWithUpdatedComment(comments = [], commentId = "", patch = {}) {
+  return normalizeComments(
+    normalizeComments(comments).map((comment) => {
+      if (comment.id !== commentId) return comment;
+      const next = { ...comment, ...patch };
+      if (patch.resolved === false) {
+        delete next.resolved;
+        delete next.resolvedAt;
+        delete next.resolvedBy;
+      }
+      return next;
+    }),
+  );
+}
+
+function commentRootsAndReplies(comments = []) {
+  const normalized = normalizeComments(comments);
+  const roots = [];
+  const repliesByParent = new Map();
+  normalized.forEach((comment) => {
+    if (comment.parentId) {
+      const replies = repliesByParent.get(comment.parentId) || [];
+      replies.push(comment);
+      repliesByParent.set(comment.parentId, replies);
+    } else {
+      roots.push(comment);
+    }
+  });
+  return { roots, repliesByParent, normalized };
 }
 
 function commentAnchorLabel(anchor = null) {
@@ -2457,6 +2527,12 @@ function commentAnchorHint(anchor = null) {
 
 function renderCommentAnchorHint() {
   if (!dom.commentAnchorHint) return;
+  const replying = replyingCommentId ? normalizeComments(currentStop()?.comments || []).find((comment) => comment.id === replyingCommentId) : null;
+  if (replying) {
+    dom.commentAnchorHint.hidden = false;
+    dom.commentAnchorHint.textContent = `正在回复 ${replying.author || "协作者"}：${replying.text.slice(0, 28)}`;
+    return;
+  }
   const anchor = currentCommentAnchor();
   dom.commentAnchorHint.hidden = !anchor;
   dom.commentAnchorHint.textContent = anchor ? commentAnchorHint(anchor) : "";
@@ -2477,6 +2553,32 @@ function focusCommentAnchor(anchor = null) {
   captureCommentAnchor(meta);
   schedulePresenceTrack(0);
   return true;
+}
+
+function formatCommentTime(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function commentAuthorInitial(name) {
+  return escapeHtml(memberInitial(name || "我"));
+}
+
+function renderCommentReply(reply, editable) {
+  return `
+    <div class="comment-reply" data-comment="${escapeHtml(reply.id || "")}">
+      <span class="avatar a3">${commentAuthorInitial(reply.author)}</span>
+      <div class="comment-bubble">
+        <div class="comment-meta">
+          <strong>${escapeHtml(reply.author || "我")}</strong>
+          ${reply.at ? `<time>${escapeHtml(formatCommentTime(reply.at))}</time>` : ""}
+        </div>
+        <p>${escapeHtml(reply.text)}</p>
+      </div>
+      ${editable ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-comment="${escapeHtml(reply.id || "")}" aria-label="删除回复">${icon("trash-2")}</button>` : ""}
+    </div>
+  `;
 }
 
 function dayTextValuesFromDoc(doc = collabDayTextDoc, fields = collabDayTextFields) {
@@ -2509,19 +2611,39 @@ function dayValuesFromTextState(textState = "", fallbackDay = {}) {
 
 function renderStopComments(stop) {
   const editable = canEdit();
-  dom.commentList.innerHTML = (stop.comments || [])
+  const { roots, repliesByParent } = commentRootsAndReplies(stop.comments || []);
+  if (replyingCommentId && !roots.some((comment) => comment.id === replyingCommentId)) {
+    replyingCommentId = "";
+    if (dom.commentInput) dom.commentInput.placeholder = "添加同行意见或提醒";
+  }
+  dom.commentList.innerHTML = roots
     .map((comment) => {
       const anchor = normalizeCommentAnchor(comment.anchor);
       const anchorLabel = commentAnchorLabel(anchor);
       const anchorExcerpt = anchor?.excerpt ? `<em>${escapeHtml(anchor.excerpt)}</em>` : "";
+      const replies = repliesByParent.get(comment.id) || [];
+      const resolvedClass = comment.resolved ? " is-resolved" : "";
+      const resolvedText = comment.resolved ? `<span class="comment-state">${icon("check-circle-2")}已解决</span>` : "";
       return `
-        <div class="comment-item" data-comment="${comment.id || ""}">
-          <span class="avatar a2">${escapeHtml(comment.author || "我")}</span>
+        <div class="comment-thread${resolvedClass}" data-comment="${escapeHtml(comment.id || "")}">
+        <div class="comment-item">
+          <span class="avatar a2">${commentAuthorInitial(comment.author)}</span>
           <div class="comment-bubble">
-            ${anchor ? `<button type="button" class="comment-anchor" data-comment-anchor="${comment.id}" title="回到评论位置">${escapeHtml(anchorLabel)}${anchorExcerpt}</button>` : ""}
+            ${anchor ? `<button type="button" class="comment-anchor" data-comment-anchor="${escapeHtml(comment.id || "")}" title="回到评论位置">${escapeHtml(anchorLabel)}${anchorExcerpt}</button>` : ""}
+            <div class="comment-meta">
+              <strong>${escapeHtml(comment.author || "我")}</strong>
+              ${comment.at ? `<time>${escapeHtml(formatCommentTime(comment.at))}</time>` : ""}
+              ${resolvedText}
+            </div>
             <p>${escapeHtml(comment.text)}</p>
+            <div class="comment-actions">
+              ${editable ? `<button type="button" class="comment-action" data-reply-comment="${escapeHtml(comment.id || "")}">${icon("reply")}回复${replies.length ? ` ${replies.length}` : ""}</button>` : replies.length ? `<span>${replies.length} 条回复</span>` : ""}
+              ${editable ? `<button type="button" class="comment-action" data-toggle-comment-resolved="${escapeHtml(comment.id || "")}">${comment.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}标记解决`}</button>` : ""}
+            </div>
+            ${replies.length ? `<div class="comment-replies">${replies.map((reply) => renderCommentReply(reply, editable)).join("")}</div>` : ""}
           </div>
-          ${editable ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-comment="${comment.id}" aria-label="删除评论">${icon("trash-2")}</button>` : ""}
+          ${editable ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-comment="${escapeHtml(comment.id || "")}" aria-label="删除评论">${icon("trash-2")}</button>` : ""}
+        </div>
         </div>
       `;
     })
@@ -3963,14 +4085,61 @@ async function addCollaborativeComment(text, anchor = null) {
   return comment;
 }
 
+async function addCollaborativeCommentReply(parentId, text) {
+  if (!canEdit() || isReadonlyMode || !parentId) return false;
+  await bindCollabTextDoc();
+  if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
+  const comments = normalizeComments(collabCommentsArray.toArray());
+  const parent = comments.find((comment) => comment.id === parentId && !comment.parentId);
+  if (!parent) return false;
+  const reply = normalizeCommentEntry({
+    id: uid(),
+    parentId,
+    author: getCollabName(),
+    text: String(text || "").trim(),
+    at: new Date().toISOString(),
+  });
+  if (!reply) return true;
+  collabTextDoc.transact(() => {
+    collabCommentsArray.push([reply]);
+  }, "local-comment-reply");
+  return reply;
+}
+
+async function updateCollaborativeComment(commentId, patch = {}) {
+  if (!canEdit() || isReadonlyMode || !commentId) return false;
+  await bindCollabTextDoc();
+  if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
+  const comments = collabCommentsArray.toArray();
+  const index = comments.findIndex((comment) => comment?.id === commentId && !comment?.parentId);
+  if (index < 0) return false;
+  const next = normalizeCommentEntry({ ...comments[index], ...patch });
+  if (!next) return false;
+  collabTextDoc.transact(() => {
+    collabCommentsArray.delete(index, 1);
+    collabCommentsArray.insert(index, [next]);
+  }, "local-comment-update");
+  return next;
+}
+
 async function deleteCollaborativeComment(commentId) {
   if (!canEdit() || isReadonlyMode || !commentId) return false;
   await bindCollabTextDoc();
   if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
-  const index = collabCommentsArray.toArray().findIndex((comment) => comment?.id === commentId);
-  if (index < 0) return true;
+  const comments = normalizeComments(collabCommentsArray.toArray());
+  const target = comments.find((comment) => comment.id === commentId);
+  if (!target) return true;
+  const deleteIds = new Set([commentId]);
+  if (!target.parentId) {
+    comments.forEach((comment) => {
+      if (comment.parentId === commentId) deleteIds.add(comment.id);
+    });
+  }
   collabTextDoc.transact(() => {
-    collabCommentsArray.delete(index, 1);
+    for (let index = collabCommentsArray.length - 1; index >= 0; index -= 1) {
+      const comment = collabCommentsArray.get(index);
+      if (deleteIds.has(comment?.id)) collabCommentsArray.delete(index, 1);
+    }
   }, "local-comment-delete");
   return true;
 }
@@ -4349,6 +4518,7 @@ let collabPlanBindRequestId = 0;
 let dayFieldSyncTimer = null;
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
+let replyingCommentId = "";
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
@@ -7386,6 +7556,35 @@ dom.commentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = dom.commentInput.value.trim();
   if (!text) return;
+  if (replyingCommentId) {
+    const parentId = replyingCommentId;
+    const reply = await addCollaborativeCommentReply(parentId, text);
+    if (reply) {
+      const stop = currentStop();
+      stop.comments = normalizeComments([...(stop.comments || []), reply]);
+      replyingCommentId = "";
+      dom.commentInput.value = "";
+      dom.commentInput.placeholder = "添加同行意见或提醒";
+      renderStopComments(stop);
+      dom.commentCount.textContent = stop.comments.length;
+      await logActivity(`回复评论「${stop.title}」`);
+      await syncStopSnapshotToPlanDoc(stop.id, "local-comment-reply-snapshot");
+      await saveCollaborativeTextChange(`回复评论「${stop.title}」`);
+      dom.saveState.textContent = `已回复「${stop.title}」的评论`;
+      return;
+    }
+    const fallbackTitle = currentStop().title;
+    if (!mutate(`回复评论「${fallbackTitle}」`, () => {
+      currentStop().comments = normalizeComments([...(currentStop().comments || []), { id: uid(), parentId, author: getCollabName(), text, at: new Date().toISOString() }]);
+      replyingCommentId = "";
+      dom.commentInput.value = "";
+      dom.commentInput.placeholder = "添加同行意见或提醒";
+    }, { save: false, render: false })) return;
+    await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-reply-fallback-snapshot");
+    await saveState(`回复评论「${fallbackTitle}」`);
+    render();
+    return;
+  }
   const anchor = currentCommentAnchor();
   const collaborativeComment = await addCollaborativeComment(text, anchor);
   if (collaborativeComment) {
@@ -7420,6 +7619,45 @@ dom.commentList.addEventListener("click", async (event) => {
     }
     return;
   }
+  const replyButton = event.target.closest("[data-reply-comment]");
+  if (replyButton) {
+    event.preventDefault();
+    const comment = normalizeComments(currentStop()?.comments || []).find((item) => item.id === replyButton.dataset.replyComment && !item.parentId);
+    if (!comment || !requireEdit("回复评论")) return;
+    replyingCommentId = comment.id;
+    dom.commentInput.placeholder = `回复 ${comment.author || "协作者"}...`;
+    dom.commentInput.focus();
+    renderCommentAnchorHint();
+    return;
+  }
+  const resolveButton = event.target.closest("[data-toggle-comment-resolved]");
+  if (resolveButton) {
+    event.preventDefault();
+    const commentId = resolveButton.dataset.toggleCommentResolved;
+    const stop = currentStop();
+    const comment = normalizeComments(stop.comments || []).find((item) => item.id === commentId && !item.parentId);
+    if (!comment || !requireEdit(comment.resolved ? "重新打开评论" : "标记评论已解决")) return;
+    const nextPatch = comment.resolved
+      ? { resolved: false }
+      : { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: getCollabName() };
+    const updated = await updateCollaborativeComment(commentId, nextPatch);
+    if (updated) {
+      stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, nextPatch);
+      renderStopComments(stop);
+      await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
+      await syncStopSnapshotToPlanDoc(stop.id, "local-comment-resolve-snapshot");
+      await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
+      dom.saveState.textContent = comment.resolved ? "已重新打开评论" : "已标记评论解决";
+      return;
+    }
+    if (!mutate(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, () => {
+      currentStop().comments = commentsWithUpdatedComment(currentStop().comments || [], commentId, nextPatch);
+    }, { save: false, render: false })) return;
+    await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-resolve-fallback-snapshot");
+    await saveState(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
+    render();
+    return;
+  }
   const deleteButton = event.target.closest("[data-delete-comment]");
   if (!deleteButton) return;
   event.preventDefault();
@@ -7428,7 +7666,11 @@ dom.commentList.addEventListener("click", async (event) => {
   const comment = (stop.comments || []).find((item) => item.id === commentId);
   if (!comment || !requireEdit("删除评论")) return;
   if (await deleteCollaborativeComment(commentId)) {
-    stop.comments = normalizeComments((stop.comments || []).filter((item) => item.id !== commentId));
+    stop.comments = commentsWithoutThread(stop.comments || [], commentId);
+    if (replyingCommentId === commentId || !stop.comments.some((item) => item.id === replyingCommentId)) {
+      replyingCommentId = "";
+      dom.commentInput.placeholder = "添加同行意见或提醒";
+    }
     renderStopComments(stop);
     dom.commentCount.textContent = stop.comments.length;
     await logActivity(`删除评论「${stop.title}」`);
@@ -7438,7 +7680,11 @@ dom.commentList.addEventListener("click", async (event) => {
     return;
   }
   if (!mutate(`删除评论「${stop.title}」`, () => {
-    currentStop().comments = (currentStop().comments || []).filter((item) => item.id !== commentId);
+    currentStop().comments = commentsWithoutThread(currentStop().comments || [], commentId);
+    if (replyingCommentId === commentId || !currentStop().comments.some((item) => item.id === replyingCommentId)) {
+      replyingCommentId = "";
+      dom.commentInput.placeholder = "添加同行意见或提醒";
+    }
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot");
   await saveState(`删除评论「${stop.title}」`);

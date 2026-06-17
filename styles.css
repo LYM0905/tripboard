@@ -1979,7 +1979,17 @@ button:disabled {
   overflow: auto;
 }
 
-.comment-item {
+.comment-thread {
+  display: grid;
+  gap: 7px;
+}
+
+.comment-thread.is-resolved {
+  opacity: 0.78;
+}
+
+.comment-item,
+.comment-reply {
   display: grid;
   grid-template-columns: 30px minmax(0, 1fr) auto;
   gap: 9px;
@@ -1989,7 +1999,20 @@ button:disabled {
   line-height: 1.45;
 }
 
-.comment-item p {
+.comment-reply {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  margin-left: 39px;
+  font-size: 12px;
+}
+
+.comment-reply .avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+
+.comment-item p,
+.comment-reply p {
   margin: 0;
   padding: 8px 10px;
   background: var(--panel-2);
@@ -2005,6 +2028,37 @@ button:disabled {
 
 .comment-bubble p {
   min-width: 0;
+}
+
+.comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.comment-meta strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.comment-meta time {
+  font-size: 11px;
+}
+
+.comment-state {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--green);
+}
+
+.comment-state i {
+  width: 13px;
+  height: 13px;
 }
 
 .comment-anchor {
@@ -2046,7 +2100,45 @@ button:disabled {
   line-height: 1.4;
 }
 
-.comment-item .icon-btn {
+.comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.comment-action {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 7px;
+  color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.comment-action i {
+  width: 13px;
+  height: 13px;
+}
+
+.comment-action:hover {
+  color: var(--green);
+  border-color: rgba(49, 111, 91, 0.28);
+}
+
+.comment-replies {
+  display: grid;
+  gap: 7px;
+}
+
+.comment-item .icon-btn,
+.comment-reply .icon-btn {
   width: 30px;
   min-height: 30px;
 }
