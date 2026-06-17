@@ -1339,6 +1339,8 @@ function normalizeTransportQuotes(quotes = []) {
       stops: Number(quote.stops || 0),
       createdBy: quote.createdBy || "",
       createdAt: quote.createdAt || new Date().toISOString(),
+      updatedBy: quote.updatedBy || "",
+      updatedAt: quote.updatedAt || "",
     }))
     .filter((quote) => {
       if (!quote.code || !quote.price) return false;
@@ -1366,6 +1368,8 @@ function normalizeCandidateStops(candidates = []) {
       image: stop.image || state.cover || images.city,
       createdBy: stop.createdBy || "",
       createdAt: stop.createdAt || new Date().toISOString(),
+      updatedBy: stop.updatedBy || "",
+      updatedAt: stop.updatedAt || "",
     }))
     .filter((stop) => {
       if (!stop.title) return false;
@@ -2199,12 +2203,72 @@ async function deleteYArrayItemById(getYArray, itemId, origin = "local-array-del
   return true;
 }
 
+async function updateYArrayItemById(getYArray, itemId, updater, normalizeItem = (item) => item, origin = "local-array-update") {
+  if (!canEdit() || isReadonlyMode || !itemId || typeof updater !== "function") return false;
+  await bindCollabPlanDoc();
+  const yArray = typeof getYArray === "function" ? getYArray() : getYArray;
+  if (!collabPlanDoc || !yArray || isApplyingCollabPlanRemote) return false;
+  const currentItems = yArray.toArray();
+  const index = currentItems.findIndex((item) => item?.id === itemId);
+  if (index < 0) return false;
+  const current = currentItems[index];
+  const next = normalizeItem(updater(clone(current)));
+  if (!next?.id) return false;
+  if (sameSerialized(normalizeItem(current), next)) return true;
+  collabPlanDoc.transact(() => {
+    const latestItems = yArray.toArray();
+    const latestIndex = latestItems.findIndex((item) => item?.id === itemId);
+    if (latestIndex < 0) return;
+    const latest = normalizeItem(updater(clone(latestItems[latestIndex])));
+    if (!latest?.id || sameSerialized(normalizeItem(latestItems[latestIndex]), latest)) return;
+    yArray.delete(latestIndex, 1);
+    yArray.insert(latestIndex, [latest]);
+  }, origin);
+  return true;
+}
+
 async function deleteTransportQuoteFromDoc(quoteId) {
   return deleteYArrayItemById(() => collabTransportQuotesArray, quoteId, "local-transport-quote-delete");
 }
 
 async function deleteCandidateFromDoc(candidateId) {
   return deleteYArrayItemById(() => collabCandidatesArray, candidateId, "local-candidate-delete");
+}
+
+async function updateTransportQuoteInDoc(quoteId, patch = {}) {
+  return updateYArrayItemById(
+    () => collabTransportQuotesArray,
+    quoteId,
+    (quote) => ({
+      ...quote,
+      ...patch,
+      id: quote.id,
+      createdBy: quote.createdBy || getCollabName(),
+      createdAt: quote.createdAt || new Date().toISOString(),
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    }),
+    (quote) => normalizeTransportQuotes([quote])[0],
+    "local-transport-quote-update",
+  );
+}
+
+async function updateCandidateInDoc(candidateId, patch = {}) {
+  return updateYArrayItemById(
+    () => collabCandidatesArray,
+    candidateId,
+    (candidate) => ({
+      ...candidate,
+      ...patch,
+      id: candidate.id,
+      createdBy: candidate.createdBy || getCollabName(),
+      createdAt: candidate.createdAt || new Date().toISOString(),
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    }),
+    (candidate) => normalizeCandidateStops([candidate])[0],
+    "local-candidate-update",
+  );
 }
 
 async function addCollaborativeActivity(text) {
@@ -3073,6 +3137,7 @@ const dom = {
   quickAddress: document.querySelector("#quickAddress"),
   openAmapBtn: document.querySelector("#openAmapBtn"),
   addCandidateBtn: document.querySelector("#addCandidateBtn"),
+  cancelCandidateEditBtn: document.querySelector("#cancelCandidateEditBtn"),
   quickAmapLink: document.querySelector("#quickAmapLink"),
   optimizeRouteBtn: document.querySelector("#optimizeRouteBtn"),
   optimizeHint: document.querySelector("#optimizeHint"),
@@ -3114,6 +3179,8 @@ const dom = {
   manualQuoteDepart: document.querySelector("#manualQuoteDepart"),
   manualQuoteArrive: document.querySelector("#manualQuoteArrive"),
   manualQuotePrice: document.querySelector("#manualQuotePrice"),
+  manualQuoteSubmitBtn: document.querySelector("#manualQuoteSubmitBtn"),
+  cancelQuoteEditBtn: document.querySelector("#cancelQuoteEditBtn"),
   amapLookupBtn: document.querySelector("#amapLookupBtn"),
   fieldAmapLink: document.querySelector("#fieldAmapLink"),
   exportBtn: document.querySelector("#exportBtn"),
@@ -3177,6 +3244,8 @@ let transportFilterApplied = false;
 let transportProviderItems = [];
 let transportProviderSource = "";
 let multiOriginComparisons = [];
+let editingTransportQuoteId = "";
+let editingCandidateId = "";
 let ctripConfig = safeJsonParse(localStorage.getItem(CTRIP_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
 let externalImportConfig = safeJsonParse(localStorage.getItem(EXTERNAL_IMPORT_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
 let lastParsedImport = null;
@@ -4344,6 +4413,87 @@ function transportOptionIdentity(item) {
   return `${item.type || ""}:${item.code || ""}:${item.from || ""}:${item.to || ""}:${item.depart || ""}:${item.arrive || ""}`;
 }
 
+function setManualQuoteEditing(quote = null) {
+  editingTransportQuoteId = quote?.id || "";
+  if (quote) {
+    dom.manualQuoteType.value = quote.type || "flight";
+    dom.manualQuoteCode.value = quote.code || "";
+    dom.manualQuoteDepart.value = quote.depart && quote.depart !== "--:--" ? quote.depart : "";
+    dom.manualQuoteArrive.value = quote.arrive && quote.arrive !== "--:--" ? quote.arrive : "";
+    dom.manualQuotePrice.value = quote.price || "";
+    dom.transportFrom.value = quote.from || dom.transportFrom.value;
+    dom.transportTo.value = quote.to || dom.transportTo.value;
+  }
+  if (dom.manualQuoteSubmitBtn) {
+    dom.manualQuoteSubmitBtn.innerHTML = `${icon(quote ? "save" : "plus")}<span>${quote ? "更新报价" : "保存报价"}</span>`;
+  }
+  if (dom.cancelQuoteEditBtn) dom.cancelQuoteEditBtn.hidden = !quote;
+  refreshIcons();
+}
+
+function clearManualQuoteForm() {
+  editingTransportQuoteId = "";
+  dom.manualQuoteCode.value = "";
+  dom.manualQuoteDepart.value = "";
+  dom.manualQuoteArrive.value = "";
+  dom.manualQuotePrice.value = "";
+  setManualQuoteEditing(null);
+}
+
+function quoteDraftFromManualForm(existing = {}) {
+  const day = currentDay();
+  const route = defaultTransportRoute(day);
+  return {
+    ...existing,
+    id: existing.id || uid(),
+    dayId: existing.dayId || day.id,
+    date: existing.date || day.date || "",
+    type: dom.manualQuoteType.value,
+    code: dom.manualQuoteCode.value.trim(),
+    from: dom.transportFrom.value.trim() || route.from,
+    to: dom.transportTo.value.trim() || route.to,
+    depart: dom.manualQuoteDepart.value || "--:--",
+    arrive: dom.manualQuoteArrive.value || "--:--",
+    duration: durationFromTimes(dom.manualQuoteDepart.value, dom.manualQuoteArrive.value),
+    price: numberValue(dom.manualQuotePrice.value),
+    source: existing.source || "手动保存",
+  };
+}
+
+function setCandidateEditing(candidate = null) {
+  editingCandidateId = candidate?.id || "";
+  if (candidate) {
+    dom.quickPlaceName.value = candidate.title || "";
+    dom.quickAmapKeyword.value = candidate.amapKeyword || `${state.destination || ""} ${candidate.title || ""}`.trim();
+    dom.quickTime.value = candidate.time || "";
+    dom.quickBudget.value = candidate.budget || "";
+    dom.quickAddress.value = candidate.address || "";
+    quickAmapPlace = candidate.lng || candidate.lat ? {
+      keyword: candidate.amapKeyword || "",
+      title: candidate.title || "",
+      address: candidate.address || "",
+      lng: candidate.lng || "",
+      lat: candidate.lat || "",
+    } : null;
+  }
+  if (dom.addCandidateBtn) {
+    dom.addCandidateBtn.innerHTML = `${icon(candidate ? "save" : "bookmark-plus")}<span>${candidate ? "更新备选" : "加入备选池"}</span>`;
+  }
+  if (dom.cancelCandidateEditBtn) dom.cancelCandidateEditBtn.hidden = !candidate;
+  refreshIcons();
+}
+
+function clearQuickPlaceForm({ keepCandidateEditing = false } = {}) {
+  if (!keepCandidateEditing) editingCandidateId = "";
+  dom.quickPlaceName.value = "";
+  dom.quickAmapKeyword.value = "";
+  dom.quickTime.value = "";
+  dom.quickBudget.value = "";
+  dom.quickAddress.value = "";
+  quickAmapPlace = null;
+  if (!keepCandidateEditing) setCandidateEditing(null);
+}
+
 async function saveProviderTransportQuotes(items = [], day = currentDay(), source = "") {
   const incoming = items
     .map((item) => transportQuoteFromProviderItem(item, day, source))
@@ -4661,18 +4811,24 @@ function renderTransport() {
         : "当前显示后端真实接口返回的报价。"
       : "当前为本地生成的可筛选示例报价。"
   }`;
+  if (editingTransportQuoteId && !manualQuoteIds.has(editingTransportQuoteId)) {
+    setManualQuoteEditing(null);
+  }
   dom.transportList.innerHTML =
     visible
       .map(
         (item) => `
-          <article class="transport-item" data-quote="${item.id || ""}">
+          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}" data-quote="${escapeHtml(item.id || "")}">
             <span class="transport-icon">${icon(item.type === "flight" ? "plane" : "train-front")}</span>
             <div>
-              <strong>${item.code} · ${item.from} → ${item.to}</strong>
-              <span>${item.depart} - ${item.arrive} · 约${Math.floor(item.duration / 60)}小时${item.duration % 60}分 · ${item.source}</span>
+              <strong>${escapeHtml(item.code)} · ${escapeHtml(item.from)} → ${escapeHtml(item.to)}</strong>
+              <span>${escapeHtml(item.depart)} - ${escapeHtml(item.arrive)} · 约${Math.floor(item.duration / 60)}小时${item.duration % 60}分 · ${escapeHtml(item.source)}</span>
             </div>
             <em>${money(item.price)}</em>
-            ${manualQuoteIds.has(item.id) ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-quote="${item.id}" aria-label="删除报价">${icon("trash-2")}</button>` : ""}
+            ${manualQuoteIds.has(item.id) ? `<span class="transport-actions">
+              <button type="button" class="icon-btn subtle" data-edit-quote="${escapeHtml(item.id)}" aria-label="编辑报价">${icon("pencil")}</button>
+              <button type="button" class="icon-btn subtle danger-icon" data-delete-quote="${escapeHtml(item.id)}" aria-label="删除报价">${icon("trash-2")}</button>
+            </span>` : ""}
           </article>
         `,
       )
@@ -5136,15 +5292,19 @@ function renderDetail() {
 
 function renderCandidates() {
   const editable = canEdit();
+  if (editingCandidateId && !(state.candidates || []).some((item) => item.id === editingCandidateId)) {
+    setCandidateEditing(null);
+  }
   dom.candidateGrid.innerHTML = state.candidates
     .map(
       (stop, index) => `
-        <article class="candidate" data-candidate="${index}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
+        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}" data-candidate="${index}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
           ${icon(stop.type === "Market" ? "shopping-bag" : stop.type === "Cafe" ? "coffee" : "landmark")}
-          ${stop.title}
+          <span class="candidate-title">${escapeHtml(stop.title)}</span>
           <span class="candidate-price">${money(stop.budget)}</span>
           ${editable ? `<span class="candidate-actions">
-            <button type="button" class="icon-btn subtle danger-icon" data-delete-candidate="${stop.id}" aria-label="移除备选">${icon("trash-2")}</button>
+            <button type="button" class="icon-btn subtle" data-edit-candidate="${escapeHtml(stop.id)}" aria-label="编辑备选">${icon("pencil")}</button>
+            <button type="button" class="icon-btn subtle danger-icon" data-delete-candidate="${escapeHtml(stop.id)}" aria-label="移除备选">${icon("trash-2")}</button>
           </span>` : ""}
         </article>
       `,
@@ -5503,12 +5663,7 @@ dom.quickAddForm.addEventListener("submit", async (event) => {
     day.stops.push(createdStop);
     activeStop = day.stops.length - 1;
     clearCurrentAmapRoute();
-    dom.quickPlaceName.value = "";
-    dom.quickAmapKeyword.value = "";
-    dom.quickTime.value = "";
-    dom.quickBudget.value = "";
-    dom.quickAddress.value = "";
-    quickAmapPlace = null;
+    clearQuickPlaceForm();
   }, { requireUnlocked: false });
   if (createdStop) {
     await addStopToDoc(createdDayId, createdStop, "local-quick-stop-create");
@@ -5522,27 +5677,52 @@ dom.addCandidateBtn.addEventListener("click", async () => {
     tags: ["备选", "自定义"],
   });
   if (!draft || !requireEdit("加入备选池")) return;
+  if (editingCandidateId) {
+    const existing = state.candidates.find((item) => item.id === editingCandidateId);
+    if (!existing) {
+      setCandidateEditing(null);
+      dom.saveState.textContent = "这条备选已被其他成员移除，请重新选择。";
+      return;
+    }
+    const patch = {
+      title: draft.title,
+      type: draft.type,
+      address: draft.address,
+      note: draft.note,
+      tags: draft.tags,
+      budget: draft.budget,
+      time: draft.time,
+      amapKeyword: draft.amapKeyword,
+      lng: draft.lng,
+      lat: draft.lat,
+      image: draft.image,
+    };
+    if (await updateCandidateInDoc(editingCandidateId, patch)) {
+      persistCurrentPlanFromDoc("备选池协作内容已实时同步");
+      logActivity(`更新备选池「${draft.title}」`);
+      clearQuickPlaceForm();
+      dom.saveState.textContent = `已更新备选「${draft.title}」`;
+      refreshRealtimePlanViews();
+      return;
+    }
+    mutate(`更新备选「${draft.title}」`, () => {
+      state.candidates = normalizeCandidateStops((state.candidates || []).map((item) => (item.id === editingCandidateId ? { ...item, ...patch } : item)));
+      clearQuickPlaceForm();
+    }, { requireUnlocked: false });
+    await syncCandidatesToDoc("local-candidate-update-fallback");
+    return;
+  }
   if (await addCollaborativeCandidate(draft)) {
     persistCurrentPlanFromDoc("备选池协作内容已实时同步");
     logActivity(`加入备选池「${draft.title}」`);
-    dom.quickPlaceName.value = "";
-    dom.quickAmapKeyword.value = "";
-    dom.quickTime.value = "";
-    dom.quickBudget.value = "";
-    dom.quickAddress.value = "";
-    quickAmapPlace = null;
+    clearQuickPlaceForm();
     dom.saveState.textContent = `已加入备选池「${draft.title}」`;
     refreshRealtimePlanViews();
     return;
   }
   mutate(`加入备选池「${draft.title}」`, () => {
     state.candidates = [draft, ...(state.candidates || [])].slice(0, 80);
-    dom.quickPlaceName.value = "";
-    dom.quickAmapKeyword.value = "";
-    dom.quickTime.value = "";
-    dom.quickBudget.value = "";
-    dom.quickAddress.value = "";
-    quickAmapPlace = null;
+    clearQuickPlaceForm();
   }, { requireUnlocked: false });
   await syncCandidatesToDoc("local-candidate-fallback");
 });
@@ -6022,7 +6202,25 @@ dom.commentFocusBtn.addEventListener("click", () => {
   dom.commentInput.focus();
 });
 
+dom.cancelCandidateEditBtn?.addEventListener("click", () => {
+  clearQuickPlaceForm();
+  renderCandidates();
+  dom.saveState.textContent = "已取消编辑备选地点";
+});
+
 dom.candidateGrid.addEventListener("click", async (event) => {
+  const editButton = event.target.closest("[data-edit-candidate]");
+  if (editButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const candidate = state.candidates.find((item) => item.id === editButton.dataset.editCandidate);
+    if (!candidate || !requireEdit("编辑备选地点")) return;
+    setCandidateEditing(candidate);
+    renderCandidates();
+    dom.quickPlaceName.focus();
+    dom.saveState.textContent = `正在编辑备选「${candidate.title}」`;
+    return;
+  }
   const deleteButton = event.target.closest("[data-delete-candidate]");
   if (deleteButton) {
     event.preventDefault();
@@ -6031,11 +6229,13 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     const candidate = state.candidates.find((item) => item.id === candidateId);
     if (!candidate || !requireEdit("移除备选地点")) return;
     if (await deleteCandidateFromDoc(candidateId)) {
+      if (editingCandidateId === candidateId) clearQuickPlaceForm();
       dom.saveState.textContent = `已移除备选「${candidate.title}」`;
       return;
     }
     mutate(`移除备选「${candidate.title}」`, () => {
       state.candidates = (state.candidates || []).filter((item) => item.id !== candidateId);
+      if (editingCandidateId === candidateId) clearQuickPlaceForm();
     }, { requireUnlocked: false });
     await syncCandidatesToDoc("local-candidate-delete-fallback");
     return;
@@ -6059,7 +6259,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
 dom.candidateGrid.addEventListener("keydown", (event) => {
   if (!["Enter", " "].includes(event.key)) return;
   const card = event.target.closest("[data-candidate]");
-  if (!card || event.target.closest("[data-delete-candidate]")) return;
+  if (!card || event.target.closest("[data-delete-candidate], [data-edit-candidate]")) return;
   event.preventDefault();
   card.click();
 });
@@ -6112,6 +6312,18 @@ dom.transportFilterForm.addEventListener("submit", (event) => {
 });
 
 dom.transportList.addEventListener("click", async (event) => {
+  const editButton = event.target.closest("[data-edit-quote]");
+  if (editButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const quote = (state.transportQuotes || []).find((item) => item.id === editButton.dataset.editQuote);
+    if (!quote || !requireEdit("编辑交通报价")) return;
+    setManualQuoteEditing(quote);
+    renderTransport();
+    dom.manualQuoteCode.focus();
+    dom.saveState.textContent = `正在编辑报价「${quote.code}」`;
+    return;
+  }
   const deleteButton = event.target.closest("[data-delete-quote]");
   if (!deleteButton) return;
   event.preventDefault();
@@ -6121,45 +6333,59 @@ dom.transportList.addEventListener("click", async (event) => {
   if (!quote || !requireEdit("删除交通报价")) return;
   if (await deleteTransportQuoteFromDoc(quoteId)) {
     transportFilterApplied = true;
+    if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
     dom.saveState.textContent = `已删除报价「${quote.code}」`;
     return;
   }
   mutate(`删除报价「${quote.code}」`, () => {
     state.transportQuotes = (state.transportQuotes || []).filter((item) => item.id !== quoteId);
     transportFilterApplied = true;
+    if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
   }, { requireUnlocked: false });
   await syncTransportQuotesToDoc("local-transport-quote-delete-fallback");
 });
 
+dom.cancelQuoteEditBtn?.addEventListener("click", () => {
+  clearManualQuoteForm();
+  renderTransport();
+  dom.saveState.textContent = "已取消编辑交通报价";
+});
+
 dom.manualQuoteForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const code = dom.manualQuoteCode.value.trim();
-  const price = numberValue(dom.manualQuotePrice.value);
+  const existingQuote = editingTransportQuoteId ? (state.transportQuotes || []).find((item) => item.id === editingTransportQuoteId) : null;
+  const quote = quoteDraftFromManualForm(existingQuote || {});
+  const code = quote.code;
+  const price = numberValue(quote.price);
   if (!code || !price) return;
-  const day = currentDay();
-  const route = defaultTransportRoute(day);
-  const quote = {
-    id: uid(),
-    dayId: day.id,
-    date: day.date || "",
-    type: dom.manualQuoteType.value,
-    code,
-    from: dom.transportFrom.value.trim() || route.from,
-    to: dom.transportTo.value.trim() || route.to,
-    depart: dom.manualQuoteDepart.value || "--:--",
-    arrive: dom.manualQuoteArrive.value || "--:--",
-    duration: durationFromTimes(dom.manualQuoteDepart.value, dom.manualQuoteArrive.value),
-    price,
-    source: "手动保存",
-  };
+  if (editingTransportQuoteId) {
+    if (!existingQuote) {
+      clearManualQuoteForm();
+      dom.saveState.textContent = "这条报价已被其他成员删除，请重新保存。";
+      return;
+    }
+    if (await updateTransportQuoteInDoc(editingTransportQuoteId, quote)) {
+      persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
+      logActivity(`更新交通报价「${code}」`);
+      transportFilterApplied = true;
+      clearManualQuoteForm();
+      dom.saveState.textContent = `已更新交通报价「${code}」`;
+      refreshRealtimePlanViews();
+      return;
+    }
+    mutate(`更新交通报价「${code}」`, () => {
+      state.transportQuotes = normalizeTransportQuotes((state.transportQuotes || []).map((item) => (item.id === editingTransportQuoteId ? { ...item, ...quote } : item)));
+      transportFilterApplied = true;
+      clearManualQuoteForm();
+    }, { requireUnlocked: false });
+    await syncTransportQuotesToDoc("local-transport-quote-update-fallback");
+    return;
+  }
   if (await addCollaborativeTransportQuote(quote)) {
     persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
     logActivity(`保存交通报价「${code}」`);
     transportFilterApplied = true;
-    dom.manualQuoteCode.value = "";
-    dom.manualQuoteDepart.value = "";
-    dom.manualQuoteArrive.value = "";
-    dom.manualQuotePrice.value = "";
+    clearManualQuoteForm();
     dom.saveState.textContent = `已保存交通报价「${code}」`;
     refreshRealtimePlanViews();
     return;
@@ -6170,10 +6396,7 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
       ...manualTransportQuotes(),
     ].slice(0, 40);
     transportFilterApplied = true;
-    dom.manualQuoteCode.value = "";
-    dom.manualQuoteDepart.value = "";
-    dom.manualQuoteArrive.value = "";
-    dom.manualQuotePrice.value = "";
+    clearManualQuoteForm();
   }, { requireUnlocked: false });
   await syncTransportQuotesToDoc("local-transport-quote-fallback");
 });

@@ -292,7 +292,10 @@
               <label>出发<input id="manualQuoteDepart" type="time" /></label>
               <label>到达<input id="manualQuoteArrive" type="time" /></label>
               <label>价格<input id="manualQuotePrice" type="number" min="0" step="1" placeholder="860" required /></label>
-              <button class="primary-btn" type="submit"><i data-lucide="plus"></i>保存报价</button>
+              <div class="manual-quote-actions">
+                <button class="primary-btn" id="manualQuoteSubmitBtn" type="submit"><i data-lucide="plus"></i><span>保存报价</span></button>
+                <button class="text-btn" id="cancelQuoteEditBtn" type="button" hidden><i data-lucide="x"></i>取消</button>
+              </div>
             </form>
           </div>
           <div class="transport-list" id="transportList"></div>
@@ -326,7 +329,8 @@
             </label>
             <div class="quick-actions full">
               <button type="button" class="text-btn" id="openAmapBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
-              <button type="button" class="text-btn" id="addCandidateBtn"><i data-lucide="bookmark-plus"></i>加入备选池</button>
+              <button type="button" class="text-btn" id="addCandidateBtn"><i data-lucide="bookmark-plus"></i><span>加入备选池</span></button>
+              <button type="button" class="text-btn" id="cancelCandidateEditBtn" hidden><i data-lucide="x"></i>取消编辑</button>
               <button type="submit" class="primary-btn"><i data-lucide="map-pin-plus"></i>加入当天</button>
               <button type="button" class="text-btn" id="optimizeRouteBtn"><i data-lucide="wand-sparkles"></i>AI 优化路径</button>
             </div>
