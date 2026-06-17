@@ -2224,6 +2224,48 @@ async function syncPlanMetaToDoc(origin = "local-plan-meta") {
   return true;
 }
 
+function syncYArrayById(yArray, nextItems = [], normalizeItem = (item) => item) {
+  if (!yArray || typeof yArray.toArray !== "function") return false;
+  const normalizedNext = (nextItems || []).map((item) => normalizeItem(item)).filter((item) => item?.id);
+  const nextIds = new Set(normalizedNext.map((item) => item.id));
+  let changed = false;
+
+  for (let index = yArray.length - 1; index >= 0; index -= 1) {
+    const item = yArray.get(index);
+    if (!item?.id || !nextIds.has(item.id)) {
+      yArray.delete(index, 1);
+      changed = true;
+    }
+  }
+
+  normalizedNext.forEach((desired, targetIndex) => {
+    const currentItems = yArray.toArray();
+    const currentAt = currentItems[targetIndex];
+    if (currentAt?.id === desired.id) {
+      if (!sameSerialized(normalizeItem(currentAt), desired)) {
+        yArray.delete(targetIndex, 1);
+        yArray.insert(targetIndex, [desired]);
+        changed = true;
+      }
+      return;
+    }
+    const existingIndex = currentItems.findIndex((item) => item?.id === desired.id);
+    if (existingIndex >= 0) {
+      yArray.delete(existingIndex, 1);
+      yArray.insert(Math.min(targetIndex, yArray.length), [desired]);
+    } else {
+      yArray.insert(Math.min(targetIndex, yArray.length), [desired]);
+    }
+    changed = true;
+  });
+
+  while (yArray.length > normalizedNext.length) {
+    yArray.delete(yArray.length - 1, 1);
+    changed = true;
+  }
+  return changed;
+}
+
 async function syncDayMetasToDoc(origin = "local-day-metas") {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
@@ -2231,8 +2273,7 @@ async function syncDayMetasToDoc(origin = "local-day-metas") {
   const nextDayMetas = normalizeDayMetas(state.days || []);
   if (sameSerialized(readDayMetasFromDoc(), nextDayMetas)) return true;
   collabPlanDoc.transact(() => {
-    if (collabDayMetasArray.length) collabDayMetasArray.delete(0, collabDayMetasArray.length);
-    if (nextDayMetas.length) collabDayMetasArray.insert(0, nextDayMetas);
+    syncYArrayById(collabDayMetasArray, nextDayMetas, (day) => normalizeDayMetas([day])[0]);
   }, origin);
   return true;
 }
@@ -2295,8 +2336,7 @@ async function syncStopListToDoc(dayId, origin = "local-stop-list") {
     }
     const nextStops = normalizeStopListsFromDays([day])[dayId] || [];
     if (sameSerialized(stopArray.toArray(), nextStops)) return;
-    if (stopArray.length) stopArray.delete(0, stopArray.length);
-    if (nextStops.length) stopArray.insert(0, nextStops);
+    syncYArrayById(stopArray, nextStops, normalizeCollaborativeStop);
   }, origin);
   return true;
 }
@@ -2359,8 +2399,7 @@ async function syncStopListsToDoc(origin = "local-stop-lists") {
         collabStopListsMap.set(dayId, stopArray);
       }
       if (sameSerialized(stopArray.toArray(), stops)) return;
-      if (stopArray.length) stopArray.delete(0, stopArray.length);
-      if (stops.length) stopArray.insert(0, stops);
+      syncYArrayById(stopArray, stops, normalizeCollaborativeStop);
     });
     const nextTextStates = stopTextStateSnapshotFromDays(state.days || [], yjsModule);
     Array.from(collabStopTextStatesMap?.keys?.() || []).forEach((stopId) => {
