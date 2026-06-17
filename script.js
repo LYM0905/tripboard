@@ -5553,9 +5553,9 @@ dom.amapRouteBtn.addEventListener("click", async () => {
       updatedAt: new Date().toISOString(),
     };
     logActivity("高德规划当天路线");
-    saveState("已用高德规划路线");
     await syncDayMetasToDoc("local-amap-route-day");
     await syncStopListToDoc(day.id, "local-amap-route-stops");
+    await saveState("已用高德规划路线");
     render();
     dom.optimizeHint.textContent = `高德已规划 ${day.amapRoute.legs.length} 段路线：${formatDistanceText(day.amapRoute.distance)} · ${formatDurationText(day.amapRoute.duration)}。`;
   } catch (error) {
@@ -5843,8 +5843,8 @@ async function optimizeCurrentDayRoute() {
     day.amapRoute = null;
     activeStop = 0;
     logActivity(serviceConfig.aiEndpoint ? "AI 优化当天路径" : "本地优化当天路径");
-    saveState(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
     await syncStopListToDoc(day.id, serviceConfig.aiEndpoint ? "local-ai-route-reorder" : "local-fallback-route-reorder");
+    await saveState(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
     broadcastStopsReordered(day.id, day.stops);
     dom.optimizeHint.textContent = serviceConfig.aiEndpoint
       ? `${routeResult?.fallback ? "AI 代理未配置，已兜底优化" : "AI 已优化"} ${day.stops.length} 个地点：${routeResult?.note || "已应用返回顺序"}`
