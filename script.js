@@ -1161,6 +1161,22 @@ function textSelectionPayload(fieldMeta) {
   };
 }
 
+function elementSelectionPayload(element, meta = {}) {
+  if (!element || document.activeElement !== element) return null;
+  const value = String(element.value || "");
+  const fallbackPosition = value.length;
+  const start = typeof element.selectionStart === "number" ? element.selectionStart : fallbackPosition;
+  const end = typeof element.selectionEnd === "number" ? element.selectionEnd : start;
+  return {
+    field: meta.field || "",
+    scope: meta.scope || "",
+    label: meta.label || "",
+    start,
+    end,
+    length: value.length,
+  };
+}
+
 function textSelectionExcerpt(fieldMeta, selection = {}) {
   const element = fieldMeta ? dom[fieldMeta.domKey] : null;
   const value = String(element?.value || "");
@@ -1372,11 +1388,17 @@ function currentFocusedBlockContext() {
   if (!day || !block) return null;
   const isComment = Boolean(focusedBlockElement && (active.closest?.("[data-block-comment-form]") || active.closest?.(".day-block-comments")));
   const isText = Boolean(focusedBlockElement && active.closest?.("[data-edit-day-block]"));
+  const blockSelection = isText ? elementSelectionPayload(active, {
+    field: `block:${blockId}`,
+    scope: "block",
+    label: "协作块",
+  }) : null;
   return {
     dayId: day.id,
     blockId,
     blockText: block.text || dayBlockTypeLabel(block.type),
     mode: isComment ? "comment" : isText ? "text" : "block",
+    blockSelection,
   };
 }
 
@@ -1396,6 +1418,31 @@ function remoteEditorsForBlock(blockId = "") {
     if (!freshMember(member)) return false;
     return member.activeDayId === dayId && member.activeBlockId === blockId;
   });
+}
+
+function renderDayBlockTextPresence(block) {
+  const editors = remoteEditorsForBlock(block.id)
+    .filter((member) => member.blockSelection && member.activeBlockId === block.id)
+    .slice(0, 3);
+  if (!editors.length) return "";
+  return `
+    <span class="text-presence-inline day-block-text-presence" aria-hidden="true">
+      ${editors.map((member, index) => {
+        const selection = member.blockSelection || {};
+        const input = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(block.id)}"]`);
+        const geometry = input ? textPresenceGeometry(input, selection) : null;
+        if (!geometry) return "";
+        const selected = Number(selection.end || 0) > Number(selection.start || 0);
+        return `
+          <span class="text-presence-inline-mark ${memberPresenceClass(member, index)}" style="--cursor-x:${geometry.x}px;--cursor-y:${geometry.y}px;--cursor-height:${geometry.height}px;--selection-x:${geometry.selectionLeft}px;--selection-y:${geometry.selectionTop}px;--selection-width:${selected ? geometry.selectionWidth : 2}px;--selection-height:${selected ? geometry.selectionHeight : geometry.height}px">
+            <i class="text-presence-selection" aria-hidden="true"></i>
+            <i class="text-presence-cursor" aria-hidden="true"></i>
+            <b>${escapeHtml(memberInitial(member.name))}</b>
+          </span>
+        `;
+      }).join("")}
+    </span>
+  `;
 }
 
 function commentsForScope(scope = "stop") {
@@ -2452,6 +2499,7 @@ function refreshRealtimePlanViews() {
   renderCandidates();
   renderActivities();
   refreshIcons();
+  requestAnimationFrame(() => refreshDayBlockTextPresence());
 }
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步", options = {}) {
@@ -3234,6 +3282,17 @@ function renderDayBlockPresence(block) {
   `;
 }
 
+function refreshDayBlockTextPresence() {
+  dom.dayBlockList?.querySelectorAll("[data-day-block]").forEach((blockElement) => {
+    const blockId = blockElement.dataset.dayBlock || "";
+    const block = normalizeDayBlocks(currentDay()?.blocks || []).find((item) => item.id === blockId);
+    const wrap = blockElement.querySelector(".day-block-text-wrap");
+    if (!block || !wrap) return;
+    wrap.querySelector(".day-block-text-presence")?.remove();
+    wrap.insertAdjacentHTML("beforeend", renderDayBlockTextPresence(block));
+  });
+}
+
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
   const blocks = normalizeDayBlocks(day.blocks || []);
@@ -3269,7 +3328,10 @@ function renderDayBlocks(day = currentDay()) {
             <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}">
               <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
-              <input class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" value="${escapeHtml(block.text)}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr} />
+              <span class="day-block-text-wrap">
+                <input class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" value="${escapeHtml(block.text)}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr} />
+                ${renderDayBlockTextPresence(block)}
+              </span>
               <span class="day-block-meta">${escapeHtml(meta)}</span>
               ${presenceHtml}
               <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
@@ -3291,6 +3353,7 @@ function renderDayBlocks(day = currentDay()) {
         .join("")
     : `<div class="empty-state">还没有协作块，可以添加待办、备注或决定。</div>`;
   refreshIcons();
+  requestAnimationFrame(() => refreshDayBlockTextPresence());
 }
 
 function applyStopRealtimeFields(stop) {
@@ -5984,6 +6047,7 @@ function presencePayload() {
     activeStopId: stop?.id || "",
     activeBlockId: blockContext?.blockId || "",
     activeBlockText: blockContext?.blockText || "",
+    blockSelection: blockContext?.blockSelection || null,
     blockEditing,
     editing: blockEditing ? blockContext.blockText : stop?.title || "行程",
     textSelection,
@@ -6053,6 +6117,7 @@ function renderMembers() {
       )
       .join("") || `<div class="member-empty">填写姓名后加入协作，在线成员会显示在这里。</div>`;
   renderTextPresence();
+  refreshDayBlockTextPresence();
 }
 
 function renderEditAccessState() {
@@ -9463,6 +9528,15 @@ dom.dayBlockList?.addEventListener("input", (event) => {
     await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback");
     await saveState("协作块已更新");
   }, 650);
+});
+
+["focusin", "click", "keyup", "select"].forEach((eventName) => {
+  dom.dayBlockList?.addEventListener(eventName, (event) => {
+    const input = event.target.closest?.("[data-edit-day-block]");
+    if (!input || isReadonlyMode) return;
+    activeBlockPresenceId = input.closest("[data-day-block]")?.dataset.dayBlock || activeBlockPresenceId;
+    schedulePresenceTrack(eventName === "focusin" ? 0 : 90);
+  });
 });
 
 document.addEventListener("click", (event) => {
