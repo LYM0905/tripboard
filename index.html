@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-conflict-resolve" />
+    <link rel="stylesheet" href="styles.css?v=20260617-lock-field-merge" />
   </head>
   <body>
     <div class="app-shell">
@@ -396,7 +396,11 @@
         <section class="editor-panel">
           <div class="section-title">
             <span>编辑地点</span>
-            <strong>保存后立即更新</strong>
+            <strong id="editorLockState">保存后立即更新</strong>
+          </div>
+          <div class="edit-lock-banner" id="editLockBanner" hidden>
+            <i data-lucide="lock"></i>
+            <span id="editLockText">其他成员正在编辑这个地点</span>
           </div>
           <form class="edit-form" id="stopForm">
             <label>时间<input id="fieldTime" name="time" placeholder="09:00" /></label>
@@ -573,7 +577,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-conflict-resolve"></script>
-    <script src="script.js?v=20260617-conflict-resolve"></script>
+    <script src="config.js?v=20260617-lock-field-merge"></script>
+    <script src="script.js?v=20260617-lock-field-merge"></script>
   </body>
 </html>

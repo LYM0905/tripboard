@@ -27,6 +27,7 @@ function uid() {
 }
 
 function clone(value) {
+  if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
 }
 
@@ -588,19 +589,52 @@ function mergeComments(localComments = [], remoteComments = []) {
   return result;
 }
 
-function mergeStops(localStops = [], remoteStops = []) {
+function mergeScalarField(baseValue, localValue, remoteValue) {
+  const localChanged = !sameSerialized(localValue, baseValue);
+  const remoteChanged = !sameSerialized(remoteValue, baseValue);
+  if (localChanged && !remoteChanged) return clone(localValue);
+  if (!localChanged && remoteChanged) return clone(remoteValue);
+  if (localChanged && remoteChanged) return clone(localValue);
+  return clone(localValue ?? remoteValue ?? baseValue);
+}
+
+function mergeStopFields(localStop = {}, remoteStop = {}, baseStop = {}) {
+  const merged = { ...clone(remoteStop || {}), ...clone(localStop || {}) };
+  [
+    "time",
+    "title",
+    "type",
+    "address",
+    "note",
+    "budget",
+    "paid",
+    "payer",
+    "votes",
+    "userVoted",
+    "favorite",
+    "x",
+    "y",
+    "lng",
+    "lat",
+    "amapKeyword",
+    "image",
+  ].forEach((field) => {
+    merged[field] = mergeScalarField(baseStop?.[field], localStop?.[field], remoteStop?.[field]);
+  });
+  merged.comments = mergeComments(localStop.comments || [], remoteStop.comments || []);
+  merged.tags = mergeUniqueList((localStop.tags || []).map((tag) => ({ id: tag, title: tag })), (remoteStop.tags || []).map((tag) => ({ id: tag, title: tag })), "tag").map((tag) => tag.title);
+  return merged;
+}
+
+function mergeStops(localStops = [], remoteStops = [], baseStops = []) {
   const result = [];
   const byLocalId = new Map(localStops.map((stop) => [stop.id, stop]).filter(([id]) => id));
   const addedRemote = new Set();
   localStops.forEach((localStop) => {
     const remoteStop = localStop.id ? remoteStops.find((stop) => stop.id === localStop.id) : null;
+    const baseStop = localStop.id ? baseStops.find((stop) => stop.id === localStop.id) : null;
     if (remoteStop?.id) addedRemote.add(remoteStop.id);
-    result.push({
-      ...clone(remoteStop || {}),
-      ...clone(localStop),
-      comments: mergeComments(localStop.comments || [], remoteStop?.comments || []),
-      tags: mergeUniqueList((localStop.tags || []).map((tag) => ({ id: tag, title: tag })), (remoteStop?.tags || []).map((tag) => ({ id: tag, title: tag })), "tag").map((tag) => tag.title),
-    });
+    result.push(mergeStopFields(localStop, remoteStop || {}, baseStop || {}));
   });
   remoteStops.forEach((remoteStop) => {
     if (remoteStop.id && (byLocalId.has(remoteStop.id) || addedRemote.has(remoteStop.id))) return;
@@ -609,18 +643,22 @@ function mergeStops(localStops = [], remoteStops = []) {
   return result;
 }
 
-function mergeDays(localDays = [], remoteDays = []) {
+function mergeDays(localDays = [], remoteDays = [], baseDays = []) {
   const result = [];
   const usedRemote = new Set();
   localDays.forEach((localDay, index) => {
     const remoteIndex = remoteDays.findIndex((day) => (localDay.id && day.id === localDay.id) || (localDay.date && day.date === localDay.date));
     const remoteDay = remoteIndex >= 0 ? remoteDays[remoteIndex] : remoteDays[index];
+    const baseDay = baseDays.find((day) => (localDay.id && day.id === localDay.id) || (localDay.date && day.date === localDay.date)) || baseDays[index] || {};
     if (remoteDay?.id) usedRemote.add(remoteDay.id);
     result.push({
       ...clone(remoteDay || {}),
       ...clone(localDay),
-      stops: mergeStops(localDay.stops || [], remoteDay?.stops || []),
-      amapRoute: localDay.amapRoute || remoteDay?.amapRoute || null,
+      route: mergeScalarField(baseDay.route, localDay.route, remoteDay?.route),
+      weather: mergeScalarField(baseDay.weather, localDay.weather, remoteDay?.weather),
+      transport: mergeScalarField(baseDay.transport, localDay.transport, remoteDay?.transport),
+      stops: mergeStops(localDay.stops || [], remoteDay?.stops || [], baseDay.stops || []),
+      amapRoute: mergeScalarField(baseDay.amapRoute, localDay.amapRoute, remoteDay?.amapRoute) || null,
     });
   });
   remoteDays.forEach((remoteDay) => {
@@ -631,11 +669,20 @@ function mergeDays(localDays = [], remoteDays = []) {
   return result;
 }
 
-function mergePlans(localPlan, remotePlan) {
+function mergePlans(localPlan, remotePlan, basePlan = lastSyncedState) {
   const merged = {
     ...clone(remotePlan || {}),
     ...clone(localPlan || {}),
-    days: mergeDays(localPlan?.days || [], remotePlan?.days || []),
+    name: mergeScalarField(basePlan?.name, localPlan?.name, remotePlan?.name),
+    destination: mergeScalarField(basePlan?.destination, localPlan?.destination, remotePlan?.destination),
+    origin: mergeScalarField(basePlan?.origin, localPlan?.origin, remotePlan?.origin),
+    dateRange: mergeScalarField(basePlan?.dateRange, localPlan?.dateRange, remotePlan?.dateRange),
+    startDate: mergeScalarField(basePlan?.startDate, localPlan?.startDate, remotePlan?.startDate),
+    endDate: mergeScalarField(basePlan?.endDate, localPlan?.endDate, remotePlan?.endDate),
+    budgetLimit: mergeScalarField(basePlan?.budgetLimit, localPlan?.budgetLimit, remotePlan?.budgetLimit),
+    partySize: mergeScalarField(basePlan?.partySize, localPlan?.partySize, remotePlan?.partySize),
+    cover: mergeScalarField(basePlan?.cover, localPlan?.cover, remotePlan?.cover),
+    days: mergeDays(localPlan?.days || [], remotePlan?.days || [], basePlan?.days || []),
     candidates: mergeUniqueList(localPlan?.candidates || [], remotePlan?.candidates || [], "candidate"),
     activities: mergeUniqueList(localPlan?.activities || [], remotePlan?.activities || [], "activity").slice(0, 10),
     transportQuotes: mergeUniqueList(localPlan?.transportQuotes || [], remotePlan?.transportQuotes || [], "quote").slice(0, 60),
@@ -650,10 +697,10 @@ function conflictSummary(conflict) {
 }
 
 function showConflictPanel(conflict) {
-  pendingConflict = conflict;
+  pendingConflict = { ...conflict, base: conflict.base || clone(lastSyncedState || {}) };
   if (!dom.conflictPanel) return;
   dom.conflictPanel.hidden = false;
-  dom.conflictText.textContent = conflictSummary(conflict);
+  dom.conflictText.textContent = conflictSummary(pendingConflict);
   dom.conflictDetail.textContent = "请选择处理方式：智能合并会尽量保留双方新增的地点、评论、交通报价和活动记录。";
   dom.collabMode.textContent = "待处理冲突";
   dom.saveState.textContent = "发现协作冲突";
@@ -679,6 +726,7 @@ async function resolveConflict(mode) {
   const conflict = pendingConflict;
   const localPlan = clone(conflict.local || state);
   const remotePlan = ensurePlanDates(clone(conflict.remote));
+  const basePlan = clone(conflict.base || lastSyncedState || {});
   isResolvingConflict = true;
   try {
     savePlanSnapshot(localPlan, "冲突处理前：我的版本");
@@ -691,7 +739,7 @@ async function resolveConflict(mode) {
       render();
       return;
     }
-    state = mode === "merge" ? mergePlans(localPlan, remotePlan) : ensurePlanDates(localPlan);
+    state = mode === "merge" ? mergePlans(localPlan, remotePlan, basePlan) : ensurePlanDates(localPlan);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     lastRemoteUpdatedAt = conflict.updatedAt || lastRemoteUpdatedAt;
     hideConflictPanel();
@@ -715,6 +763,7 @@ function handleRemotePlanUpdate(next) {
     showConflictPanel({
       remote: remotePlan,
       local: clone(state),
+      base: clone(lastSyncedState || {}),
       updatedAt: next.updated_at || "",
       updatedBy: next.updated_by || "",
       reason: "realtime",
@@ -796,6 +845,10 @@ const dom = {
   fieldImage: document.querySelector("#fieldImage"),
   fieldTags: document.querySelector("#fieldTags"),
   fieldNote: document.querySelector("#fieldNote"),
+  editorPanel: document.querySelector(".editor-panel"),
+  editorLockState: document.querySelector("#editorLockState"),
+  editLockBanner: document.querySelector("#editLockBanner"),
+  editLockText: document.querySelector("#editLockText"),
   addStopBtn: document.querySelector("#addStopBtn"),
   quickAddForm: document.querySelector("#quickAddForm"),
   quickPlaceName: document.querySelector("#quickPlaceName"),
@@ -929,6 +982,7 @@ let lastRemoteUpdatedAt = "";
 let lastSyncedState = null;
 let pendingConflict = null;
 let isResolvingConflict = false;
+let editLockEnabled = true;
 let remoteVersionHistoryEnabled = true;
 const initialGuideDates = defaultGuideDates();
 const guideState = {
@@ -1093,12 +1147,18 @@ function saveMemberProfile(profile) {
 
 function presencePayload() {
   const profile = memberProfile || normalizeMemberProfile({ name: dom.collabName.value.trim() || "匿名成员", role: dom.collabRole.value.trim() || "同行成员" });
+  const stop = currentStop();
+  const day = currentDay();
   return {
     memberId: profile?.id || sessionId,
     name: profile?.name || "匿名成员",
     role: profile?.role || "同行成员",
-    activeDay: currentDay()?.label || "D1",
-    editing: currentStop()?.title || "行程",
+    activeDay: day?.label || "D1",
+    activeDayId: day?.id || "",
+    activeStopId: stop?.id || "",
+    editing: stop?.title || "行程",
+    lockStopId: editLockEnabled && canEdit() ? stop?.id || "" : "",
+    lockMode: editLockEnabled && canEdit() ? "editing" : "viewing",
     joinedAt: profile?.joinedAt || new Date().toISOString(),
     seenAt: new Date().toISOString(),
   };
@@ -1117,6 +1177,26 @@ function uniqueMembersFromPresence(presenceState) {
   return [...byId.values()];
 }
 
+function lockOwnerForStop(stopId = currentStop()?.id) {
+  if (!stopId || !editLockEnabled || isReadonlyMode) return null;
+  const now = Date.now();
+  const ownMemberId = memberProfile?.id || sessionId;
+  return onlineMembers.find((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (member.lockStopId !== stopId || member.lockMode !== "editing") return false;
+    const seenAt = Date.parse(member.seenAt || "");
+    return Number.isNaN(seenAt) || now - seenAt < 45000;
+  }) || null;
+}
+
+function requireStopUnlocked(actionLabel = "编辑这个地点") {
+  const owner = lockOwnerForStop();
+  if (!owner) return true;
+  dom.saveState.textContent = `${owner.name || "其他成员"} 正在编辑`;
+  dom.collabStatus.textContent = `${owner.name || "其他成员"} 正在编辑「${currentStop()?.title || "当前地点"}」，暂时不能${actionLabel}。`;
+  return false;
+}
+
 function renderMembers() {
   const fallback = memberProfile ? [presencePayload()] : [];
   const members = onlineMembers.length ? onlineMembers : fallback;
@@ -1132,7 +1212,7 @@ function renderMembers() {
         (member, index) => `
           <div class="member-item">
             <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
-            <p><strong>${member.name || "匿名成员"}</strong><small>${member.role || "同行成员"} · ${member.activeDay || "在线"} · ${member.editing || "浏览计划"}</small></p>
+            <p><strong>${member.name || "匿名成员"}</strong><small>${member.role || "同行成员"} · ${member.activeDay || "在线"} · ${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}</small></p>
           </div>
         `,
       )
@@ -1223,9 +1303,34 @@ function renderVersionHistory() {
       .join("") || `<div class="member-empty">开始编辑后会自动保存最近 ${MAX_VERSION_HISTORY} 个版本。</div>`;
 }
 
+function renderEditorLockState() {
+  const owner = lockOwnerForStop();
+  const locked = Boolean(owner);
+  dom.editorPanel?.classList.toggle("is-locked", locked);
+  if (dom.editLockBanner) dom.editLockBanner.hidden = !locked;
+  if (dom.editLockText) dom.editLockText.textContent = locked ? `${owner.name || "其他成员"} 正在编辑「${currentStop()?.title || "当前地点"}」，此处已临时锁定。` : "";
+  if (dom.editorLockState) dom.editorLockState.textContent = locked ? "协作锁定" : "保存后立即更新";
+  [
+    dom.stopForm,
+  ].forEach((form) => {
+    form?.querySelectorAll("input, textarea, select, button").forEach((control) => {
+      control.disabled = isReadonlyMode || locked;
+    });
+  });
+  [
+    dom.amapLookupBtn,
+    dom.moveUpBtn,
+    dom.moveDownBtn,
+    dom.deleteStopBtn,
+  ].forEach((button) => {
+    if (button) button.disabled = isReadonlyMode || locked;
+  });
+}
+
 async function trackPresence() {
   if (!realtimeChannel || !memberProfile) {
     renderMembers();
+    renderEditorLockState();
     return;
   }
   await realtimeChannel.track(presencePayload());
@@ -1305,6 +1410,7 @@ async function pushRemoteState(label = "已同步云端") {
         showConflictPanel({
           remote: remote.data,
           local: clone(state),
+          base: clone(lastSyncedState || {}),
           updatedAt: remote.updated_at || "",
           updatedBy: remote.updated_by || "",
           reason: "save",
@@ -1388,14 +1494,17 @@ function subscribeRemoteState() {
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
       renderMembers();
+      renderEditorLockState();
     })
     .on("presence", { event: "join" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
       renderMembers();
+      renderEditorLockState();
     })
     .on("presence", { event: "leave" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
       renderMembers();
+      renderEditorLockState();
     })
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
@@ -2430,11 +2539,13 @@ function render() {
   renderMembers();
   renderVersionHistory();
   applyReadonlyUi();
+  renderEditorLockState();
   refreshIcons();
 }
 
-function mutate(label, action) {
+function mutate(label, action, options = {}) {
   if (!requireEdit(label)) return;
+  if (options.requireUnlocked !== false && !requireStopUnlocked(label)) return;
   saveVersionSnapshot(label);
   action();
   logActivity(label);
@@ -2509,7 +2620,7 @@ dom.addStopBtn.addEventListener("click", () => {
     );
     activeStop = day.stops.length - 1;
     clearCurrentAmapRoute();
-  });
+  }, { requireUnlocked: false });
 });
 
 dom.quickAddForm.addEventListener("submit", (event) => {
@@ -2545,7 +2656,7 @@ dom.quickAddForm.addEventListener("submit", (event) => {
     dom.quickBudget.value = "";
     dom.quickAddress.value = "";
     quickAmapPlace = null;
-  });
+  }, { requireUnlocked: false });
 });
 
 dom.openAmapBtn.addEventListener("click", async () => {
@@ -3040,14 +3151,14 @@ dom.manualQuoteForm.addEventListener("submit", (event) => {
     dom.manualQuoteDepart.value = "";
     dom.manualQuoteArrive.value = "";
     dom.manualQuotePrice.value = "";
-  });
+  }, { requireUnlocked: false });
 });
 
 dom.partySizeInput.addEventListener("change", () => {
   if (!requireEdit("更新同行人数")) return;
   mutate("更新同行人数", () => {
     state.partySize = partySize();
-  });
+  }, { requireUnlocked: false });
 });
 
 dom.destinationInput.addEventListener("input", () => {
@@ -3096,7 +3207,7 @@ function createRecommendedPlan() {
     dom.transportFrom.value = origin;
     dom.transportTo.value = "";
     transportFilterApplied = false;
-  });
+  }, { requireUnlocked: false });
   closeCreateChoice();
 }
 
@@ -3117,7 +3228,7 @@ function createBlankTemplate() {
     dom.transportFrom.value = origin;
     dom.transportTo.value = "";
     transportFilterApplied = false;
-  });
+  }, { requireUnlocked: false });
   closeCreateChoice();
 }
 
@@ -3386,7 +3497,7 @@ dom.importForm.addEventListener("submit", (event) => {
     dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已加入 ${targetDay.label}，可在右侧继续编辑。</span>`;
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
-  });
+  }, { requireUnlocked: false });
 });
 
 async function boot() {
