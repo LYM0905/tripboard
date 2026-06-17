@@ -538,6 +538,7 @@ button:disabled {
 }
 
 .day-form label {
+  position: relative;
   display: grid;
   gap: 6px;
   min-width: 0;

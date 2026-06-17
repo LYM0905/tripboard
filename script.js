@@ -20,11 +20,13 @@ const COLLAB_TEXT_FIELDS = [
 ];
 const COLLAB_TEXT_FIELD_BY_FIELD = new Map(COLLAB_TEXT_FIELDS.map((item) => [item.field, item]));
 const COLLAB_DAY_TEXT_FIELDS = [
-  { field: "title", domKey: "fieldDayTitle", label: "当天标题" },
-  { field: "route", domKey: "fieldDayRoute", label: "当天路线" },
-  { field: "weather", domKey: "fieldDayWeather", label: "天气" },
-  { field: "transport", domKey: "fieldDayTransport", label: "交通" },
+  { field: "day:title", docField: "title", domKey: "fieldDayTitle", label: "当天标题", presenceId: "fieldDayTitlePresence", scope: "day" },
+  { field: "day:route", docField: "route", domKey: "fieldDayRoute", label: "当天路线", presenceId: "fieldDayRoutePresence", scope: "day" },
+  { field: "day:weather", docField: "weather", domKey: "fieldDayWeather", label: "天气", presenceId: "fieldDayWeatherPresence", scope: "day" },
+  { field: "day:transport", docField: "transport", domKey: "fieldDayTransport", label: "交通", presenceId: "fieldDayTransportPresence", scope: "day" },
 ];
+const COLLAB_PRESENCE_TEXT_FIELDS = [...COLLAB_TEXT_FIELDS.map((field) => ({ ...field, scope: "stop" })), ...COLLAB_DAY_TEXT_FIELDS];
+const COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD = new Map(COLLAB_PRESENCE_TEXT_FIELDS.map((item) => [item.field, item]));
 const COLLAB_STRUCT_FIELDS = [
   { field: "time", domKey: "fieldTime", type: "string" },
   { field: "budget", domKey: "fieldBudget", type: "number" },
@@ -1095,12 +1097,12 @@ function setNoteCollabStatus(message) {
 }
 
 function collabTextFieldMeta(field) {
-  return COLLAB_TEXT_FIELD_BY_FIELD.get(field) || null;
+  return COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD.get(field) || COLLAB_TEXT_FIELD_BY_FIELD.get(field) || null;
 }
 
 function currentFocusedTextField() {
   const activeElement = document.activeElement;
-  return COLLAB_TEXT_FIELDS.find(({ domKey }) => dom[domKey] === activeElement) || null;
+  return COLLAB_PRESENCE_TEXT_FIELDS.find(({ domKey }) => dom[domKey] === activeElement) || null;
 }
 
 function textSelectionPayload(fieldMeta) {
@@ -1108,6 +1110,7 @@ function textSelectionPayload(fieldMeta) {
   if (!element || document.activeElement !== element) return null;
   return {
     field: fieldMeta.field,
+    scope: fieldMeta.scope || "stop",
     label: fieldMeta.label,
     start: element.selectionStart ?? 0,
     end: element.selectionEnd ?? element.selectionStart ?? 0,
@@ -1225,22 +1228,27 @@ function freshMember(member = {}, ttl = 45000) {
   return Number.isNaN(seenAt) || Date.now() - seenAt < ttl;
 }
 
-function remoteTextEditorsForField(field) {
+function remoteTextEditorsForField(field, scope = "stop") {
   const stopId = currentStop()?.id || "";
+  const dayId = currentDay()?.id || "";
   const ownMemberId = memberProfile?.id || sessionId;
   return onlineMembers.filter((member) => {
     if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
     if (!freshMember(member)) return false;
-    if (member.activeStopId !== stopId) return false;
+    if (scope === "day") {
+      if (member.activeDayId !== dayId) return false;
+    } else if (member.activeStopId !== stopId) {
+      return false;
+    }
     return member.textSelection?.field === field;
   });
 }
 
 function renderTextPresence() {
-  COLLAB_TEXT_FIELDS.forEach(({ field, presenceId, domKey }) => {
+  COLLAB_PRESENCE_TEXT_FIELDS.forEach(({ field, presenceId, domKey, scope }) => {
     const target = presenceId ? document.querySelector(`#${presenceId}`) : null;
     if (!target) return;
-    const editors = remoteTextEditorsForField(field);
+    const editors = remoteTextEditorsForField(field, scope || "stop");
     target.hidden = !editors.length;
     const element = dom[domKey];
     const inlineMarks = editors
@@ -1346,8 +1354,8 @@ function buildInitialTextUpdate(Y, stop) {
 function buildInitialDayTextUpdate(Y, day) {
   const seedDoc = new Y.Doc();
   seedDoc.clientID = stableTextClientId(`${tripId}:day:${day.id}`);
-  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
-    seedDoc.getText(field).insert(0, day[field] || "");
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
+    seedDoc.getText(docField).insert(0, day[docField] || "");
   });
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
@@ -1753,11 +1761,11 @@ function persistCurrentDayTextFromDoc(label = "当天文本协作内容已实时
   if (!day) return;
   const nextValues = dayTextValuesFromDoc();
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabDayTextDoc)) : day.textYjs || day.dayTextYjs || "";
-  const textChanged = COLLAB_DAY_TEXT_FIELDS.some(({ field }) => day[field] !== nextValues[field]);
+  const textChanged = COLLAB_DAY_TEXT_FIELDS.some(({ docField }) => day[docField] !== nextValues[docField]);
   const yjsChanged = day.textYjs !== nextYjs || day.dayTextYjs !== nextYjs;
   if (!textChanged && !yjsChanged) return;
-  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
-    day[field] = nextValues[field];
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
+    day[docField] = nextValues[docField];
   });
   day.textYjs = nextYjs;
   day.dayTextYjs = nextYjs;
@@ -1792,8 +1800,8 @@ function persistCurrentDayTextFromDoc(label = "当天文本协作内容已实时
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (collabDayTextDayId === day.id) {
-    COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
-      if (dom[domKey] && dom[domKey].value !== nextValues[field]) dom[domKey].value = nextValues[field];
+    COLLAB_DAY_TEXT_FIELDS.forEach(({ docField, domKey }) => {
+      if (dom[domKey] && dom[domKey].value !== nextValues[docField]) dom[domKey].value = nextValues[docField];
     });
   }
   dom.dayEditorStatus.textContent = tripId ? "逐字协作中" : "本地保存";
@@ -2006,9 +2014,9 @@ function applyDayTextStatesToState(textStates = {}) {
       changed = true;
     }
     const nextValues = dayValuesFromTextState(textState, day);
-    COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
-      if (day[field] !== nextValues[field]) {
-        day[field] = nextValues[field];
+    COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
+      if (day[docField] !== nextValues[docField]) {
+        day[docField] = nextValues[docField];
         changed = true;
       }
     });
@@ -2331,23 +2339,23 @@ function readCommentsFromDoc() {
 
 function dayTextValuesFromDoc(doc = collabDayTextDoc, fields = collabDayTextFields) {
   const values = {};
-  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
-    values[field] = fields[field]?.toString?.() ?? doc?.getText?.(field)?.toString?.() ?? "";
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
+    values[docField] = fields[docField]?.toString?.() ?? doc?.getText?.(docField)?.toString?.() ?? "";
   });
   return values;
 }
 
 function dayValuesFromTextState(textState = "", fallbackDay = {}) {
   const values = {};
-  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
-    values[field] = String(fallbackDay?.[field] || "");
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
+    values[docField] = String(fallbackDay?.[docField] || "");
   });
   if (!textState || !yjsModule) return values;
   const tempDoc = new yjsModule.Doc();
   try {
     yjsModule.applyUpdate(tempDoc, base64ToBytes(textState), "read");
-    COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
-      values[field] = tempDoc.getText(field).toString();
+    COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
+      values[docField] = tempDoc.getText(docField).toString();
     });
   } catch (error) {
     console.warn("Stored day Yjs text state could not be read", error);
@@ -3345,11 +3353,11 @@ async function bindCollabDayTextDoc() {
     Y.applyUpdate(collabDayTextDoc, buildInitialDayTextUpdate(Y, day), "restore");
     restored = true;
   }
-  COLLAB_DAY_TEXT_FIELDS.forEach(({ field }) => {
-    collabDayTextFields[field] = collabDayTextDoc.getText(field);
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
+    collabDayTextFields[docField] = collabDayTextDoc.getText(docField);
   });
-  COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
-    const value = restored ? collabDayTextFields[field].toString() : day[field] || "";
+  COLLAB_DAY_TEXT_FIELDS.forEach(({ docField, domKey }) => {
+    const value = restored ? collabDayTextFields[docField].toString() : day[docField] || "";
     if (dom[domKey] && dom[domKey].value !== value) dom[domKey].value = value;
   });
   collabDayTextDoc.on("update", (update, origin) => {
@@ -3360,7 +3368,7 @@ async function bindCollabDayTextDoc() {
     broadcastDayTextUpdate(update);
     persistCurrentDayTextFromDoc("当天文本协作内容实时同步中");
   });
-  if (restored && COLLAB_DAY_TEXT_FIELDS.some(({ field }) => day[field] !== collabDayTextFields[field].toString())) {
+  if (restored && COLLAB_DAY_TEXT_FIELDS.some(({ docField }) => day[docField] !== collabDayTextFields[docField].toString())) {
     persistCurrentDayTextFromDoc("已载入当天文本协作状态");
   }
   if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = "逐字协作已开启";
@@ -3409,8 +3417,8 @@ async function applyRemoteDayTextUpdate(payload = {}) {
   isApplyingCollabDayTextRemote = true;
   try {
     Y.applyUpdate(collabDayTextDoc, base64ToBytes(payload.update), "remote");
-    COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
-      const nextValue = collabDayTextFields[field]?.toString() || "";
+    COLLAB_DAY_TEXT_FIELDS.forEach(({ docField, domKey }) => {
+      const nextValue = collabDayTextFields[docField]?.toString() || "";
       if (dom[domKey] && dom[domKey].value !== nextValue) dom[domKey].value = nextValue;
     });
     if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = `${payload.name || "协作者"} 正在同步`;
@@ -6476,12 +6484,18 @@ COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
   const control = dom[domKey];
   control?.addEventListener("input", () => {
     if (!canEdit() || isReadonlyMode) return;
-    syncCollabDayTextFieldToDoc(field, control.value);
+    const meta = COLLAB_DAY_TEXT_FIELDS.find((item) => item.field === field);
+    syncCollabDayTextFieldToDoc(meta?.docField || field, control.value);
+    schedulePresenceTrack();
     clearTimeout(dayFieldSyncTimer);
     dayFieldSyncTimer = setTimeout(() => {
       syncDayEditorDraftChange({ silent: true });
     }, 1200);
   });
+  ["focus", "click", "keyup", "select"].forEach((eventName) => {
+    control?.addEventListener(eventName, () => schedulePresenceTrack(eventName === "focus" ? 0 : 90));
+  });
+  control?.addEventListener("blur", () => schedulePresenceTrack(180));
 });
 
 dom.addDayBtn.addEventListener("click", async () => {
