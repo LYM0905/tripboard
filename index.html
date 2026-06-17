@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-live-stop-create" />
+    <link rel="stylesheet" href="styles.css?v=20260617-live-day-structure" />
   </head>
   <body>
     <div class="app-shell">
@@ -109,6 +109,27 @@
         <section class="day-summary">
           <div id="dayPills"></div>
           <button class="text-btn" id="addStopBtn"><i data-lucide="plus"></i>新增地点</button>
+        </section>
+
+        <section class="day-editor-panel">
+          <div class="section-title">
+            <span>当天设置</span>
+            <strong id="dayEditorStatus">可协作编辑</strong>
+          </div>
+          <form class="day-form" id="dayForm">
+            <label>日期<input id="fieldDayDate" type="date" /></label>
+            <label>标题<input id="fieldDayTitle" required placeholder="例如：兰州抵达日" /></label>
+            <label>路线<input id="fieldDayRoute" placeholder="例如：兰州 · 黄河风情线" /></label>
+            <label>天气<input id="fieldDayWeather" placeholder="例如：25°C 晴" /></label>
+            <label>交通<input id="fieldDayTransport" placeholder="例如：高铁 + 打车" /></label>
+            <div class="day-form-actions">
+              <button type="button" class="text-btn" id="addDayBtn"><i data-lucide="calendar-plus"></i>新增一天</button>
+              <button type="button" class="text-btn" id="moveDayUpBtn"><i data-lucide="arrow-up"></i>上移当天</button>
+              <button type="button" class="text-btn" id="moveDayDownBtn"><i data-lucide="arrow-down"></i>下移当天</button>
+              <button type="button" class="danger-btn" id="deleteDayBtn"><i data-lucide="calendar-x"></i>删除当天</button>
+              <button type="submit" class="primary-btn"><i data-lucide="save"></i>保存当天</button>
+            </div>
+          </form>
         </section>
 
         <section class="guide-panel">
@@ -577,7 +598,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-live-stop-create"></script>
-    <script src="script.js?v=20260617-live-stop-create"></script>
+    <script src="config.js?v=20260617-live-day-structure"></script>
+    <script src="script.js?v=20260617-live-day-structure"></script>
   </body>
 </html>
