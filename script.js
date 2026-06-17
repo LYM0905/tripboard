@@ -24,6 +24,10 @@ const COLLAB_STRUCT_FIELDS = [
   { field: "lat", domKey: "fieldLat", type: "string" },
   { field: "image", domKey: "fieldImage", type: "string" },
   { field: "tags", domKey: "fieldTags", type: "tags" },
+  { field: "voters", type: "list" },
+  { field: "votes", type: "number" },
+  { field: "userVoted", type: "boolean" },
+  { field: "favorite", type: "boolean" },
 ];
 
 const images = {
@@ -102,6 +106,14 @@ function numberValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
+  return String(value || "")
+    .split(/[,，]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -123,6 +135,42 @@ function normalizeTags(value) {
     .split(/[,，]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function stopVoters(stop = {}) {
+  return normalizeList(stop.voters);
+}
+
+function normalizeStopVotes(stop = {}) {
+  const voters = [...new Set(stopVoters(stop))];
+  const legacyVotes = numberValue(stop.votes);
+  return {
+    voters,
+    votes: Math.max(voters.length, legacyVotes),
+    userVoted: voters.includes(collabActorId()) || Boolean(stop.userVoted && !voters.length),
+  };
+}
+
+function toggleVoteValues(values = {}, actorId = collabActorId()) {
+  const voters = new Set(stopVoters(values));
+  const hasExplicitVote = voters.has(actorId);
+  const hasLegacyVote = !voters.size && Boolean(values.userVoted);
+  const hadVote = hasExplicitVote || hasLegacyVote;
+  const currentVotes = Math.max(numberValue(values.votes), voters.size, hadVote ? 1 : 0);
+  if (hadVote) {
+    voters.delete(actorId);
+    return {
+      voters: [...voters],
+      votes: Math.max(0, currentVotes - 1),
+      userVoted: false,
+    };
+  }
+  voters.add(actorId);
+  return {
+    voters: [...voters],
+    votes: currentVotes + 1,
+    userVoted: true,
+  };
 }
 
 function clampDays(value) {
@@ -343,6 +391,7 @@ function makeStop({
   payer = "",
   votes = 1,
   userVoted = true,
+  voters = [],
   comments = [],
   x = 50,
   y = 50,
@@ -364,6 +413,7 @@ function makeStop({
     budget: Number(budget || 0),
     paid: Number(paid || 0),
     payer,
+    voters: normalizeList(voters),
     votes,
     userVoted,
     favorite: userVoted,
@@ -703,6 +753,7 @@ function mergeStopFields(localStop = {}, remoteStop = {}, baseStop = {}) {
     "budget",
     "paid",
     "payer",
+    "voters",
     "votes",
     "userVoted",
     "favorite",
@@ -1131,21 +1182,30 @@ function broadcastTextUpdate(update) {
 
 function structDomValue({ domKey, type }) {
   const element = dom[domKey];
-  if (!element) return type === "number" ? 0 : type === "tags" ? [] : "";
+  if (!element) return type === "number" ? 0 : type === "tags" || type === "list" ? [] : type === "boolean" ? false : "";
   if (type === "number") return numberValue(element.value);
   if (type === "tags") return normalizeTags(element.value);
+  if (type === "list") return normalizeList(element.value);
+  if (type === "boolean") return Boolean(element.checked);
   return String(element.value || "").trim();
 }
 
 function stopStructValue(stop, { field, type }) {
+  if (field === "votes") return normalizeStopVotes(stop).votes;
+  if (field === "userVoted") return normalizeStopVotes(stop).userVoted;
+  if (field === "voters") return normalizeStopVotes(stop).voters;
   if (type === "number") return numberValue(stop?.[field]);
   if (type === "tags") return normalizeTags(stop?.[field]);
+  if (type === "list") return normalizeList(stop?.[field]);
+  if (type === "boolean") return Boolean(stop?.[field]);
   return String(stop?.[field] || "").trim();
 }
 
 function structDisplayValue(value, type) {
   if (type === "tags") return normalizeTags(value).join(", ");
+  if (type === "list") return normalizeList(value).join(", ");
   if (type === "number") return value || "";
+  if (type === "boolean") return Boolean(value);
   return value || "";
 }
 
@@ -1154,8 +1214,12 @@ function readStructFromDoc() {
   if (!collabStructMap) return values;
   COLLAB_STRUCT_FIELDS.forEach(({ field, type }) => {
     const value = collabStructMap.get(field);
-    values[field] = type === "tags" ? normalizeTags(value) : type === "number" ? numberValue(value) : String(value || "");
+    values[field] = type === "tags" ? normalizeTags(value) : type === "list" ? normalizeList(value) : type === "number" ? numberValue(value) : type === "boolean" ? Boolean(value) : String(value || "");
   });
+  const normalizedVotes = normalizeStopVotes(values);
+  values.voters = normalizedVotes.voters;
+  values.votes = normalizedVotes.votes;
+  values.userVoted = normalizedVotes.userVoted;
   return values;
 }
 
@@ -1538,6 +1602,7 @@ async function bindCollabTextDoc() {
     if (dom[domKey] && dom[domKey].value !== value) dom[domKey].value = value;
   });
   COLLAB_STRUCT_FIELDS.forEach((meta) => {
+    if (!meta.domKey) return;
     const value = collabStructMap.get(meta.field);
     if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(value, meta.type);
   });
@@ -1579,9 +1644,12 @@ async function applyRemoteTextUpdate(payload = {}) {
       if (dom[domKey] && dom[domKey].value !== nextValue) dom[domKey].value = nextValue;
     });
     COLLAB_STRUCT_FIELDS.forEach((meta) => {
+      if (!meta.domKey) return;
       const nextValue = collabStructMap?.get(meta.field);
       if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(nextValue, meta.type);
     });
+    const stop = currentStop();
+    if (stop?.id === collabTextStopId) applyStopRealtimeFields({ ...stop, ...readStructFromDoc() });
     setNoteCollabStatus(`${payload.name || "协作者"} 正在同步地点协作内容`);
   } finally {
     isApplyingCollabTextRemote = false;
@@ -1807,6 +1875,22 @@ async function syncCollabStructFieldToDoc(meta) {
   collabTextDoc.transact(() => {
     collabStructMap.set(meta.field, clone(nextValue));
   }, "local-struct-input");
+}
+
+async function syncCollabStructValuesToDoc(values = {}, origin = "local-struct-action") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabTextDoc();
+  if (!collabTextDoc || !collabStructMap || isApplyingCollabTextRemote) return false;
+  const entries = Object.entries(values).filter(([field]) => COLLAB_STRUCT_FIELDS.some((meta) => meta.field === field));
+  if (!entries.length) return true;
+  const changed = entries.some(([field, value]) => !sameSerialized(collabStructMap.get(field), value));
+  if (!changed) return true;
+  collabTextDoc.transact(() => {
+    entries.forEach(([field, value]) => {
+      collabStructMap.set(field, clone(value));
+    });
+  }, origin);
+  return true;
 }
 
 async function addCollaborativeComment(text) {
@@ -2296,6 +2380,20 @@ function getCollabName() {
   return name;
 }
 
+function collabActorId() {
+  try {
+    if (memberProfile?.id) return memberProfile.id;
+  } catch {
+    // Member profile can be in the temporal dead zone while the default plan is being built.
+  }
+  try {
+    if (sessionId) return sessionId;
+  } catch {
+    // Session id is initialized after the default plan is loaded.
+  }
+  return localStorage.getItem("tripboard-user-name") || "local-user";
+}
+
 function memberInitial(name) {
   const trimmed = String(name || "我").trim();
   return trimmed.slice(0, 1).toUpperCase();
@@ -2515,6 +2613,7 @@ function renderEditorLockState() {
     if (dom[domKey]) dom[domKey].disabled = isReadonlyMode;
   });
   COLLAB_STRUCT_FIELDS.forEach(({ domKey }) => {
+    if (!domKey) return;
     if (dom[domKey]) dom[domKey].disabled = isReadonlyMode;
   });
   if (locked && dom.noteCollabStatus && !isReadonlyMode) {
@@ -4056,6 +4155,7 @@ document.addEventListener("selectionchange", () => {
 });
 
 COLLAB_STRUCT_FIELDS.forEach((meta) => {
+  if (!meta.domKey) return;
   ["input", "change"].forEach((eventName) => {
     dom[meta.domKey]?.addEventListener(eventName, () => {
       syncCollabStructFieldToDoc(meta);
@@ -4535,15 +4635,27 @@ dom.saveServiceConfigBtn.addEventListener("click", () => {
 
 dom.syncWeatherBtn.addEventListener("click", syncWeather);
 
-dom.mustVote.addEventListener("click", () => {
+dom.mustVote.addEventListener("click", async () => {
+  if (!requireEdit("更新必去投票")) return;
+  const stop = currentStop();
+  const actorId = collabActorId();
+  const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
+  const nextVoteValues = toggleVoteValues(currentValues, actorId);
+  if (await syncCollabStructValuesToDoc(nextVoteValues, "local-vote-toggle")) return;
   mutate("更新必去投票", () => {
-    const stop = currentStop();
-    stop.userVoted = !stop.userVoted;
-    stop.votes = Math.max(0, Number(stop.votes || 0) + (stop.userVoted ? 1 : -1));
+    const fallbackStop = currentStop();
+    const fallbackValues = toggleVoteValues(fallbackStop, actorId);
+    fallbackStop.voters = fallbackValues.voters;
+    fallbackStop.userVoted = fallbackValues.userVoted;
+    fallbackStop.votes = fallbackValues.votes;
   });
 });
 
-dom.favoriteBtn.addEventListener("click", () => {
+dom.favoriteBtn.addEventListener("click", async () => {
+  if (!requireEdit("更新收藏")) return;
+  const stop = currentStop();
+  const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
+  if (await syncCollabStructValuesToDoc({ favorite: !Boolean(currentValues.favorite) }, "local-favorite-toggle")) return;
   mutate("更新收藏", () => {
     currentStop().favorite = !currentStop().favorite;
   });
