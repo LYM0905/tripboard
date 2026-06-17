@@ -4800,50 +4800,55 @@ async function compareMultiOrigins() {
   dom.compareOriginsBtn.disabled = true;
   setCtripStatus(`正在比较 ${origins.length} 个出发地；每个出发地会消耗 1 次航班查询。`, "loader");
   const results = [];
-  for (const [index, origin] of origins.entries()) {
-    try {
-      setCtripStatus(`正在查询 ${origin.name}：${origin.from} → ${to}（${index + 1}/${origins.length}）`, "loader");
-      const data = await fetchTransportQuotes({ ...payloadBase, from: origin.from });
-      const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
-      const items = rawItems.map((item, itemIndex) => normalizeTransportItem(item, itemIndex, { from: origin.from, to }));
-      results.push({
-        ...origin,
-        to,
-        items,
-        best: bestFlightOption(items),
-        source: data.source || "",
-        count: items.length,
-      });
-    } catch (error) {
-      results.push({
-        ...origin,
-        to,
-        items: [],
-        best: null,
-        count: 0,
-        error: error.message,
-      });
+  try {
+    for (const [index, origin] of origins.entries()) {
+      try {
+        setCtripStatus(`正在查询 ${origin.name}：${origin.from} → ${to}（${index + 1}/${origins.length}）`, "loader");
+        const data = await fetchTransportQuotes({ ...payloadBase, from: origin.from });
+        const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
+        const items = rawItems.map((item, itemIndex) => normalizeTransportItem(item, itemIndex, { from: origin.from, to }));
+        results.push({
+          ...origin,
+          to,
+          items,
+          best: bestFlightOption(items),
+          source: data.source || "",
+          count: items.length,
+        });
+      } catch (error) {
+        results.push({
+          ...origin,
+          to,
+          items: [],
+          best: null,
+          count: 0,
+          error: error.message,
+        });
+      }
+      multiOriginComparisons = [...results, ...origins.slice(index + 1).map((pending) => ({ ...pending, to, loading: true }))];
+      renderMultiOriginResults();
     }
-    multiOriginComparisons = [...results, ...origins.slice(index + 1).map((pending) => ({ ...pending, to, loading: true }))];
+    multiOriginComparisons = results.sort((a, b) => compareScore(a.best) - compareScore(b.best));
+    const bestQuotes = multiOriginComparisons
+      .filter((item) => item.best)
+      .map((item) => ({
+        ...item.best,
+        source: `${item.source || "Google Flights"} · ${item.name}`,
+      }));
+    const savedCount = await saveProviderTransportQuotes(bestQuotes, day, "Google Flights 多出发地");
     renderMultiOriginResults();
+    renderTransport();
+    refreshIcons();
+    const matched = results.filter((item) => item.best).length;
+    const total = results.reduce((sum, item) => sum + Number(item.best?.price || 0), 0);
+    logActivity(`比较多人出发地航班 ${matched}/${results.length} 人，保存 ${savedCount} 条推荐报价`);
+    await saveState("已保存多人出发地航班比较");
+    setCtripStatus(`已完成多人出发地比较：${matched}/${results.length} 人匹配到航班，最低合计 ${money(total)}；已保存 ${savedCount} 条推荐报价到共享计划。`, matched ? "check-circle-2" : "alert-circle");
+  } catch (error) {
+    setCtripStatus(`多人出发地比较保存失败：${error.message}。已保留当前页面结果，可稍后重试。`, "alert-triangle");
+  } finally {
+    dom.compareOriginsBtn.disabled = false;
   }
-  multiOriginComparisons = results.sort((a, b) => compareScore(a.best) - compareScore(b.best));
-  const bestQuotes = multiOriginComparisons
-    .filter((item) => item.best)
-    .map((item) => ({
-      ...item.best,
-      source: `${item.source || "Google Flights"} · ${item.name}`,
-    }));
-  const savedCount = await saveProviderTransportQuotes(bestQuotes, day, "Google Flights 多出发地");
-  renderMultiOriginResults();
-  renderTransport();
-  refreshIcons();
-  const matched = results.filter((item) => item.best).length;
-  const total = results.reduce((sum, item) => sum + Number(item.best?.price || 0), 0);
-  logActivity(`比较多人出发地航班 ${matched}/${results.length} 人，保存 ${savedCount} 条推荐报价`);
-  await saveState("已保存多人出发地航班比较");
-  setCtripStatus(`已完成多人出发地比较：${matched}/${results.length} 人匹配到航班，最低合计 ${money(total)}；已保存 ${savedCount} 条推荐报价到共享计划。`, matched ? "check-circle-2" : "alert-circle");
-  dom.compareOriginsBtn.disabled = false;
 }
 
 function totalBudget() {
