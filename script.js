@@ -1282,6 +1282,28 @@ function normalizeStopListsFromDays(days = []) {
   return lists;
 }
 
+function normalizeStopTextStateEntries(entries = []) {
+  const states = {};
+  entries
+    .filter(([stopId, textState]) => stopId && textState)
+    .sort(([left], [right]) => String(left).localeCompare(String(right)))
+    .forEach(([stopId, textState]) => {
+      states[String(stopId)] = String(textState || "");
+    });
+  return states;
+}
+
+function stopTextStateSnapshotFromDays(days = [], Y = null) {
+  const entries = [];
+  (days || []).forEach((day) => {
+    (day?.stops || []).forEach((stop) => {
+      const textState = stop?.textYjs || stop?.noteYjs || (Y && stop?.id ? bytesToBase64(buildInitialTextUpdate(Y, stop)) : "");
+      if (stop?.id && textState) entries.push([stop.id, textState]);
+    });
+  });
+  return normalizeStopTextStateEntries(entries);
+}
+
 function currentPlanRoomId() {
   return tripId ? `plan:${tripId}` : "";
 }
@@ -1403,6 +1425,10 @@ function buildInitialPlanUpdate(Y, plan) {
     if (stops.length) stopArray.insert(0, stops);
     stopListsMap.set(day.id, stopArray);
   });
+  const stopTextStatesMap = seedDoc.getMap("stopTextStates");
+  Object.entries(stopTextStateSnapshotFromDays(plan.days || [], Y)).forEach(([stopId, textState]) => {
+    stopTextStatesMap.set(stopId, textState);
+  });
   const quoteArray = seedDoc.getArray("transportQuotes");
   const quotes = normalizeTransportQuotes(plan.transportQuotes || []);
   if (quotes.length) quoteArray.insert(0, quotes);
@@ -1464,6 +1490,7 @@ function persistCurrentTextFromDoc(label = "地点协作内容已实时同步") 
   stop.comments = nextComments;
   stop.textYjs = nextYjs;
   stop.noteYjs = nextYjs;
+  syncStopTextStateToPlanDoc(stop.id, nextYjs, "local-stop-text-state");
   applyStopRealtimeFields(stop);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   setNoteCollabStatus(label);
@@ -1496,6 +1523,11 @@ function readStopListsFromDoc() {
     lists[dayId] = stopArray && typeof stopArray.toArray === "function" ? stopArray.toArray().map((stop) => normalizeCollaborativeStop(stop)) : normalizeStopListsFromDays([fallbackDay])[dayId] || [];
   });
   return lists;
+}
+
+function readStopTextStatesFromDoc() {
+  if (!collabStopTextStatesMap) return stopTextStateSnapshotFromDays(state.days || [], yjsModule);
+  return normalizeStopTextStateEntries(Array.from(collabStopTextStatesMap.entries()));
 }
 
 function readCandidatesFromDoc() {
@@ -1589,6 +1621,20 @@ function applyStopListsToState(stopLists = {}) {
   return changed;
 }
 
+function applyStopTextStatesToState(textStates = {}) {
+  let changed = false;
+  state.days.forEach((day) => {
+    (day.stops || []).forEach((stop) => {
+      const textState = textStates[stop.id];
+      if (!textState || stop.textYjs === textState) return;
+      stop.textYjs = textState;
+      stop.noteYjs = textState;
+      changed = true;
+    });
+  });
+  return changed;
+}
+
 function stopListOrderSnapshot(stopLists = {}) {
   const snapshot = {};
   Object.entries(stopLists || {}).forEach(([dayId, stops]) => {
@@ -1611,26 +1657,29 @@ function refreshRealtimePlanViews() {
 }
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步") {
-  if (!collabPlanDoc || !collabDayMetasArray || !collabStopListsMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
+  if (!collabPlanDoc || !collabDayMetasArray || !collabStopListsMap || !collabStopTextStatesMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
   const nextDayMetas = readDayMetasFromDoc();
   const nextStopLists = readStopListsFromDoc();
+  const nextStopTextStates = readStopTextStatesFromDoc();
   const nextQuotes = readTransportQuotesFromDoc();
   const nextCandidates = readCandidatesFromDoc();
   const nextActivities = readActivitiesFromDoc();
   const nextSettings = readSettingsFromDoc();
   const dayMetasChanged = !sameSerialized(normalizeDayMetas(state.days || []), nextDayMetas);
   const stopListsChanged = !sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(nextStopLists));
+  const stopTextStatesChanged = !sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), nextStopTextStates);
   const quotesChanged = !sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), nextQuotes);
   const candidatesChanged = !sameSerialized(normalizeCandidateStops(state.candidates || []), nextCandidates);
   const activitiesChanged = !sameSerialized(normalizeActivities(state.activities || []), nextActivities);
   const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
   const nextPlanYjs = currentPlanYjsState();
   const planYjsChanged = Boolean(nextPlanYjs && state.planYjs !== nextPlanYjs);
-  const changed = dayMetasChanged || stopListsChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
+  const changed = dayMetasChanged || stopListsChanged || stopTextStatesChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
   if (!changed) return;
   const visibleChanged = dayMetasChanged || stopListsChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
+  if (stopTextStatesChanged) applyStopTextStatesToState(nextStopTextStates);
   state.transportQuotes = nextQuotes;
   state.candidates = nextCandidates;
   state.activities = nextActivities;
@@ -1668,6 +1717,7 @@ function clearPlanYjsState(plan = state) {
 function attachCollabPlanRefs() {
   collabDayMetasArray = collabPlanDoc.getArray("dayMetas");
   collabStopListsMap = collabPlanDoc.getMap("stopLists");
+  collabStopTextStatesMap = collabPlanDoc.getMap("stopTextStates");
   collabTransportQuotesArray = collabPlanDoc.getArray("transportQuotes");
   collabCandidatesArray = collabPlanDoc.getArray("candidates");
   collabActivitiesArray = collabPlanDoc.getArray("activities");
@@ -1686,6 +1736,9 @@ function seedMissingPlanDocContent(Y) {
       if (stops.length) stopArray.insert(0, stops);
       collabStopListsMap.set(day.id, stopArray);
     });
+    Object.entries(stopTextStateSnapshotFromDays(state.days || [], Y)).forEach(([stopId, textState]) => {
+      if (!collabStopTextStatesMap.has(stopId)) collabStopTextStatesMap.set(stopId, textState);
+    });
   }, "restore");
 }
 
@@ -1693,6 +1746,7 @@ function planDocMatchesCurrentState() {
   return (
     sameSerialized(normalizeDayMetas(state.days || []), readDayMetasFromDoc()) &&
     sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(readStopListsFromDoc())) &&
+    sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), readStopTextStatesFromDoc()) &&
     sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), readTransportQuotesFromDoc()) &&
     sameSerialized(normalizeCandidateStops(state.candidates || []), readCandidatesFromDoc()) &&
     sameSerialized(normalizeActivities(state.activities || []), readActivitiesFromDoc()) &&
@@ -2010,6 +2064,7 @@ function destroyCollabPlanDoc() {
   collabPlanTripId = "";
   collabDayMetasArray = null;
   collabStopListsMap = null;
+  collabStopTextStatesMap = null;
   collabTransportQuotesArray = null;
   collabCandidatesArray = null;
   collabActivitiesArray = null;
@@ -2156,6 +2211,17 @@ async function syncDayMetasToDoc(origin = "local-day-metas") {
   return true;
 }
 
+async function syncStopTextStateToPlanDoc(stopId, textState, origin = "local-stop-text-state") {
+  if (!canEdit() || isReadonlyMode || !stopId || !textState) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabStopTextStatesMap || isApplyingCollabPlanRemote) return false;
+  if (collabStopTextStatesMap.get(stopId) === textState) return true;
+  collabPlanDoc.transact(() => {
+    collabStopTextStatesMap.set(stopId, textState);
+  }, origin);
+  return true;
+}
+
 async function syncStopListToDoc(dayId, origin = "local-stop-list") {
   if (!canEdit() || isReadonlyMode || !dayId) return false;
   await bindCollabPlanDoc();
@@ -2197,6 +2263,8 @@ async function addStopToDoc(dayId, stop, origin = "local-stop-insert") {
   if (stopArray.toArray().some((item) => item?.id === normalized.id)) return true;
   collabPlanDoc.transact(() => {
     stopArray.insert(stopArray.length, [normalized]);
+    const textState = normalized.textYjs || normalized.noteYjs || "";
+    if (textState) collabStopTextStatesMap?.set(normalized.id, textState);
   }, origin);
   return true;
 }
@@ -2209,6 +2277,7 @@ async function deleteStopFromDoc(dayId, stopId, origin = "local-stop-delete") {
   if (index < 0) return true;
   collabPlanDoc.transact(() => {
     stopArray.delete(index, 1);
+    collabStopTextStatesMap?.delete(stopId);
   }, origin);
   return true;
 }
@@ -2216,7 +2285,7 @@ async function deleteStopFromDoc(dayId, stopId, origin = "local-stop-delete") {
 async function syncStopListsToDoc(origin = "local-stop-lists") {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
-  if (!collabPlanDoc || !collabStopListsMap || isApplyingCollabPlanRemote) return false;
+  if (!collabPlanDoc || !collabStopListsMap || !collabStopTextStatesMap || isApplyingCollabPlanRemote) return false;
   const nextLists = normalizeStopListsFromDays(state.days || []);
   if (sameSerialized(readStopListsFromDoc(), nextLists)) return true;
   collabPlanDoc.transact(() => {
@@ -2233,6 +2302,13 @@ async function syncStopListsToDoc(origin = "local-stop-lists") {
       if (sameSerialized(stopArray.toArray(), stops)) return;
       if (stopArray.length) stopArray.delete(0, stopArray.length);
       if (stops.length) stopArray.insert(0, stops);
+    });
+    const nextTextStates = stopTextStateSnapshotFromDays(state.days || [], yjsModule);
+    Array.from(collabStopTextStatesMap?.keys?.() || []).forEach((stopId) => {
+      if (!Object.prototype.hasOwnProperty.call(nextTextStates, stopId)) collabStopTextStatesMap.delete(stopId);
+    });
+    Object.entries(nextTextStates).forEach(([stopId, textState]) => {
+      if (collabStopTextStatesMap.get(stopId) !== textState) collabStopTextStatesMap.set(stopId, textState);
     });
   }, origin);
   return true;
@@ -2951,6 +3027,7 @@ let collabTextSaveTimer = null;
 let collabPlanDoc = null;
 let collabDayMetasArray = null;
 let collabStopListsMap = null;
+let collabStopTextStatesMap = null;
 let collabTransportQuotesArray = null;
 let collabCandidatesArray = null;
 let collabActivitiesArray = null;
