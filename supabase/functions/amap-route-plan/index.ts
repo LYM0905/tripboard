@@ -28,6 +28,7 @@ type RouteLeg = {
   duration: number;
   cost?: number;
   instruction?: string;
+  path?: number[][];
 };
 
 const corsHeaders = {
@@ -79,6 +80,23 @@ function firstInstruction(steps: unknown) {
     .join("；");
 }
 
+function parsePolyline(polyline: unknown) {
+  return cleanText(polyline)
+    .split(";")
+    .map((point) => point.split(",").map((value) => Number(value)))
+    .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+}
+
+function pathFromSteps(steps: unknown) {
+  if (!Array.isArray(steps)) return [];
+  const path: number[][] = [];
+  steps.forEach((step) => {
+    const stepPath = parsePolyline((step as Record<string, unknown>).polyline);
+    stepPath.forEach((point) => path.push(point));
+  });
+  return path;
+}
+
 function transitInstruction(transit: Record<string, unknown>) {
   const segments = Array.isArray(transit.segments) ? transit.segments : [];
   const names = segments
@@ -96,6 +114,22 @@ function transitInstruction(transit: Record<string, unknown>) {
     .filter(Boolean)
     .slice(0, 5);
   return names.join(" → ");
+}
+
+function pathFromTransit(transit: Record<string, unknown>) {
+  const segments = Array.isArray(transit.segments) ? transit.segments : [];
+  const path: number[][] = [];
+  segments.forEach((segment) => {
+    const record = segment as Record<string, unknown>;
+    const walking = record.walking as Record<string, unknown> | undefined;
+    pathFromSteps(walking?.steps).forEach((point) => path.push(point));
+    const bus = record.bus as Record<string, unknown> | undefined;
+    const buslines = Array.isArray(bus?.buslines) ? bus.buslines : [];
+    buslines.forEach((line) => {
+      parsePolyline((line as Record<string, unknown>).polyline).forEach((point) => path.push(point));
+    });
+  });
+  return path;
 }
 
 async function searchPlace(key: string, stop: AmapStop, city = ""): Promise<ResolvedStop | null> {
@@ -186,6 +220,7 @@ async function routeWalkingOrDriving(key: string, mode: "walking" | "driving", f
     duration: asNumber(path.duration),
     cost: asNumber(path.tolls),
     instruction: firstInstruction(path.steps),
+    path: pathFromSteps(path.steps),
   };
 }
 
@@ -214,6 +249,7 @@ async function routeTransit(key: string, city: string, from: ResolvedStop, to: R
     duration: asNumber(transit.duration),
     cost: asNumber(transit.cost),
     instruction: transitInstruction(transit),
+    path: pathFromTransit(transit),
   };
 }
 
