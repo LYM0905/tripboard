@@ -3227,6 +3227,7 @@ let collabPlanTripId = "";
 let collabPlanSaveTimer = null;
 let isApplyingCollabPlanRemote = false;
 let collabPlanBindRequestId = 0;
+let dayFieldSyncTimer = null;
 let presenceTrackTimer = null;
 let yjsModule = null;
 let yjsReadyPromise = null;
@@ -5297,21 +5298,39 @@ dom.dayForm.addEventListener("submit", async (event) => {
   }
 });
 
-async function syncDayEditorDraftChange() {
+async function syncDayEditorDraftChange({ silent = false } = {}) {
   if (!requireEdit("同步当天设置")) return;
-  saveVersionSnapshot("同步当天设置前版本");
+  if (!silent) saveVersionSnapshot("同步当天设置前版本");
   const updatedDay = applyDayEditorDraftToState();
   if (!updatedDay) return;
-  logActivity("同步当天设置");
+  if (!silent) logActivity("同步当天设置");
   await syncDayMetasToDoc("local-day-field-change");
   await syncPlanMetaToDoc("local-day-field-change-meta");
-  await saveState("已同步当天设置");
+  await saveState(silent ? "当天设置正在协作同步" : "已同步当天设置");
   broadcastDayUpdated(updatedDay);
-  render();
+  if (silent) {
+    renderShell();
+    renderDays();
+    renderDaySummary();
+    renderAmapRouteReport(currentDay()?.amapRoute || null);
+    refreshIcons();
+  } else {
+    render();
+  }
 }
 
 [dom.fieldDayDate, dom.fieldDayTitle, dom.fieldDayRoute, dom.fieldDayWeather, dom.fieldDayTransport].forEach((control) => {
   control?.addEventListener("change", syncDayEditorDraftChange);
+});
+
+[dom.fieldDayTitle, dom.fieldDayRoute, dom.fieldDayWeather, dom.fieldDayTransport].forEach((control) => {
+  control?.addEventListener("input", () => {
+    if (!canEdit() || isReadonlyMode) return;
+    clearTimeout(dayFieldSyncTimer);
+    dayFieldSyncTimer = setTimeout(() => {
+      syncDayEditorDraftChange({ silent: true });
+    }, 500);
+  });
 });
 
 dom.addDayBtn.addEventListener("click", async () => {
