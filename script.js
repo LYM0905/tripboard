@@ -2373,6 +2373,17 @@ async function syncStopListsToDoc(origin = "local-stop-lists") {
   return true;
 }
 
+async function replacePlanCollabDoc(origin = "local-plan-replace") {
+  if (!canEdit() || isReadonlyMode) return false;
+  clearPlanYjsState();
+  destroyCollabPlanDoc();
+  await bindCollabPlanDoc();
+  await syncDayMetasToDoc(`${origin}-days`);
+  await syncStopListsToDoc(`${origin}-stops`);
+  await syncPlanMetaToDoc(`${origin}-meta`);
+  return true;
+}
+
 async function bindCollabTextDoc() {
   const stop = currentStop();
   if (!stop?.id || collabTextStopId === stop.id) return;
@@ -2802,6 +2813,7 @@ async function resolveConflict(mode) {
     lastRemoteUpdatedAt = conflict.updatedAt || lastRemoteUpdatedAt;
     hideConflictPanel();
     logActivity(mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
+    await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep");
     await pushRemoteState(mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
     render();
   } catch (error) {
@@ -3253,18 +3265,18 @@ async function loadRemoteVersionHistory() {
   localStorage.setItem(historyKey(), JSON.stringify(deduped.slice(0, MAX_VERSION_HISTORY)));
 }
 
-function restoreVersion(versionId) {
+async function restoreVersion(versionId) {
   if (!requireEdit("恢复历史版本")) return;
   const entry = versionHistory().find((item) => item.id === versionId);
   if (!entry?.data?.days?.length) return;
   saveVersionSnapshot("恢复前版本");
   state = ensurePlanDates(clone(entry.data));
-  clearPlanYjsState();
   activeDay = 0;
   activeStop = 0;
-  destroyCollabPlanDoc();
+  await replacePlanCollabDoc("local-version-restore");
   logActivity(`恢复历史版本：${entry.reason || "旧版本"}`);
-  saveState("已恢复历史版本");
+  await saveState("已恢复历史版本");
+  broadcastPlanReplaced("恢复历史版本");
   render();
 }
 
@@ -5899,10 +5911,7 @@ async function createRecommendedPlan() {
     transportFilterApplied = false;
     clearPlanYjsState();
   }, { requireUnlocked: false });
-  destroyCollabPlanDoc();
-  await syncDayMetasToDoc("local-recommended-plan-days");
-  await syncStopListsToDoc("local-recommended-plan-stops");
-  await syncPlanMetaToDoc("local-recommended-plan-meta");
+  await replacePlanCollabDoc("local-recommended-plan");
   broadcastPlanReplaced("生成推荐计划");
   closeCreateChoice();
 }
@@ -5926,10 +5935,7 @@ async function createBlankTemplate() {
     transportFilterApplied = false;
     clearPlanYjsState();
   }, { requireUnlocked: false });
-  destroyCollabPlanDoc();
-  await syncDayMetasToDoc("local-blank-plan-days");
-  await syncStopListsToDoc("local-blank-plan-stops");
-  await syncPlanMetaToDoc("local-blank-plan-meta");
+  await replacePlanCollabDoc("local-blank-plan");
   broadcastPlanReplaced("生成空白模板");
   closeCreateChoice();
 }
@@ -6146,12 +6152,9 @@ dom.resetBtn.addEventListener("click", async () => {
   activeDay = 0;
   activeStop = 0;
   transportFilterApplied = false;
-  saveState("已重置示例");
+  await replacePlanCollabDoc("local-reset-plan");
+  await saveState("已重置示例");
   render();
-  destroyCollabPlanDoc();
-  await syncDayMetasToDoc("local-reset-plan-days");
-  await syncStopListsToDoc("local-reset-plan-stops");
-  await syncPlanMetaToDoc("local-reset-plan-meta");
   broadcastPlanReplaced("重置示例计划");
 });
 
