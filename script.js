@@ -6,6 +6,7 @@ const EXTERNAL_IMPORT_CONFIG_KEY = "tripboard-external-import-v1";
 const VERSION_PREFIX = "tripboard-version-history:";
 const MAX_VERSION_HISTORY = 12;
 const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
+const YJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/yjs@13.6.27/+esm";
 
 const images = {
   kyoto:
@@ -45,6 +46,23 @@ function serializePlan(plan) {
 
 function sameSerialized(a, b) {
   return serializePlan(a) === serializePlan(b);
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(String(value || ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function money(value) {
@@ -247,6 +265,7 @@ function makeStop({
   type = "Place",
   address = "待确认",
   note = "补充交通、预订和同行意见。",
+  noteYjs = "",
   tags = ["草稿"],
   budget = 0,
   paid = 0,
@@ -268,6 +287,7 @@ function makeStop({
     type,
     address,
     note,
+    noteYjs,
     tags: normalizeTags(tags),
     budget: Number(budget || 0),
     paid: Number(paid || 0),
@@ -606,6 +626,7 @@ function mergeStopFields(localStop = {}, remoteStop = {}, baseStop = {}) {
     "type",
     "address",
     "note",
+    "noteYjs",
     "budget",
     "paid",
     "payer",
@@ -712,11 +733,206 @@ function hideConflictPanel() {
   if (dom.conflictPanel) dom.conflictPanel.hidden = true;
 }
 
+function setNoteCollabStatus(message) {
+  if (dom.noteCollabStatus) dom.noteCollabStatus.textContent = message;
+}
+
+function currentNoteRoomId(stopId = currentStop()?.id) {
+  return tripId && stopId ? `note:${tripId}:${stopId}` : "";
+}
+
+function stableNoteClientId(value) {
+  let hash = 2166136261;
+  String(value || "tripboard-note").split("").forEach((char) => {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  });
+  return Math.abs(hash) || 1;
+}
+
+function buildInitialNoteUpdate(Y, stop) {
+  const seedDoc = new Y.Doc();
+  seedDoc.clientID = stableNoteClientId(`${tripId}:${stop.id}`);
+  seedDoc.getText("note").insert(0, stop.note || "");
+  const update = Y.encodeStateAsUpdate(seedDoc);
+  seedDoc.destroy();
+  return update;
+}
+
+async function ensureYjs() {
+  if (yjsModule) return yjsModule;
+  if (!yjsReadyPromise) {
+    yjsReadyPromise = import(YJS_MODULE_URL)
+      .then((module) => {
+        yjsModule = module;
+        return module;
+      })
+      .catch((error) => {
+        console.warn("Yjs load failed", error);
+        setNoteCollabStatus("备注逐字协作加载失败，仍可随计划保存");
+        yjsReadyPromise = null;
+        throw error;
+      });
+  }
+  return yjsReadyPromise;
+}
+
+function persistCurrentNoteFromDoc(label = "备注已实时同步") {
+  if (!noteText || !noteDocStopId) return;
+  const stop = state.days.flatMap((day) => day.stops || []).find((item) => item.id === noteDocStopId);
+  if (!stop) return;
+  const nextValue = noteText.toString();
+  const nextYjs = yjsModule && noteDoc ? bytesToBase64(yjsModule.encodeStateAsUpdate(noteDoc)) : stop.noteYjs || "";
+  const changed = stop.note !== nextValue || stop.noteYjs !== nextYjs;
+  if (!changed) return;
+  stop.note = nextValue;
+  stop.noteYjs = nextYjs;
+  dom.placeNote.textContent = nextValue;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  setNoteCollabStatus(label);
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = setTimeout(() => {
+    if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
+    pushRemoteState("备注已实时同步");
+  }, 900);
+}
+
+function broadcastNoteUpdate(update) {
+  if (!realtimeChannel || !noteDocStopId || isApplyingNoteRemote) return;
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "note-yjs-update",
+    payload: {
+      roomId: currentNoteRoomId(noteDocStopId),
+      stopId: noteDocStopId,
+      update: bytesToBase64(update),
+      memberId: memberProfile?.id || sessionId,
+      name: getCollabName(),
+      sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function destroyNoteDoc() {
+  clearTimeout(noteSaveTimer);
+  noteSaveTimer = null;
+  noteDocStopId = "";
+  noteText = null;
+  if (noteDoc) {
+    noteDoc.destroy();
+    noteDoc = null;
+  }
+}
+
+async function bindNoteCollabDoc() {
+  const stop = currentStop();
+  if (!stop?.id || noteDocStopId === stop.id) return;
+  const requestId = noteBindRequestId + 1;
+  noteBindRequestId = requestId;
+  destroyNoteDoc();
+  if (!tripId || isReadonlyMode) {
+    setNoteCollabStatus(tripId ? "备注会随计划保存" : "创建共享计划后可逐字协作");
+    return;
+  }
+  setNoteCollabStatus("备注逐字协作加载中...");
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return;
+  }
+  if (requestId !== noteBindRequestId || currentStop()?.id !== stop.id) return;
+  noteDocStopId = stop.id;
+  noteDoc = new Y.Doc();
+  noteText = noteDoc.getText("note");
+  let restored = false;
+  if (stop.noteYjs) {
+    try {
+      Y.applyUpdate(noteDoc, base64ToBytes(stop.noteYjs), "restore");
+      restored = true;
+    } catch (error) {
+      console.warn("Stored Yjs note state could not be restored", error);
+    }
+  } else if (stop.note) {
+    Y.applyUpdate(noteDoc, buildInitialNoteUpdate(Y, stop), "restore");
+    restored = true;
+  }
+  const restoredValue = restored ? noteText.toString() : stop.note || "";
+  if (dom.fieldNote.value !== restoredValue) dom.fieldNote.value = restoredValue;
+  noteDoc.on("update", (update, origin) => {
+    if (origin === "remote") {
+      persistCurrentNoteFromDoc("收到协作者备注更新");
+      return;
+    }
+    broadcastNoteUpdate(update);
+    persistCurrentNoteFromDoc("备注逐字同步中");
+  });
+  if (restored && stop.note !== restoredValue) {
+    persistCurrentNoteFromDoc("已载入备注协作状态");
+  }
+  setNoteCollabStatus("备注逐字协作已开启");
+}
+
+async function applyRemoteNoteUpdate(payload = {}) {
+  if (!payload.update || payload.roomId !== currentNoteRoomId()) return;
+  if (!noteDoc || !noteText || noteDocStopId !== payload.stopId) await bindNoteCollabDoc();
+  if (!noteDoc) return;
+  let Y;
+  try {
+    Y = await ensureYjs();
+  } catch {
+    return;
+  }
+  isApplyingNoteRemote = true;
+  try {
+    Y.applyUpdate(noteDoc, base64ToBytes(payload.update), "remote");
+    const nextValue = noteText.toString();
+    if (dom.fieldNote.value !== nextValue) dom.fieldNote.value = nextValue;
+    setNoteCollabStatus(`${payload.name || "协作者"} 正在同步备注`);
+  } finally {
+    isApplyingNoteRemote = false;
+  }
+}
+
+async function syncFieldNoteToDoc() {
+  if (!canEdit() || isReadonlyMode) return;
+  await bindNoteCollabDoc();
+  if (!noteText || isApplyingNoteRemote) return;
+  const nextValue = dom.fieldNote.value;
+  const currentValue = noteText.toString();
+  if (currentValue === nextValue) return;
+  let prefixLength = 0;
+  const maxPrefix = Math.min(currentValue.length, nextValue.length);
+  while (prefixLength < maxPrefix && currentValue[prefixLength] === nextValue[prefixLength]) {
+    prefixLength += 1;
+  }
+  let suffixLength = 0;
+  const maxSuffix = Math.min(currentValue.length - prefixLength, nextValue.length - prefixLength);
+  while (
+    suffixLength < maxSuffix &&
+    currentValue[currentValue.length - 1 - suffixLength] === nextValue[nextValue.length - 1 - suffixLength]
+  ) {
+    suffixLength += 1;
+  }
+  const deleteLength = currentValue.length - prefixLength - suffixLength;
+  const insertText = nextValue.slice(prefixLength, nextValue.length - suffixLength);
+  noteDoc.transact(() => {
+    if (deleteLength > 0) noteText.delete(prefixLength, deleteLength);
+    if (insertText) noteText.insert(prefixLength, insertText);
+  }, "local-input");
+}
+
 function applyRemotePlan(remotePlan, meta = {}) {
   isApplyingRemote = true;
+  const activeStopId = currentStop()?.id || "";
+  const remoteActiveStop = activeStopId ? remotePlan.days?.flatMap((day) => day.stops || []).find((stop) => stop.id === activeStopId) : null;
+  const currentNoteState = activeStopId === noteDocStopId ? currentStop()?.noteYjs || "" : "";
   state = ensurePlanDates(clone(remotePlan));
   lastSyncedState = clone(state);
   lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
+  if (remoteActiveStop?.noteYjs && remoteActiveStop.noteYjs !== currentNoteState) {
+    destroyNoteDoc();
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   isApplyingRemote = false;
 }
@@ -845,6 +1061,7 @@ const dom = {
   fieldImage: document.querySelector("#fieldImage"),
   fieldTags: document.querySelector("#fieldTags"),
   fieldNote: document.querySelector("#fieldNote"),
+  noteCollabStatus: document.querySelector("#noteCollabStatus"),
   editorPanel: document.querySelector(".editor-panel"),
   editorLockState: document.querySelector("#editorLockState"),
   editLockBanner: document.querySelector("#editLockBanner"),
@@ -984,6 +1201,14 @@ let pendingConflict = null;
 let isResolvingConflict = false;
 let editLockEnabled = true;
 let remoteVersionHistoryEnabled = true;
+let noteDoc = null;
+let noteText = null;
+let noteDocStopId = "";
+let isApplyingNoteRemote = false;
+let noteSaveTimer = null;
+let yjsModule = null;
+let yjsReadyPromise = null;
+let noteBindRequestId = 0;
 const initialGuideDates = defaultGuideDates();
 const guideState = {
   destination: "甘肃",
@@ -1317,6 +1542,12 @@ function renderEditorLockState() {
       control.disabled = isReadonlyMode || locked;
     });
   });
+  if (dom.fieldNote) {
+    dom.fieldNote.disabled = isReadonlyMode;
+  }
+  if (locked && dom.noteCollabStatus && !isReadonlyMode) {
+    dom.noteCollabStatus.textContent = "结构字段已锁定，备注仍可多人逐字协作";
+  }
   [
     dom.amapLookupBtn,
     dom.moveUpBtn,
@@ -1407,8 +1638,16 @@ async function pushRemoteState(label = "已同步云端") {
       const remote = await fetchRemotePlan();
       if (remote?.error) return;
       if (remote?.data?.days?.length) {
+        const remotePlan = ensurePlanDates(clone(remote.data));
+        if (sameSerialized(state, remotePlan)) {
+          lastRemoteUpdatedAt = remote.updated_at || lastRemoteUpdatedAt;
+          lastSyncedState = clone(remotePlan);
+          dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
+          dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
+          return;
+        }
         showConflictPanel({
-          remote: remote.data,
+          remote: remotePlan,
           local: clone(state),
           base: clone(lastSyncedState || {}),
           updatedAt: remote.updated_at || "",
@@ -1481,6 +1720,9 @@ function subscribeRemoteState() {
         presence: {
           key: sessionId,
         },
+        broadcast: {
+          self: false,
+        },
       },
     })
     .on(
@@ -1491,6 +1733,10 @@ function subscribeRemoteState() {
         handleRemotePlanUpdate(next);
       },
     )
+    .on("broadcast", { event: "note-yjs-update" }, ({ payload }) => {
+      if (payload?.memberId === (memberProfile?.id || sessionId)) return;
+      applyRemoteNoteUpdate(payload);
+    })
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
       renderMembers();
@@ -1509,6 +1755,7 @@ function subscribeRemoteState() {
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
         dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "实时同步";
+        bindNoteCollabDoc();
         trackPresence();
       }
     });
@@ -2481,7 +2728,9 @@ function renderDetail() {
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
   dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
   dom.fieldTags.value = (stop.tags || []).join(", ");
-  dom.fieldNote.value = stop.note || "";
+  if (noteDocStopId !== stop.id || !noteText) {
+    dom.fieldNote.value = stop.note || "";
+  }
 
   dom.commentList.innerHTML = (stop.comments || [])
     .map((comment) => `<div class="comment-item"><span class="avatar a2">${comment.author || "我"}</span><p>${comment.text}</p></div>`)
@@ -2540,6 +2789,7 @@ function render() {
   renderVersionHistory();
   applyReadonlyUi();
   renderEditorLockState();
+  bindNoteCollabDoc();
   refreshIcons();
 }
 
@@ -2599,9 +2849,13 @@ dom.stopForm.addEventListener("submit", (event) => {
     stop.lat = dom.fieldLat.value.trim();
     stop.image = dom.fieldImage.value.trim() || stop.image || images.city;
     stop.tags = normalizeTags(dom.fieldTags.value);
-    stop.note = dom.fieldNote.value.trim();
+    stop.note = noteDocStopId === stop.id && noteText ? noteText.toString() : dom.fieldNote.value.trim();
     clearCurrentAmapRoute();
   });
+});
+
+dom.fieldNote.addEventListener("input", () => {
+  syncFieldNoteToDoc();
 });
 
 dom.addStopBtn.addEventListener("click", () => {

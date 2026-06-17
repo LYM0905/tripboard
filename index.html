@@ -415,7 +415,7 @@
             <label>纬度<input id="fieldLat" name="lat" type="number" step="0.000001" placeholder="可选" /></label>
             <label class="full">图片 URL<input id="fieldImage" name="image" type="url" placeholder="可粘贴景点官方图或自己上传后的图片地址" /></label>
             <label class="full">标签<input id="fieldTags" name="tags" placeholder="用逗号分隔，比如 必去,日落,需预约" /></label>
-            <label class="full">备注<textarea id="fieldNote" name="note" rows="4" placeholder="写下预订、交通、注意事项"></textarea></label>
+            <label class="full">备注<textarea id="fieldNote" name="note" rows="4" placeholder="写下预订、交通、注意事项"></textarea><small class="field-hint" id="noteCollabStatus">备注会随计划保存</small></label>
             <a class="map-link full" id="fieldAmapLink" href="#" target="_blank" rel="noopener">生成后可打开高德搜索</a>
             <div class="form-actions full">
               <button type="button" class="text-btn" id="amapLookupBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
@@ -577,7 +577,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-lock-field-merge"></script>
-    <script src="script.js?v=20260617-lock-field-merge"></script>
+    <script src="config.js?v=20260617-yjs-note-collab"></script>
+    <script src="script.js?v=20260617-yjs-note-collab"></script>
   </body>
 </html>
