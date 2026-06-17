@@ -2343,6 +2343,32 @@ async function addCollaborativeTransportQuote(quote) {
   return true;
 }
 
+async function addCollaborativeTransportQuotes(quotes = [], origin = "local-transport-quotes-batch") {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc || !collabTransportQuotesArray || isApplyingCollabPlanRemote) return false;
+  const normalized = normalizeTransportQuotes(
+    quotes.map((quote) => ({
+      ...quote,
+      createdBy: quote.createdBy || getCollabName(),
+      createdAt: quote.createdAt || new Date().toISOString(),
+    })),
+  );
+  if (!normalized.length) return true;
+  const existing = readTransportQuotesFromDoc();
+  const existingIds = new Set(existing.map((item) => item.id));
+  const existingKeys = new Set(existing.map(transportOptionIdentity));
+  const additions = normalized.filter((quote) => !existingIds.has(quote.id) && !existingKeys.has(transportOptionIdentity(quote)));
+  if (!additions.length) return true;
+  collabPlanDoc.transact(() => {
+    collabTransportQuotesArray.insert(0, additions);
+    if (collabTransportQuotesArray.length > 80) {
+      collabTransportQuotesArray.delete(80, collabTransportQuotesArray.length - 80);
+    }
+  }, origin);
+  return true;
+}
+
 async function addCollaborativeCandidate(stop) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
@@ -4863,12 +4889,19 @@ async function saveProviderTransportQuotes(items = [], day = currentDay(), sourc
     .map((item) => transportQuoteFromProviderItem(item, day, source))
     .filter(Boolean);
   if (!incoming.length) return 0;
-  const existing = normalizeTransportQuotes(state.transportQuotes || []);
-  const incomingKeys = new Set(incoming.map(transportOptionIdentity));
-  const preserved = existing.filter((item) => !incomingKeys.has(transportOptionIdentity(item)));
-  state.transportQuotes = normalizeTransportQuotes([...incoming, ...preserved]).slice(0, 80);
-  await syncTransportQuotesToDoc("local-provider-transport-quotes");
-  return incoming.length;
+  await bindCollabPlanDoc();
+  const existing = readTransportQuotesFromDoc();
+  const existingIds = new Set(existing.map((item) => item.id));
+  const existingKeys = new Set(existing.map(transportOptionIdentity));
+  const additions = incoming.filter((quote) => !existingIds.has(quote.id) && !existingKeys.has(transportOptionIdentity(quote)));
+  if (!additions.length) return 0;
+  if (await addCollaborativeTransportQuotes(additions, "local-provider-transport-quotes-batch")) {
+    persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
+    return additions.length;
+  }
+  state.transportQuotes = normalizeTransportQuotes([...additions, ...existing]).slice(0, 80);
+  await syncTransportQuotesToDoc("local-provider-transport-quotes-fallback");
+  return additions.length;
 }
 
 function manualTransportQuotes() {
