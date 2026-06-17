@@ -1362,6 +1362,42 @@ function remoteTextEditorsForField(field, scope = "stop") {
   });
 }
 
+function currentFocusedBlockContext() {
+  const active = document.activeElement;
+  const focusedBlockElement = active && dom.dayBlockList?.contains(active) ? active.closest?.("[data-day-block]") : null;
+  const blockId = focusedBlockElement?.dataset.dayBlock || activeBlockPresenceId || "";
+  if (!blockId) return null;
+  const day = currentDay();
+  const block = normalizeDayBlocks(day?.blocks || []).find((item) => item.id === blockId);
+  if (!day || !block) return null;
+  const isComment = Boolean(focusedBlockElement && (active.closest?.("[data-block-comment-form]") || active.closest?.(".day-block-comments")));
+  const isText = Boolean(focusedBlockElement && active.closest?.("[data-edit-day-block]"));
+  return {
+    dayId: day.id,
+    blockId,
+    blockText: block.text || dayBlockTypeLabel(block.type),
+    mode: isComment ? "comment" : isText ? "text" : "block",
+  };
+}
+
+function blockEditingLabel(context = {}) {
+  if (!context?.blockId) return "";
+  if (context.mode === "comment") return "正在评论协作块";
+  if (context.mode === "text") return "正在编辑协作块";
+  return "正在查看协作块";
+}
+
+function remoteEditorsForBlock(blockId = "") {
+  const dayId = currentDay()?.id || "";
+  const ownMemberId = memberProfile?.id || sessionId;
+  if (!blockId) return [];
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member)) return false;
+    return member.activeDayId === dayId && member.activeBlockId === blockId;
+  });
+}
+
 function commentsForScope(scope = "stop") {
   return scope === "day" ? currentDay()?.comments || [] : currentStop()?.comments || [];
 }
@@ -3045,6 +3081,16 @@ function renderDayBlockComments(block) {
   return `<div class="day-block-comments" data-block-comments="${escapeHtml(block.id)}">${rendered.html}</div>`;
 }
 
+function renderDayBlockPresence(block) {
+  const editors = remoteEditorsForBlock(block.id).slice(0, 3);
+  if (!editors.length) return "";
+  return `
+    <span class="day-block-presence" title="${escapeHtml(editors.map((member) => `${member.name || "协作者"} ${member.blockEditing || "正在编辑协作块"}`).join("、"))}">
+      ${editors.map((member, index) => `<span class="text-presence-chip ${memberPresenceClass(member, index)}">${escapeHtml(memberInitial(member.name))}<span>${escapeHtml(member.blockEditing || "正在编辑")}</span></span>`).join("")}
+    </span>
+  `;
+}
+
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
   const blocks = normalizeDayBlocks(day.blocks || []);
@@ -3075,11 +3121,13 @@ function renderDayBlocks(day = currentDay()) {
           const downDisabled = isReadonlyMode || index === blocks.length - 1 ? " disabled" : "";
           const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
           const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
+          const presenceHtml = renderDayBlockPresence(block);
           return `
             <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}">
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <input class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" value="${escapeHtml(block.text)}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr} />
               <span class="day-block-meta">${escapeHtml(meta)}</span>
+              ${presenceHtml}
               <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
               <span class="day-block-order">
                 <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
@@ -5355,6 +5403,7 @@ let dayFieldSyncTimer = null;
 let dayBlockEditTimer = null;
 let blockReplyingCommentId = "";
 let blockCommentFilters = {};
+let activeBlockPresenceId = "";
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
@@ -5619,6 +5668,8 @@ function presencePayload() {
   const day = currentDay();
   const focusedTextField = currentFocusedTextField();
   const textSelection = textSelectionPayload(focusedTextField);
+  const blockContext = currentFocusedBlockContext();
+  const blockEditing = blockEditingLabel(blockContext);
   return {
     memberId: profile?.id || sessionId,
     name: profile?.name || "匿名成员",
@@ -5626,7 +5677,10 @@ function presencePayload() {
     activeDay: day?.label || "D1",
     activeDayId: day?.id || "",
     activeStopId: stop?.id || "",
-    editing: stop?.title || "行程",
+    activeBlockId: blockContext?.blockId || "",
+    activeBlockText: blockContext?.blockText || "",
+    blockEditing,
+    editing: blockEditing ? blockContext.blockText : stop?.title || "行程",
     textSelection,
     textEditing: textSelection ? textSelectionLabel(textSelection) : "",
     lockStopId: editLockEnabled && canEdit() ? stop?.id || "" : "",
@@ -5681,12 +5735,13 @@ function renderMembers() {
       .map(
         (member, index) => {
           const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
-          const activity = textEditing || `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}`;
+          const blockEditing = member.blockEditing ? `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}` : "";
+          const activity = textEditing || blockEditing || `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}`;
           return `
-          <div class="member-item ${textEditing ? "is-text-editing" : ""}">
+          <div class="member-item ${textEditing || blockEditing ? "is-text-editing" : ""}">
             <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
             <p><strong>${escapeHtml(member.name || "匿名成员")}</strong><small>${escapeHtml(member.role || "同行成员")} · ${escapeHtml(member.activeDay || "在线")} · ${escapeHtml(activity)}</small></p>
-            ${textEditing ? `<em>${escapeHtml(member.editing || "当前地点")}</em>` : ""}
+            ${textEditing || blockEditing ? `<em>${escapeHtml(member.editing || member.activeBlockText || "当前内容")}</em>` : ""}
           </div>
         `;
         },
@@ -6074,6 +6129,7 @@ function subscribeRemoteState() {
       if (payload.roomId !== currentTextRoomId(payload.stopId)) return;
       upsertOnlineMember(payload);
       renderMembers();
+      renderDayBlocks(currentDay());
       renderEditorLockState();
     })
     .on("broadcast", { event: "stop-created" }, ({ payload }) => {
@@ -6127,16 +6183,19 @@ function subscribeRemoteState() {
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
       renderMembers();
+      renderDayBlocks(currentDay());
       renderEditorLockState();
     })
     .on("presence", { event: "join" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
       renderMembers();
+      renderDayBlocks(currentDay());
       renderEditorLockState();
     })
     .on("presence", { event: "leave" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
       renderMembers();
+      renderDayBlocks(currentDay());
       renderEditorLockState();
     })
     .subscribe((status) => {
@@ -8758,6 +8817,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const blockElement = filterBlockCommentButton.closest("[data-day-block]");
     const blockId = blockElement?.dataset.dayBlock || "";
     if (!blockId) return;
+    activeBlockPresenceId = blockId;
+    schedulePresenceTrack(0);
     blockCommentFilters[blockId] = filterBlockCommentButton.dataset.blockCommentFilter || "all";
     renderDayBlocks(day);
     return;
@@ -8767,6 +8828,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     event.preventDefault();
     const blockId = focusBlockCommentButton.dataset.toggleBlockComments || "";
     const input = blockId ? dom.dayBlockList.querySelector(`[data-block-comment-input="${escapeHtml(blockId)}"]`) : null;
+    activeBlockPresenceId = blockId;
+    schedulePresenceTrack(0);
     input?.focus();
     return;
   }
@@ -8776,6 +8839,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const blockId = toggleButton.dataset.toggleDayBlock;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!block || !requireEdit("更新协作块")) return;
+    activeBlockPresenceId = blockId;
+    schedulePresenceTrack(0);
     const nextDone = !block.done;
     if (await updateDayBlockInDoc(day.id, blockId, { done: nextDone }, "local-day-block-toggle")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
@@ -8799,6 +8864,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId && !comment.parentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId && !item.parentId);
     if (!block || !comment || !requireEdit("回复块级评论")) return;
+    activeBlockPresenceId = block.id;
+    schedulePresenceTrack(0);
     blockReplyingCommentId = comment.id;
     renderDayBlocks(day);
     const input = dom.dayBlockList.querySelector(`[data-block-comment-input="${escapeHtml(block.id)}"]`);
@@ -8812,6 +8879,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId && !comment.parentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId && !item.parentId);
     if (!block || !comment || !requireEdit("更新块级评论")) return;
+    activeBlockPresenceId = block.id;
+    schedulePresenceTrack(0);
     const patch = comment.resolved
       ? { resolved: false }
       : { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: getCollabName() };
@@ -8837,6 +8906,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId);
     if (!block || !comment || !requireEdit("删除块级评论")) return;
+    activeBlockPresenceId = block.id;
+    schedulePresenceTrack(0);
     if (await deleteDayBlockCommentFromDoc(day.id, block.id, commentId, "local-day-block-comment-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       if (blockReplyingCommentId === commentId || !normalizeComments(currentDay()?.blocks?.find((item) => item.id === block.id)?.comments || []).some((item) => item.id === blockReplyingCommentId)) blockReplyingCommentId = "";
@@ -8860,6 +8931,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const direction = moveButton.dataset.direction === "up" ? "up" : "down";
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!block || !requireEdit("排序协作块")) return;
+    activeBlockPresenceId = blockId;
+    schedulePresenceTrack(0);
     if (await moveDayBlockInDoc(day.id, blockId, direction, "local-day-block-reorder")) {
       day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
         updatedBy: getCollabName(),
@@ -8884,6 +8957,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const blockId = deleteButton.dataset.deleteDayBlock;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!block || !requireEdit("删除协作块")) return;
+    activeBlockPresenceId = blockId;
+    schedulePresenceTrack(0);
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       renderDayBlocks(day);
@@ -8910,6 +8985,8 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
   const text = input?.value?.trim() || "";
   const block = normalizeDayBlocks(day?.blocks || []).find((item) => item.id === blockId);
   if (!day || !block || !text || !requireEdit(blockReplyingCommentId ? "回复块级评论" : "添加块级评论")) return;
+  activeBlockPresenceId = block.id;
+  schedulePresenceTrack(0);
   const parentId = blockReplyingCommentId && normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId)
     ? blockReplyingCommentId
     : "";
@@ -8949,9 +9026,32 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
   render();
 });
 
+dom.dayBlockList?.addEventListener("focusin", (event) => {
+  const blockElement = event.target.closest?.("[data-day-block]");
+  if (!blockElement?.dataset.dayBlock) return;
+  activeBlockPresenceId = blockElement.dataset.dayBlock;
+  schedulePresenceTrack(0);
+});
+
+dom.dayBlockList?.addEventListener("focusout", (event) => {
+  const blockElement = event.target.closest?.("[data-day-block]");
+  if (!blockElement?.dataset.dayBlock) return;
+  window.setTimeout(() => {
+    if (dom.dayBlockList?.contains(document.activeElement)) {
+      const nextBlock = document.activeElement.closest?.("[data-day-block]");
+      activeBlockPresenceId = nextBlock?.dataset.dayBlock || "";
+    } else {
+      activeBlockPresenceId = "";
+    }
+    schedulePresenceTrack(80);
+  }, 0);
+});
+
 dom.dayBlockList?.addEventListener("input", (event) => {
   const input = event.target.closest("[data-edit-day-block]");
   if (!input || !canEdit() || isReadonlyMode) return;
+  activeBlockPresenceId = input.closest("[data-day-block]")?.dataset.dayBlock || activeBlockPresenceId;
+  schedulePresenceTrack(0);
   clearTimeout(dayBlockEditTimer);
   dayBlockEditTimer = setTimeout(async () => {
     const day = currentDay();
