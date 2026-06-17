@@ -8,12 +8,13 @@ const MAX_VERSION_HISTORY = 12;
 const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
 const YJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/yjs@13.6.27/+esm";
 const COLLAB_TEXT_FIELDS = [
-  { field: "title", domKey: "fieldTitle", label: "名称" },
-  { field: "type", domKey: "fieldType", label: "类型" },
-  { field: "address", domKey: "fieldAddress", label: "地址" },
-  { field: "amapKeyword", domKey: "fieldAmapKeyword", label: "高德关键词" },
-  { field: "note", domKey: "fieldNote", label: "备注" },
+  { field: "title", domKey: "fieldTitle", label: "名称", presenceId: "fieldTitlePresence" },
+  { field: "type", domKey: "fieldType", label: "类型", presenceId: "fieldTypePresence" },
+  { field: "address", domKey: "fieldAddress", label: "地址", presenceId: "fieldAddressPresence" },
+  { field: "amapKeyword", domKey: "fieldAmapKeyword", label: "高德关键词", presenceId: "fieldAmapKeywordPresence" },
+  { field: "note", domKey: "fieldNote", label: "备注", presenceId: "fieldNotePresence" },
 ];
+const COLLAB_TEXT_FIELD_BY_FIELD = new Map(COLLAB_TEXT_FIELDS.map((item) => [item.field, item]));
 
 const images = {
   kyoto:
@@ -747,6 +748,83 @@ function setNoteCollabStatus(message) {
   if (dom.noteCollabStatus) dom.noteCollabStatus.textContent = message;
 }
 
+function collabTextFieldMeta(field) {
+  return COLLAB_TEXT_FIELD_BY_FIELD.get(field) || null;
+}
+
+function currentFocusedTextField() {
+  const activeElement = document.activeElement;
+  return COLLAB_TEXT_FIELDS.find(({ domKey }) => dom[domKey] === activeElement) || null;
+}
+
+function textSelectionPayload(fieldMeta) {
+  const element = fieldMeta ? dom[fieldMeta.domKey] : null;
+  if (!element || document.activeElement !== element) return null;
+  return {
+    field: fieldMeta.field,
+    label: fieldMeta.label,
+    start: element.selectionStart ?? 0,
+    end: element.selectionEnd ?? element.selectionStart ?? 0,
+    length: String(element.value || "").length,
+  };
+}
+
+function textSelectionLabel(selection = {}) {
+  const label = selection.label || collabTextFieldMeta(selection.field)?.label || "文本";
+  const start = Number(selection.start || 0);
+  const end = Number(selection.end || start);
+  if (end > start) return `${label} · 选中 ${end - start} 字`;
+  return `${label} · 光标 ${start}`;
+}
+
+function freshMember(member = {}, ttl = 45000) {
+  const seenAt = Date.parse(member.seenAt || "");
+  return Number.isNaN(seenAt) || Date.now() - seenAt < ttl;
+}
+
+function remoteTextEditorsForField(field) {
+  const stopId = currentStop()?.id || "";
+  const ownMemberId = memberProfile?.id || sessionId;
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member)) return false;
+    if (member.activeStopId !== stopId) return false;
+    return member.textSelection?.field === field;
+  });
+}
+
+function renderTextPresence() {
+  COLLAB_TEXT_FIELDS.forEach(({ field, presenceId }) => {
+    const target = presenceId ? document.querySelector(`#${presenceId}`) : null;
+    if (!target) return;
+    const editors = remoteTextEditorsForField(field);
+    target.hidden = !editors.length;
+    target.innerHTML = editors
+      .slice(0, 3)
+      .map((member, index) => {
+        const selected = (member.textSelection?.end || 0) > (member.textSelection?.start || 0);
+        return `
+          <span class="text-presence-chip a${(index % 4) + 1}">
+            ${memberInitial(member.name)}
+            <span>${escapeHtml(member.name || "协作者")} ${selected ? `选中 ${member.textSelection.end - member.textSelection.start} 字` : `光标 ${member.textSelection?.start ?? 0}`}</span>
+          </span>
+        `;
+      })
+      .join("");
+  });
+}
+
+function upsertOnlineMember(member = {}) {
+  if (!member.memberId) return;
+  const index = onlineMembers.findIndex((item) => item.memberId === member.memberId);
+  if (index >= 0) {
+    onlineMembers[index] = { ...onlineMembers[index], ...member };
+  } else {
+    onlineMembers = [...onlineMembers, member];
+  }
+  onlineMembers = onlineMembers.filter((item) => freshMember(item));
+}
+
 function currentTextRoomId(stopId = currentStop()?.id) {
   return tripId && stopId ? `text:${tripId}:${stopId}` : "";
 }
@@ -831,6 +909,30 @@ function broadcastTextUpdate(update) {
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
+    },
+  });
+}
+
+function broadcastTextSelection() {
+  if (!realtimeChannel || !memberProfile || !tripId) return;
+  const payload = presencePayload();
+  realtimeChannel.send({
+    type: "broadcast",
+    event: "stop-text-selection-update",
+    payload: {
+      roomId: currentTextRoomId(payload.activeStopId),
+      stopId: payload.activeStopId,
+      memberId: payload.memberId,
+      name: payload.name,
+      role: payload.role,
+      activeDay: payload.activeDay,
+      activeDayId: payload.activeDayId,
+      activeStopId: payload.activeStopId,
+      editing: payload.editing,
+      textSelection: payload.textSelection,
+      textEditing: payload.textEditing,
+      lockMode: payload.lockMode,
+      seenAt: payload.seenAt,
     },
   });
 }
@@ -1231,7 +1333,7 @@ let serviceConfig = safeJsonParse(localStorage.getItem(SERVICE_CONFIG_KEY), { ai
   amapRouteEndpoint: "",
   weatherEndpoint: "",
 };
-let memberProfile = safeJsonParse(localStorage.getItem(MEMBER_PROFILE_KEY), null);
+let memberProfile = safeJsonParse(sessionStorage.getItem(MEMBER_PROFILE_KEY), null);
 let onlineMembers = [];
 const sessionId = crypto.randomUUID ? crypto.randomUUID() : uid();
 let supabaseClient = null;
@@ -1251,6 +1353,7 @@ let collabTextFields = {};
 let collabTextStopId = "";
 let isApplyingCollabTextRemote = false;
 let collabTextSaveTimer = null;
+let presenceTrackTimer = null;
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
@@ -1398,7 +1501,7 @@ function normalizeMemberProfile(profile = {}) {
   const role = String(profile.role || "").trim();
   if (!name) return null;
   return {
-    id: profile.id || sessionId,
+    id: sessionId,
     name,
     role: role || "同行成员",
     joinedAt: profile.joinedAt || new Date().toISOString(),
@@ -1408,8 +1511,9 @@ function normalizeMemberProfile(profile = {}) {
 function saveMemberProfile(profile) {
   memberProfile = normalizeMemberProfile(profile);
   if (!memberProfile) return false;
-  localStorage.setItem(MEMBER_PROFILE_KEY, JSON.stringify(memberProfile));
+  sessionStorage.setItem(MEMBER_PROFILE_KEY, JSON.stringify(memberProfile));
   localStorage.setItem("tripboard-user-name", memberProfile.name);
+  localStorage.setItem("tripboard-user-role", memberProfile.role);
   dom.collabName.value = memberProfile.name;
   dom.collabRole.value = memberProfile.role;
   return true;
@@ -1419,6 +1523,8 @@ function presencePayload() {
   const profile = memberProfile || normalizeMemberProfile({ name: dom.collabName.value.trim() || "匿名成员", role: dom.collabRole.value.trim() || "同行成员" });
   const stop = currentStop();
   const day = currentDay();
+  const focusedTextField = currentFocusedTextField();
+  const textSelection = textSelectionPayload(focusedTextField);
   return {
     memberId: profile?.id || sessionId,
     name: profile?.name || "匿名成员",
@@ -1427,6 +1533,8 @@ function presencePayload() {
     activeDayId: day?.id || "",
     activeStopId: stop?.id || "",
     editing: stop?.title || "行程",
+    textSelection,
+    textEditing: textSelection ? textSelectionLabel(textSelection) : "",
     lockStopId: editLockEnabled && canEdit() ? stop?.id || "" : "",
     lockMode: editLockEnabled && canEdit() ? "editing" : "viewing",
     joinedAt: profile?.joinedAt || new Date().toISOString(),
@@ -1449,13 +1557,11 @@ function uniqueMembersFromPresence(presenceState) {
 
 function lockOwnerForStop(stopId = currentStop()?.id) {
   if (!stopId || !editLockEnabled || isReadonlyMode) return null;
-  const now = Date.now();
   const ownMemberId = memberProfile?.id || sessionId;
   return onlineMembers.find((member) => {
     if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
     if (member.lockStopId !== stopId || member.lockMode !== "editing") return false;
-    const seenAt = Date.parse(member.seenAt || "");
-    return Number.isNaN(seenAt) || now - seenAt < 45000;
+    return freshMember(member);
   }) || null;
 }
 
@@ -1479,14 +1585,20 @@ function renderMembers() {
   dom.memberList.innerHTML =
     members
       .map(
-        (member, index) => `
-          <div class="member-item">
+        (member, index) => {
+          const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
+          const activity = textEditing || `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}`;
+          return `
+          <div class="member-item ${textEditing ? "is-text-editing" : ""}">
             <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
-            <p><strong>${member.name || "匿名成员"}</strong><small>${member.role || "同行成员"} · ${member.activeDay || "在线"} · ${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}</small></p>
+            <p><strong>${escapeHtml(member.name || "匿名成员")}</strong><small>${escapeHtml(member.role || "同行成员")} · ${escapeHtml(member.activeDay || "在线")} · ${escapeHtml(activity)}</small></p>
+            ${textEditing ? `<em>${escapeHtml(member.editing || "当前地点")}</em>` : ""}
           </div>
-        `,
+        `;
+        },
       )
       .join("") || `<div class="member-empty">填写姓名后加入协作，在线成员会显示在这里。</div>`;
+  renderTextPresence();
 }
 
 function applyReadonlyUi() {
@@ -1609,7 +1721,19 @@ async function trackPresence() {
     renderEditorLockState();
     return;
   }
-  await realtimeChannel.track(presencePayload());
+  const payload = presencePayload();
+  await realtimeChannel.track(payload);
+  upsertOnlineMember(payload);
+  broadcastTextSelection();
+  renderMembers();
+  renderEditorLockState();
+}
+
+function schedulePresenceTrack(delay = 120) {
+  clearTimeout(presenceTrackTimer);
+  presenceTrackTimer = setTimeout(() => {
+    trackPresence();
+  }, delay);
 }
 
 function getShareUrl() {
@@ -1781,6 +1905,13 @@ function subscribeRemoteState() {
     .on("broadcast", { event: "stop-text-yjs-update" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteTextUpdate(payload);
+    })
+    .on("broadcast", { event: "stop-text-selection-update" }, ({ payload }) => {
+      if (!payload || payload.memberId === (memberProfile?.id || sessionId)) return;
+      if (payload.roomId !== currentTextRoomId(payload.stopId)) return;
+      upsertOnlineMember(payload);
+      renderMembers();
+      renderEditorLockState();
     })
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
@@ -2903,7 +3034,16 @@ dom.stopForm.addEventListener("submit", (event) => {
 COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
   dom[domKey]?.addEventListener("input", () => {
     syncCollabTextFieldToDoc(field, dom[domKey].value);
+    schedulePresenceTrack();
   });
+  ["focus", "click", "keyup", "select"].forEach((eventName) => {
+    dom[domKey]?.addEventListener(eventName, () => schedulePresenceTrack(eventName === "focus" ? 0 : 90));
+  });
+  dom[domKey]?.addEventListener("blur", () => schedulePresenceTrack(180));
+});
+
+document.addEventListener("selectionchange", () => {
+  if (currentFocusedTextField()) schedulePresenceTrack(90);
 });
 
 dom.addStopBtn.addEventListener("click", () => {
@@ -3803,8 +3943,12 @@ dom.importForm.addEventListener("submit", (event) => {
 });
 
 async function boot() {
+  if (memberProfile) {
+    memberProfile = normalizeMemberProfile(memberProfile);
+    sessionStorage.setItem(MEMBER_PROFILE_KEY, JSON.stringify(memberProfile));
+  }
   dom.collabName.value = memberProfile?.name || localStorage.getItem("tripboard-user-name") || "";
-  dom.collabRole.value = memberProfile?.role || "";
+  dom.collabRole.value = memberProfile?.role || localStorage.getItem("tripboard-user-role") || "";
   const appConfig = window.TRIPBOARD_CONFIG || {};
   const isLegacyTransportEndpoint =
     ctripConfig.endpoint &&

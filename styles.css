@@ -1244,9 +1244,23 @@ button:disabled {
   border-radius: 8px;
 }
 
+.member-item.is-text-editing {
+  background: #edf8f4;
+  border-color: rgba(36, 115, 92, 0.28);
+}
+
 .member-item p {
   min-width: 0;
   margin: 0;
+}
+
+.member-item em {
+  grid-column: 2;
+  margin-top: -4px;
+  color: var(--green);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .member-item strong,
@@ -1633,6 +1647,40 @@ button:disabled {
   font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
+}
+
+.text-presence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 0;
+}
+
+.text-presence[hidden] {
+  display: none;
+}
+
+.text-presence-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 7px 3px 4px;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.text-presence-chip::first-letter {
+  text-transform: uppercase;
+}
+
+.text-presence-chip > span {
+  overflow: hidden;
+  color: #fff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editor-panel.is-locked {
