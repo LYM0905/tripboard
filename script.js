@@ -2713,6 +2713,35 @@ async function syncStopListToDoc(dayId, origin = "local-stop-list") {
   return true;
 }
 
+async function reorderStopListInDoc(dayId, orderedStops = [], origin = "local-stop-reorder", options = {}) {
+  if (!canEdit() || isReadonlyMode || !dayId) return false;
+  const stopArray = await ensureStopArrayForDay(dayId);
+  if (!collabPlanDoc || !stopArray || isApplyingCollabPlanRemote) return false;
+  const patchFields = Array.isArray(options.patchFields) ? options.patchFields : [];
+  const desiredStops = normalizeCollaborativeStopList(orderedStops);
+  if (!desiredStops.length) return false;
+  const latestStops = normalizeCollaborativeStopList(stopArray.toArray());
+  const latestById = new Map(latestStops.map((stop) => [stop.id, stop]));
+  const desiredIds = new Set(desiredStops.map((stop) => stop.id));
+  const orderedMerged = desiredStops.map((stop) => {
+    const latest = latestById.get(stop.id);
+    if (!latest) return stop;
+    if (!patchFields.length) return latest;
+    const patch = {};
+    patchFields.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(stop, field)) patch[field] = stop[field];
+    });
+    return normalizeCollaborativeStop({ ...latest, ...patch, id: latest.id });
+  });
+  const preservedExtras = latestStops.filter((stop) => !desiredIds.has(stop.id));
+  const nextStops = [...orderedMerged, ...preservedExtras];
+  if (sameSerialized(latestStops, nextStops)) return true;
+  collabPlanDoc.transact(() => {
+    syncYArrayById(stopArray, nextStops, normalizeCollaborativeStop);
+  }, origin);
+  return true;
+}
+
 async function ensureStopArrayForDay(dayId) {
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabStopListsMap || !dayId) return null;
@@ -6309,7 +6338,9 @@ dom.amapRouteBtn.addEventListener("click", async () => {
     };
     logActivity("高德规划当天路线");
     await syncDayMetasToDoc("local-amap-route-day");
-    await syncStopListToDoc(day.id, "local-amap-route-stops");
+    if (!(await reorderStopListInDoc(day.id, day.stops, "local-amap-route-stops", { patchFields: ["address", "lng", "lat", "amapKeyword"] }))) {
+      await syncStopListToDoc(day.id, "local-amap-route-stops-fallback");
+    }
     await saveState("已用高德规划路线");
     render();
     dom.optimizeHint.textContent = `高德已规划 ${day.amapRoute.legs.length} 段路线：${formatDistanceText(day.amapRoute.distance)} · ${formatDurationText(day.amapRoute.duration)}。`;
@@ -6358,7 +6389,9 @@ dom.moveUpBtn.addEventListener("click", async () => {
     nextStops = [...stops];
     clearCurrentAmapRoute();
   }, { save: false, render: false })) return;
-  await syncStopListToDoc(dayId, "local-stop-reorder");
+  if (!(await reorderStopListInDoc(dayId, nextStops, "local-stop-reorder"))) {
+    await syncStopListToDoc(dayId, "local-stop-reorder-fallback");
+  }
   await saveState("上移地点");
   broadcastStopsReordered(dayId, nextStops);
   render();
@@ -6378,7 +6411,9 @@ dom.moveDownBtn.addEventListener("click", async () => {
     nextStops = [...dayStops];
     clearCurrentAmapRoute();
   }, { save: false, render: false })) return;
-  await syncStopListToDoc(dayId, "local-stop-reorder");
+  if (!(await reorderStopListInDoc(dayId, nextStops, "local-stop-reorder"))) {
+    await syncStopListToDoc(dayId, "local-stop-reorder-fallback");
+  }
   await saveState("下移地点");
   broadcastStopsReordered(dayId, nextStops);
   render();
@@ -6605,7 +6640,10 @@ async function optimizeCurrentDayRoute() {
     day.amapRoute = null;
     activeStop = 0;
     logActivity(serviceConfig.aiEndpoint ? "AI 优化当天路径" : "本地优化当天路径");
-    await syncStopListToDoc(day.id, serviceConfig.aiEndpoint ? "local-ai-route-reorder" : "local-fallback-route-reorder");
+    const reorderOrigin = serviceConfig.aiEndpoint ? "local-ai-route-reorder" : "local-fallback-route-reorder";
+    if (!(await reorderStopListInDoc(day.id, day.stops, reorderOrigin, { patchFields: ["tags"] }))) {
+      await syncStopListToDoc(day.id, `${reorderOrigin}-fallback`);
+    }
     await saveState(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
     broadcastStopsReordered(day.id, day.stops);
     dom.optimizeHint.textContent = serviceConfig.aiEndpoint
