@@ -53,7 +53,9 @@ const COLLAB_PRESENCE_TEXT_FIELDS = [
   ...COLLAB_DAY_TEXT_FIELDS,
 ];
 const COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD = new Map(COLLAB_PRESENCE_TEXT_FIELDS.map((item) => [item.field, item]));
-const COLLAB_COMMENT_ANCHOR_FIELDS = COLLAB_PRESENCE_TEXT_FIELDS.filter((item) => item.scope === "stop" && item.domKey && item.presenceId);
+const COLLAB_COMMENT_ANCHOR_FIELDS = COLLAB_PRESENCE_TEXT_FIELDS.filter((item) => item.domKey && item.presenceId);
+const COLLAB_STOP_COMMENT_ANCHOR_FIELDS = COLLAB_COMMENT_ANCHOR_FIELDS.filter((item) => item.scope === "stop");
+const COLLAB_DAY_COMMENT_ANCHOR_FIELDS = COLLAB_COMMENT_ANCHOR_FIELDS.filter((item) => item.scope === "day");
 const PLAN_SETTING_FIELDS = [
   { field: "name", type: "string" },
   { field: "destination", type: "string" },
@@ -1049,6 +1051,7 @@ function mergeDays(localDays = [], remoteDays = [], baseDays = []) {
       route: mergeScalarField(baseDay.route, localDay.route, remoteDay?.route),
       weather: mergeScalarField(baseDay.weather, localDay.weather, remoteDay?.weather),
       transport: mergeScalarField(baseDay.transport, localDay.transport, remoteDay?.transport),
+      comments: mergeComments(localDay.comments || [], remoteDay?.comments || []),
       stops: mergeStops(localDay.stops || [], remoteDay?.stops || [], baseDay.stops || []),
       amapRoute: mergeScalarField(baseDay.amapRoute, localDay.amapRoute, remoteDay?.amapRoute) || null,
     });
@@ -1150,30 +1153,36 @@ function textSelectionExcerpt(fieldMeta, selection = {}) {
 function normalizeCommentAnchor(anchor = null) {
   if (!anchor?.field) return null;
   const meta = collabTextFieldMeta(anchor.field);
-  if (!meta || (meta.scope || "stop") !== "stop") return null;
+  if (!meta) return null;
+  const scope = meta.scope || "stop";
   const start = Math.max(0, Number(anchor.start || 0));
   const end = Math.max(start, Number(anchor.end || start));
-  return {
+  const normalized = {
     field: meta.field,
     label: meta.label,
-    scope: "stop",
+    scope,
     start,
     end,
     length: Math.max(0, Number(anchor.length || 0)),
     excerpt: String(anchor.excerpt || "").trim(),
-    stopId: anchor.stopId || currentStop()?.id || "",
   };
+  if (scope === "day") normalized.dayId = anchor.dayId || currentDay()?.id || "";
+  else normalized.stopId = anchor.stopId || currentStop()?.id || "";
+  return normalized;
 }
 
 function buildCommentAnchorFromField(fieldMeta = currentFocusedTextField()) {
-  if (!fieldMeta || (fieldMeta.scope || "stop") !== "stop") return null;
+  if (!fieldMeta) return null;
   const selection = textSelectionPayload(fieldMeta);
   if (!selection) return null;
-  return normalizeCommentAnchor({
+  const scope = fieldMeta.scope || "stop";
+  const anchor = {
     ...selection,
     excerpt: textSelectionExcerpt(fieldMeta, selection),
-    stopId: currentStop()?.id || "",
-  });
+  };
+  if (scope === "day") anchor.dayId = currentDay()?.id || "";
+  else anchor.stopId = currentStop()?.id || "";
+  return normalizeCommentAnchor(anchor);
 }
 
 function captureCommentAnchor(fieldMeta = currentFocusedTextField()) {
@@ -1188,13 +1197,19 @@ function captureCommentAnchor(fieldMeta = currentFocusedTextField()) {
   return anchor;
 }
 
-function currentCommentAnchor() {
+function currentCommentAnchor(scope = "") {
   const focused = buildCommentAnchorFromField(currentFocusedTextField());
-  if (focused) return focused;
+  if (focused) return scope && focused.scope !== scope ? null : focused;
   if (!lastCommentAnchor) return null;
-  const sameStop = lastCommentAnchor.stopId && lastCommentAnchor.stopId === currentStop()?.id;
+  const anchorScope = lastCommentAnchor.scope || "stop";
+  const sameScope =
+    anchorScope === "day"
+      ? lastCommentAnchor.dayId && lastCommentAnchor.dayId === currentDay()?.id
+      : lastCommentAnchor.stopId && lastCommentAnchor.stopId === currentStop()?.id;
   const fresh = Date.now() - Number(lastCommentAnchor.capturedAt || 0) < 10 * 60 * 1000;
-  return sameStop && fresh ? normalizeCommentAnchor(lastCommentAnchor) : null;
+  const normalized = sameScope && fresh ? normalizeCommentAnchor(lastCommentAnchor) : null;
+  if (!normalized || (scope && normalized.scope !== scope)) return null;
+  return normalized;
 }
 
 function textSelectionLabel(selection = {}) {
@@ -1323,9 +1338,14 @@ function remoteTextEditorsForField(field, scope = "stop") {
   });
 }
 
-function commentAnchorsForField(field, comments = currentStop()?.comments || []) {
-  const { roots } = commentRootsAndReplies(comments || []);
-  return roots.filter((comment) => comment.anchor?.field === field);
+function commentsForScope(scope = "stop") {
+  return scope === "day" ? currentDay()?.comments || [] : currentStop()?.comments || [];
+}
+
+function commentAnchorsForField(field, comments = null) {
+  const meta = collabTextFieldMeta(field);
+  const scopedComments = comments || commentsForScope(meta?.scope || "stop");
+  return commentRootsAndReplies(scopedComments || []).roots.filter((comment) => comment.anchor?.field === field);
 }
 
 function renderCommentHighlight(comment, element, index = 0) {
@@ -1340,7 +1360,7 @@ function renderCommentHighlight(comment, element, index = 0) {
   if (!geometry) return "";
   const resolvedClass = comment.resolved ? " is-resolved" : "";
   return `
-    <button type="button" class="comment-highlight${resolvedClass}" data-comment-highlight="${escapeHtml(comment.id || "")}" style="--selection-x:${geometry.selectionLeft}px;--selection-y:${geometry.selectionTop}px;--selection-width:${geometry.selectionWidth}px;--selection-height:${geometry.selectionHeight}px;--comment-offset:${index * 3}px" title="${escapeHtml(comment.resolved ? "已解决批注" : "未解决批注")}">
+    <button type="button" class="comment-highlight${resolvedClass}" data-comment-highlight="${escapeHtml(comment.id || "")}" data-comment-scope="${escapeHtml(anchor.scope || "stop")}" style="--selection-x:${geometry.selectionLeft}px;--selection-y:${geometry.selectionTop}px;--selection-width:${geometry.selectionWidth}px;--selection-height:${geometry.selectionHeight}px;--comment-offset:${index * 3}px" title="${escapeHtml(comment.resolved ? "已解决批注" : "未解决批注")}">
       <i aria-hidden="true"></i>
     </button>
   `;
@@ -1352,7 +1372,7 @@ function renderTextPresence() {
     if (!target) return;
     const editors = remoteTextEditorsForField(field, scope || "stop");
     const element = dom[domKey];
-    const commentHighlights = scope === "day" ? [] : commentAnchorsForField(field);
+    const commentHighlights = commentAnchorsForField(field, commentsForScope(scope || "stop"));
     target.hidden = !editors.length && !commentHighlights.length;
     const inlineMarks = editors
       .slice(0, 3)
@@ -1464,6 +1484,8 @@ function buildInitialDayTextUpdate(Y, day) {
   COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
     seedDoc.getText(docField).insert(0, day[docField] || "");
   });
+  const commentArray = seedDoc.getArray("comments");
+  commentArray.insert(0, normalizeComments(day.comments || []));
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -1751,6 +1773,7 @@ function normalizeDayMetas(days = []) {
       route: day.route || "待填写路线",
       weather: day.weather || "天气待确认",
       transport: day.transport || "交通待规划",
+      comments: normalizeComments(day.comments || []),
       amapRoute: day.amapRoute || null,
     }))
     .filter((day) => {
@@ -1870,13 +1893,16 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
   const day = state.days.find((item) => item.id === collabDayTextDayId);
   if (!day) return;
   const nextValues = dayTextValuesFromDoc();
+  const nextComments = readDayCommentsFromDoc();
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabDayTextDoc)) : day.textYjs || day.dayTextYjs || "";
   const textChanged = COLLAB_DAY_TEXT_FIELDS.some(({ docField }) => day[docField] !== nextValues[docField]);
+  const commentsChanged = !sameSerialized(normalizeComments(day.comments || []), nextComments);
   const yjsChanged = day.textYjs !== nextYjs || day.dayTextYjs !== nextYjs;
-  if (!textChanged && !yjsChanged) return;
+  if (!textChanged && !commentsChanged && !yjsChanged) return;
   COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
     day[docField] = nextValues[docField];
   });
+  day.comments = nextComments;
   day.textYjs = nextYjs;
   day.dayTextYjs = nextYjs;
   if (collabPlanDoc && !isApplyingCollabPlanRemote && (collabDayTextStatesMap || collabDayMetasArray)) {
@@ -1895,6 +1921,7 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
             id: day.id,
             label: latest.label || day.label,
             ...nextValues,
+            comments: nextComments,
           }])[0];
           if (!sameSerialized(latest, merged)) {
             collabDayMetasArray.delete(latestIndex, 1);
@@ -1918,10 +1945,11 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
     dom.dayEditorStatus.textContent = tripId ? "逐字协作中" : "本地保存";
     dom.collabStatus.textContent = label;
   }
-  if (refreshViews && textChanged) {
+  if (refreshViews && (textChanged || commentsChanged)) {
     renderShell();
     renderDays();
     renderDaySummary();
+    renderDayComments(day);
     renderAmapRouteReport(currentDay()?.amapRoute || null);
     refreshIcons();
   }
@@ -2046,7 +2074,7 @@ function applyDayMetasToState(dayMetas = []) {
       amapRoute: meta.amapRoute || null,
       stops: [],
     };
-    ["label", "date", "title", "route", "weather", "transport", "amapRoute"].forEach((field) => {
+    ["label", "date", "title", "route", "weather", "transport", "comments", "amapRoute"].forEach((field) => {
       if (!sameSerialized(day[field], meta[field])) {
         day[field] = clone(meta[field]);
         changed = true;
@@ -2152,6 +2180,7 @@ function refreshRealtimePlanViews() {
   renderTimeline();
   renderMap();
   renderDayEditor();
+  renderDayComments(currentDay());
   renderTransport();
   renderCandidates();
   renderActivities();
@@ -2217,6 +2246,12 @@ async function saveCollaborativeTextChange(label = "地点协作内容已实时�
   collabTextSaveTimer = null;
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = null;
+  if (collabTextDoc && collabTextStopId) {
+    await persistCurrentTextFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
+  }
+  if (collabDayTextDoc && collabDayTextDayId) {
+    await persistCurrentDayTextFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
+  }
   await saveState(label);
 }
 
@@ -2498,6 +2533,10 @@ function readCommentsFromDoc() {
   return normalizeComments(collabCommentsArray ? collabCommentsArray.toArray() : []);
 }
 
+function readDayCommentsFromDoc() {
+  return normalizeComments(collabDayCommentsArray ? collabDayCommentsArray.toArray() : []);
+}
+
 function commentsWithoutThread(comments = [], commentId = "") {
   const normalized = normalizeComments(comments);
   const target = normalized.find((comment) => comment.id === commentId);
@@ -2591,9 +2630,22 @@ function renderCommentAnchorHint() {
     dom.commentAnchorHint.textContent = `正在回复 ${replying.author || "协作者"}：${replying.text.slice(0, 28)}`;
     return;
   }
-  const anchor = currentCommentAnchor();
+  const anchor = currentCommentAnchor("stop");
   dom.commentAnchorHint.hidden = !anchor;
   dom.commentAnchorHint.textContent = anchor ? commentAnchorHint(anchor) : "";
+}
+
+function renderDayCommentAnchorHint() {
+  if (!dom.dayCommentAnchorHint) return;
+  const replying = dayReplyingCommentId ? normalizeComments(currentDay()?.comments || []).find((comment) => comment.id === dayReplyingCommentId) : null;
+  if (replying) {
+    dom.dayCommentAnchorHint.hidden = false;
+    dom.dayCommentAnchorHint.textContent = `正在回复 ${replying.author || "协作者"}：${replying.text.slice(0, 28)}`;
+    return;
+  }
+  const anchor = currentCommentAnchor("day");
+  dom.dayCommentAnchorHint.hidden = !anchor;
+  dom.dayCommentAnchorHint.textContent = anchor ? commentAnchorHint(anchor) : "";
 }
 
 function focusCommentAnchor(anchor = null) {
@@ -2623,7 +2675,7 @@ function commentAuthorInitial(name) {
   return escapeHtml(memberInitial(name || "我"));
 }
 
-function renderCommentReply(reply, editable) {
+function renderCommentReply(reply, editable, deleteAttr = "data-delete-comment") {
   return `
     <div class="comment-reply" data-comment="${escapeHtml(reply.id || "")}">
       <span class="avatar a3">${commentAuthorInitial(reply.author)}</span>
@@ -2634,7 +2686,7 @@ function renderCommentReply(reply, editable) {
         </div>
         <p>${escapeHtml(reply.text)}</p>
       </div>
-      ${editable ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-comment="${escapeHtml(reply.id || "")}" aria-label="删除回复">${icon("trash-2")}</button>` : ""}
+      ${editable ? `<button type="button" class="icon-btn subtle danger-icon" ${deleteAttr}="${escapeHtml(reply.id || "")}" aria-label="删除回复">${icon("trash-2")}</button>` : ""}
     </div>
   `;
 }
@@ -2660,7 +2712,22 @@ function ensureFieldCommentMark(fieldMeta) {
 
 function renderFieldCommentMarks(stop = currentStop()) {
   const comments = normalizeComments(stop?.comments || []);
-  COLLAB_COMMENT_ANCHOR_FIELDS.forEach((fieldMeta) => {
+  COLLAB_STOP_COMMENT_ANCHOR_FIELDS.forEach((fieldMeta) => {
+    const mark = ensureFieldCommentMark(fieldMeta);
+    if (!mark) return;
+    const stats = commentStatsForField(comments, fieldMeta.field);
+    mark.hidden = !stats.total;
+    mark.classList.toggle("is-resolved", stats.total > 0 && stats.open === 0);
+    mark.innerHTML = `${icon(stats.open ? "message-square-more" : "message-square-check")}<span>${stats.open || stats.total}</span>`;
+    mark.title = stats.open
+      ? `${fieldMeta.label}有 ${stats.open} 条未解决批注${stats.replies ? `，${stats.replies} 条回复` : ""}`
+      : `${fieldMeta.label}的批注已解决`;
+  });
+}
+
+function renderDayFieldCommentMarks(day = currentDay()) {
+  const comments = normalizeComments(day?.comments || []);
+  COLLAB_DAY_COMMENT_ANCHOR_FIELDS.forEach((fieldMeta) => {
     const mark = ensureFieldCommentMark(fieldMeta);
     if (!mark) return;
     const stats = commentStatsForField(comments, fieldMeta.field);
@@ -2676,6 +2743,16 @@ function renderFieldCommentMarks(stop = currentStop()) {
 function focusCommentThread(commentId = "") {
   if (!commentId) return false;
   const thread = Array.from(dom.commentList?.querySelectorAll("[data-comment]") || []).find((item) => item.dataset.comment === commentId);
+  if (!thread) return false;
+  thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  thread.classList.add("is-focused");
+  setTimeout(() => thread.classList.remove("is-focused"), 1300);
+  return true;
+}
+
+function focusDayCommentThread(commentId = "") {
+  if (!commentId) return false;
+  const thread = Array.from(dom.dayCommentList?.querySelectorAll("[data-comment]") || []).find((item) => item.dataset.comment === commentId);
   if (!thread) return false;
   thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
   thread.classList.add("is-focused");
@@ -2711,20 +2788,25 @@ function dayValuesFromTextState(textState = "", fallbackDay = {}) {
   return values;
 }
 
-function renderStopComments(stop) {
+function renderCommentThreads(comments = [], options = {}) {
+  const {
+    filter = "all",
+    filterAttr = "data-comment-filter",
+    anchorAttr = "data-comment-anchor",
+    replyAttr = "data-reply-comment",
+    resolveAttr = "data-toggle-comment-resolved",
+    deleteAttr = "data-delete-comment",
+    emptyPrefix = "还没有评论",
+  } = options;
   const editable = canEdit();
-  const { roots, repliesByParent } = commentRootsAndReplies(stop.comments || []);
-  if (replyingCommentId && !roots.some((comment) => comment.id === replyingCommentId)) {
-    replyingCommentId = "";
-    if (dom.commentInput) dom.commentInput.placeholder = "添加同行意见或提醒";
-  }
-  const counts = commentFilterCounts(stop.comments || []);
-  if (!counts[commentFilter]) commentFilter = "all";
-  const filters = COMMENT_FILTERS.map((filter) => {
-    const active = commentFilter === filter.value ? " is-active" : "";
-    return `<button type="button" class="comment-filter${active}" data-comment-filter="${filter.value}">${filter.label}<span>${counts[filter.value] || 0}</span></button>`;
+  const { roots, repliesByParent } = commentRootsAndReplies(comments || []);
+  const counts = commentFilterCounts(comments || []);
+  const activeFilter = counts[filter] ? filter : "all";
+  const filters = COMMENT_FILTERS.map((item) => {
+    const active = activeFilter === item.value ? " is-active" : "";
+    return `<button type="button" class="comment-filter${active}" ${filterAttr}="${item.value}">${item.label}<span>${counts[item.value] || 0}</span></button>`;
   }).join("");
-  const visibleRoots = roots.filter((comment) => commentFilter === "all" || (commentFilter === "open" ? !comment.resolved : comment.resolved));
+  const visibleRoots = roots.filter((comment) => activeFilter === "all" || (activeFilter === "open" ? !comment.resolved : comment.resolved));
   const threadHtml = visibleRoots
     .map((comment) => {
       const anchor = normalizeCommentAnchor(comment.anchor);
@@ -2738,7 +2820,7 @@ function renderStopComments(stop) {
         <div class="comment-item">
           <span class="avatar a2">${commentAuthorInitial(comment.author)}</span>
           <div class="comment-bubble">
-            ${anchor ? `<button type="button" class="comment-anchor" data-comment-anchor="${escapeHtml(comment.id || "")}" title="回到评论位置">${escapeHtml(anchorLabel)}${anchorExcerpt}</button>` : ""}
+            ${anchor ? `<button type="button" class="comment-anchor" ${anchorAttr}="${escapeHtml(comment.id || "")}" title="回到评论位置">${escapeHtml(anchorLabel)}${anchorExcerpt}</button>` : ""}
             <div class="comment-meta">
               <strong>${escapeHtml(comment.author || "我")}</strong>
               ${comment.at ? `<time>${escapeHtml(formatCommentTime(comment.at))}</time>` : ""}
@@ -2746,28 +2828,70 @@ function renderStopComments(stop) {
             </div>
             <p>${escapeHtml(comment.text)}</p>
             <div class="comment-actions">
-              ${editable ? `<button type="button" class="comment-action" data-reply-comment="${escapeHtml(comment.id || "")}">${icon("reply")}回复${replies.length ? ` ${replies.length}` : ""}</button>` : replies.length ? `<span>${replies.length} 条回复</span>` : ""}
-              ${editable ? `<button type="button" class="comment-action" data-toggle-comment-resolved="${escapeHtml(comment.id || "")}">${comment.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}标记解决`}</button>` : ""}
+              ${editable ? `<button type="button" class="comment-action" ${replyAttr}="${escapeHtml(comment.id || "")}">${icon("reply")}回复${replies.length ? ` ${replies.length}` : ""}</button>` : replies.length ? `<span>${replies.length} 条回复</span>` : ""}
+              ${editable ? `<button type="button" class="comment-action" ${resolveAttr}="${escapeHtml(comment.id || "")}">${comment.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}标记解决`}</button>` : ""}
             </div>
-            ${replies.length ? `<div class="comment-replies">${replies.map((reply) => renderCommentReply(reply, editable)).join("")}</div>` : ""}
+            ${replies.length ? `<div class="comment-replies">${replies.map((reply) => renderCommentReply(reply, editable, deleteAttr)).join("")}</div>` : ""}
           </div>
-          ${editable ? `<button type="button" class="icon-btn subtle danger-icon" data-delete-comment="${escapeHtml(comment.id || "")}" aria-label="删除评论">${icon("trash-2")}</button>` : ""}
+          ${editable ? `<button type="button" class="icon-btn subtle danger-icon" ${deleteAttr}="${escapeHtml(comment.id || "")}" aria-label="删除评论">${icon("trash-2")}</button>` : ""}
         </div>
         </div>
       `;
     })
     .join("");
   const emptyText = roots.length
-    ? commentFilter === "open"
+    ? activeFilter === "open"
       ? "没有未解决批注。"
       : "没有已解决批注。"
-    : "还没有评论，可以先添加同行意见。";
+    : emptyPrefix;
+  return {
+    html: `<div class="comment-filters">${filters}</div>${threadHtml || `<div class="comment-item"><span class="avatar a1">我</span><p>${emptyText}</p></div>`}`,
+    filter: activeFilter,
+    roots,
+  };
+}
+
+function renderStopComments(stop) {
+  const { roots } = commentRootsAndReplies(stop.comments || []);
+  if (replyingCommentId && !roots.some((comment) => comment.id === replyingCommentId)) {
+    replyingCommentId = "";
+    if (dom.commentInput) dom.commentInput.placeholder = "添加同行意见或提醒";
+  }
+  const rendered = renderCommentThreads(stop.comments || [], {
+    filter: commentFilter,
+    emptyPrefix: "还没有评论，可以先添加同行意见。",
+  });
+  commentFilter = rendered.filter;
   dom.commentList.innerHTML = `
-    <div class="comment-filters">${filters}</div>
-    ${threadHtml || `<div class="comment-item"><span class="avatar a1">我</span><p>${emptyText}</p></div>`}
+    ${rendered.html}
   `;
   renderCommentAnchorHint();
   renderFieldCommentMarks(stop);
+  refreshIcons();
+}
+
+function renderDayComments(day = currentDay()) {
+  if (!day || !dom.dayCommentList) return;
+  const { roots } = commentRootsAndReplies(day.comments || []);
+  if (dayReplyingCommentId && !roots.some((comment) => comment.id === dayReplyingCommentId)) {
+    dayReplyingCommentId = "";
+    if (dom.dayCommentInput) dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+  }
+  const rendered = renderCommentThreads(day.comments || [], {
+    filter: dayCommentFilter,
+    filterAttr: "data-day-comment-filter",
+    anchorAttr: "data-day-comment-anchor",
+    replyAttr: "data-reply-day-comment",
+    resolveAttr: "data-toggle-day-comment-resolved",
+    deleteAttr: "data-delete-day-comment",
+    emptyPrefix: "还没有当天批注，可以选中当天设置里的文字后添加。",
+  });
+  dayCommentFilter = rendered.filter;
+  dom.dayCommentTitle.textContent = day.title || day.label || "当前日期";
+  dom.dayCommentList.innerHTML = rendered.html;
+  renderDayCommentAnchorHint();
+  renderDayFieldCommentMarks(day);
+  renderTextPresence();
   refreshIcons();
 }
 
@@ -2994,6 +3118,7 @@ function destroyCollabDayTextDoc() {
   collabDayTextSaveTimer = null;
   collabDayTextDayId = "";
   collabDayTextFields = {};
+  collabDayCommentsArray = null;
   if (collabDayTextDoc) {
     collabDayTextDoc.destroy();
     collabDayTextDoc = null;
@@ -3362,7 +3487,7 @@ async function patchDayMetaInDoc(dayId, patch = {}, origin = "local-day-meta-pat
   if (!collabPlanDoc || !collabDayMetasArray || isApplyingCollabPlanRemote) return false;
   const localDay = state.days.find((day) => day.id === dayId);
   const sourceDay = localDay ? normalizeDayMetas([localDay])[0] : null;
-  const allowedFields = new Set(["date", "title", "route", "weather", "transport", "amapRoute"]);
+  const allowedFields = new Set(["date", "title", "route", "weather", "transport", "comments", "amapRoute"]);
   const patchFields = Object.keys(patch).filter((field) => allowedFields.has(field));
   if (!sourceDay || !patchFields.length) return false;
   const currentItems = collabDayMetasArray.toArray();
@@ -3747,10 +3872,21 @@ async function bindCollabDayTextDoc() {
   COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
     collabDayTextFields[docField] = collabDayTextDoc.getText(docField);
   });
+  collabDayCommentsArray = collabDayTextDoc.getArray("comments");
+  collabDayTextDoc.transact(() => {
+    if (collabDayCommentsArray.length === 0 && (day.comments || []).length) {
+      collabDayCommentsArray.insert(0, normalizeComments(day.comments || []));
+    }
+  }, "restore");
   COLLAB_DAY_TEXT_FIELDS.forEach(({ docField, domKey }) => {
     const value = restored ? collabDayTextFields[docField].toString() : day[docField] || "";
     if (dom[domKey] && dom[domKey].value !== value) dom[domKey].value = value;
   });
+  const comments = readDayCommentsFromDoc();
+  if (comments.length) {
+    day.comments = comments;
+    renderDayComments(day);
+  }
   collabDayTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
       persistCurrentDayTextFromDoc("收到协作者当天文本更新").catch((error) => console.warn("Persist remote day text update failed", error));
@@ -3812,6 +3948,11 @@ async function applyRemoteDayTextUpdate(payload = {}) {
       const nextValue = collabDayTextFields[docField]?.toString() || "";
       if (dom[domKey] && dom[domKey].value !== nextValue) dom[domKey].value = nextValue;
     });
+    if (currentDay()?.id === collabDayTextDayId) {
+      currentDay().comments = readDayCommentsFromDoc();
+      renderDayComments(currentDay());
+      renderTextPresence();
+    }
     if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = `${payload.name || "协作者"} 正在同步`;
   } finally {
     isApplyingCollabDayTextRemote = false;
@@ -4205,6 +4346,25 @@ async function addCollaborativeComment(text, anchor = null) {
   return comment;
 }
 
+async function addCollaborativeDayComment(text, anchor = null) {
+  if (!canEdit() || isReadonlyMode) return false;
+  await bindCollabDayTextDoc();
+  if (!collabDayTextDoc || !collabDayCommentsArray || isApplyingCollabDayTextRemote) return false;
+  const normalizedAnchor = normalizeCommentAnchor(anchor);
+  const comment = {
+    id: uid(),
+    author: getCollabName(),
+    text: String(text || "").trim(),
+    at: new Date().toISOString(),
+    ...(normalizedAnchor?.scope === "day" ? { anchor: normalizedAnchor } : {}),
+  };
+  if (!comment.text) return true;
+  collabDayTextDoc.transact(() => {
+    collabDayCommentsArray.push([comment]);
+  }, "local-day-comment-input");
+  return comment;
+}
+
 async function addCollaborativeCommentReply(parentId, text) {
   if (!canEdit() || isReadonlyMode || !parentId) return false;
   await bindCollabTextDoc();
@@ -4226,6 +4386,27 @@ async function addCollaborativeCommentReply(parentId, text) {
   return reply;
 }
 
+async function addCollaborativeDayCommentReply(parentId, text) {
+  if (!canEdit() || isReadonlyMode || !parentId) return false;
+  await bindCollabDayTextDoc();
+  if (!collabDayTextDoc || !collabDayCommentsArray || isApplyingCollabDayTextRemote) return false;
+  const comments = normalizeComments(collabDayCommentsArray.toArray());
+  const parent = comments.find((comment) => comment.id === parentId && !comment.parentId);
+  if (!parent) return false;
+  const reply = normalizeCommentEntry({
+    id: uid(),
+    parentId,
+    author: getCollabName(),
+    text: String(text || "").trim(),
+    at: new Date().toISOString(),
+  });
+  if (!reply) return true;
+  collabDayTextDoc.transact(() => {
+    collabDayCommentsArray.push([reply]);
+  }, "local-day-comment-reply");
+  return reply;
+}
+
 async function updateCollaborativeComment(commentId, patch = {}) {
   if (!canEdit() || isReadonlyMode || !commentId) return false;
   await bindCollabTextDoc();
@@ -4239,6 +4420,22 @@ async function updateCollaborativeComment(commentId, patch = {}) {
     collabCommentsArray.delete(index, 1);
     collabCommentsArray.insert(index, [next]);
   }, "local-comment-update");
+  return next;
+}
+
+async function updateCollaborativeDayComment(commentId, patch = {}) {
+  if (!canEdit() || isReadonlyMode || !commentId) return false;
+  await bindCollabDayTextDoc();
+  if (!collabDayTextDoc || !collabDayCommentsArray || isApplyingCollabDayTextRemote) return false;
+  const comments = collabDayCommentsArray.toArray();
+  const index = comments.findIndex((comment) => comment?.id === commentId && !comment?.parentId);
+  if (index < 0) return false;
+  const next = normalizeCommentEntry({ ...comments[index], ...patch });
+  if (!next) return false;
+  collabDayTextDoc.transact(() => {
+    collabDayCommentsArray.delete(index, 1);
+    collabDayCommentsArray.insert(index, [next]);
+  }, "local-day-comment-update");
   return next;
 }
 
@@ -4261,6 +4458,28 @@ async function deleteCollaborativeComment(commentId) {
       if (deleteIds.has(comment?.id)) collabCommentsArray.delete(index, 1);
     }
   }, "local-comment-delete");
+  return true;
+}
+
+async function deleteCollaborativeDayComment(commentId) {
+  if (!canEdit() || isReadonlyMode || !commentId) return false;
+  await bindCollabDayTextDoc();
+  if (!collabDayTextDoc || !collabDayCommentsArray || isApplyingCollabDayTextRemote) return false;
+  const comments = normalizeComments(collabDayCommentsArray.toArray());
+  const target = comments.find((comment) => comment.id === commentId);
+  if (!target) return true;
+  const deleteIds = new Set([commentId]);
+  if (!target.parentId) {
+    comments.forEach((comment) => {
+      if (comment.parentId === commentId) deleteIds.add(comment.id);
+    });
+  }
+  collabDayTextDoc.transact(() => {
+    for (let index = collabDayCommentsArray.length - 1; index >= 0; index -= 1) {
+      const comment = collabDayCommentsArray.get(index);
+      if (deleteIds.has(comment?.id)) collabDayCommentsArray.delete(index, 1);
+    }
+  }, "local-day-comment-delete");
   return true;
 }
 
@@ -4417,6 +4636,11 @@ const dom = {
   fieldDayRoute: document.querySelector("#fieldDayRoute"),
   fieldDayWeather: document.querySelector("#fieldDayWeather"),
   fieldDayTransport: document.querySelector("#fieldDayTransport"),
+  dayCommentTitle: document.querySelector("#dayCommentTitle"),
+  dayCommentList: document.querySelector("#dayCommentList"),
+  dayCommentAnchorHint: document.querySelector("#dayCommentAnchorHint"),
+  dayCommentForm: document.querySelector("#dayCommentForm"),
+  dayCommentInput: document.querySelector("#dayCommentInput"),
   addDayBtn: document.querySelector("#addDayBtn"),
   moveDayUpBtn: document.querySelector("#moveDayUpBtn"),
   moveDayDownBtn: document.querySelector("#moveDayDownBtn"),
@@ -4620,6 +4844,7 @@ let collabTextSaveTimer = null;
 let collabDayTextDoc = null;
 let collabDayTextFields = {};
 let collabDayTextDayId = "";
+let collabDayCommentsArray = null;
 let isApplyingCollabDayTextRemote = false;
 let collabDayTextSaveTimer = null;
 let collabPlanDoc = null;
@@ -4640,6 +4865,8 @@ let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
 let commentFilter = "all";
+let dayReplyingCommentId = "";
+let dayCommentFilter = "all";
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
@@ -5034,6 +5261,9 @@ function applyReadonlyUi() {
     });
   });
   dom.commentForm?.querySelectorAll("input, button").forEach((control) => {
+    control.disabled = isReadonlyMode;
+  });
+  dom.dayCommentForm?.querySelectorAll("input, button").forEach((control) => {
     control.disabled = isReadonlyMode;
   });
   document.querySelectorAll(".guide-controls input, .guide-controls button, .choice-card").forEach((control) => {
@@ -6600,6 +6830,8 @@ function renderDayEditor() {
   dom.moveDayUpBtn.disabled = isReadonlyMode || activeDay === 0;
   dom.moveDayDownBtn.disabled = isReadonlyMode || activeDay >= state.days.length - 1;
   dom.deleteDayBtn.disabled = isReadonlyMode || state.days.length <= 1;
+  renderDayFieldCommentMarks(day);
+  if (dom.dayCommentTitle) dom.dayCommentTitle.textContent = day.title || day.label || "当前日期";
 }
 
 function dayEditorDraftValues(day = currentDay()) {
@@ -6772,6 +7004,7 @@ function render() {
   renderVersionHistory();
   applyReadonlyUi();
   renderDayEditor();
+  renderDayComments(currentDay());
   renderEditorLockState();
   bindCollabPlanDoc();
   bindCollabTextDoc();
@@ -6931,6 +7164,7 @@ COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
     if (!canEdit() || isReadonlyMode) return;
     const meta = COLLAB_DAY_TEXT_FIELDS.find((item) => item.field === field);
     syncCollabDayTextFieldToDoc(meta?.docField || field, control.value);
+    if (meta) captureCommentAnchor(meta);
     schedulePresenceTrack();
     clearTimeout(dayFieldSyncTimer);
     dayFieldSyncTimer = setTimeout(() => {
@@ -6938,7 +7172,11 @@ COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
     }, 1200);
   });
   ["focus", "click", "keyup", "select"].forEach((eventName) => {
-    control?.addEventListener(eventName, () => schedulePresenceTrack(eventName === "focus" ? 0 : 90));
+    control?.addEventListener(eventName, () => {
+      const meta = COLLAB_DAY_TEXT_FIELDS.find((item) => item.field === field);
+      if (meta) captureCommentAnchor(meta);
+      schedulePresenceTrack(eventName === "focus" ? 0 : 90);
+    });
   });
   control?.addEventListener("blur", () => schedulePresenceTrack(180));
 });
@@ -7715,7 +7953,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
     render();
     return;
   }
-  const anchor = currentCommentAnchor();
+  const anchor = currentCommentAnchor("stop");
   const collaborativeComment = await addCollaborativeComment(text, anchor);
   if (collaborativeComment) {
     const stop = currentStop();
@@ -7828,29 +8066,188 @@ dom.commentList.addEventListener("click", async (event) => {
   render();
 });
 
+dom.dayCommentForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const text = dom.dayCommentInput.value.trim();
+  if (!text) return;
+  if (dayReplyingCommentId) {
+    const parentId = dayReplyingCommentId;
+    const reply = await addCollaborativeDayCommentReply(parentId, text);
+    if (reply) {
+      const day = currentDay();
+      day.comments = normalizeComments([...(day.comments || []), reply]);
+      dayReplyingCommentId = "";
+      dom.dayCommentInput.value = "";
+      dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+      renderDayComments(day);
+      await logActivity(`回复当天批注「${day.title}」`);
+      await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-reply-snapshot");
+      await saveCollaborativeTextChange(`回复当天批注「${day.title}」`);
+      dom.saveState.textContent = `已回复「${day.title}」的当天批注`;
+      return;
+    }
+    const fallbackTitle = currentDay().title;
+    if (!mutate(`回复当天批注「${fallbackTitle}」`, () => {
+      currentDay().comments = normalizeComments([...(currentDay().comments || []), { id: uid(), parentId, author: getCollabName(), text, at: new Date().toISOString() }]);
+      dayReplyingCommentId = "";
+      dom.dayCommentInput.value = "";
+      dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-reply-fallback-snapshot");
+    await saveState(`回复当天批注「${fallbackTitle}」`);
+    render();
+    return;
+  }
+  const anchor = currentCommentAnchor("day");
+  const collaborativeComment = await addCollaborativeDayComment(text, anchor);
+  if (collaborativeComment) {
+    const day = currentDay();
+    day.comments = normalizeComments([...(day.comments || []), collaborativeComment]);
+    dom.dayCommentInput.value = "";
+    renderDayComments(day);
+    await logActivity(`当天批注「${day.title}」`);
+    await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-snapshot");
+    await saveCollaborativeTextChange(`当天批注「${day.title}」`);
+    dom.saveState.textContent = `已批注「${day.title}」`;
+    return;
+  }
+  const fallbackTitle = currentDay().title;
+  if (!mutate(`当天批注「${fallbackTitle}」`, () => {
+    currentDay().comments = normalizeComments([...(currentDay().comments || []), { id: uid(), author: getCollabName(), text, at: new Date().toISOString(), ...(anchor ? { anchor } : {}) }]);
+    dom.dayCommentInput.value = "";
+  }, { requireUnlocked: false, save: false, render: false })) return;
+  await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-fallback-snapshot");
+  await saveState(`当天批注「${fallbackTitle}」`);
+  render();
+});
+
+dom.dayCommentList?.addEventListener("click", async (event) => {
+  const filterButton = event.target.closest("[data-day-comment-filter]");
+  if (filterButton) {
+    event.preventDefault();
+    dayCommentFilter = filterButton.dataset.dayCommentFilter || "all";
+    renderDayComments(currentDay());
+    return;
+  }
+  const anchorButton = event.target.closest("[data-day-comment-anchor]");
+  if (anchorButton) {
+    event.preventDefault();
+    const comment = (currentDay()?.comments || []).find((item) => item.id === anchorButton.dataset.dayCommentAnchor);
+    if (comment?.anchor && focusCommentAnchor(comment.anchor)) {
+      dom.saveState.textContent = "已定位到当天批注锚点";
+    }
+    return;
+  }
+  const replyButton = event.target.closest("[data-reply-day-comment]");
+  if (replyButton) {
+    event.preventDefault();
+    const comment = normalizeComments(currentDay()?.comments || []).find((item) => item.id === replyButton.dataset.replyDayComment && !item.parentId);
+    if (!comment || !requireEdit("回复当天批注")) return;
+    dayReplyingCommentId = comment.id;
+    dom.dayCommentInput.placeholder = `回复 ${comment.author || "协作者"}...`;
+    dom.dayCommentInput.focus();
+    renderDayCommentAnchorHint();
+    return;
+  }
+  const resolveButton = event.target.closest("[data-toggle-day-comment-resolved]");
+  if (resolveButton) {
+    event.preventDefault();
+    const commentId = resolveButton.dataset.toggleDayCommentResolved;
+    const day = currentDay();
+    const comment = normalizeComments(day.comments || []).find((item) => item.id === commentId && !item.parentId);
+    if (!comment || !requireEdit(comment.resolved ? "重新打开当天批注" : "标记当天批注已解决")) return;
+    const nextPatch = comment.resolved
+      ? { resolved: false }
+      : { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: getCollabName() };
+    const updated = await updateCollaborativeDayComment(commentId, nextPatch);
+    if (updated) {
+      day.comments = commentsWithUpdatedComment(day.comments || [], commentId, nextPatch);
+      renderDayComments(day);
+      await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
+      await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-resolve-snapshot");
+      await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
+      dom.saveState.textContent = comment.resolved ? "已重新打开当天批注" : "已标记当天批注解决";
+      return;
+    }
+    if (!mutate(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, () => {
+      currentDay().comments = commentsWithUpdatedComment(currentDay().comments || [], commentId, nextPatch);
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-resolve-fallback-snapshot");
+    await saveState(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
+    render();
+    return;
+  }
+  const deleteButton = event.target.closest("[data-delete-day-comment]");
+  if (!deleteButton) return;
+  event.preventDefault();
+  const commentId = deleteButton.dataset.deleteDayComment;
+  const day = currentDay();
+  const comment = (day.comments || []).find((item) => item.id === commentId);
+  if (!comment || !requireEdit("删除当天批注")) return;
+  if (await deleteCollaborativeDayComment(commentId)) {
+    day.comments = commentsWithoutThread(day.comments || [], commentId);
+    if (dayReplyingCommentId === commentId || !day.comments.some((item) => item.id === dayReplyingCommentId)) {
+      dayReplyingCommentId = "";
+      dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+    }
+    renderDayComments(day);
+    await logActivity(`删除当天批注「${day.title}」`);
+    await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-delete-snapshot");
+    await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
+    dom.saveState.textContent = `已删除「${day.title}」的当天批注`;
+    return;
+  }
+  if (!mutate(`删除当天批注「${day.title}」`, () => {
+    currentDay().comments = commentsWithoutThread(currentDay().comments || [], commentId);
+    if (dayReplyingCommentId === commentId || !currentDay().comments.some((item) => item.id === dayReplyingCommentId)) {
+      dayReplyingCommentId = "";
+      dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+    }
+  }, { requireUnlocked: false, save: false, render: false })) return;
+  await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-delete-fallback-snapshot");
+  await saveState(`删除当天批注「${day.title}」`);
+  render();
+});
+
 document.addEventListener("click", (event) => {
   const highlight = event.target.closest("[data-comment-highlight]");
   if (highlight) {
     event.preventDefault();
-    const comment = commentRootsAndReplies(currentStop()?.comments || []).roots.find((item) => item.id === highlight.dataset.commentHighlight);
+    const scope = highlight.dataset.commentScope || "stop";
+    const source = scope === "day" ? currentDay()?.comments || [] : currentStop()?.comments || [];
+    const comment = commentRootsAndReplies(source).roots.find((item) => item.id === highlight.dataset.commentHighlight);
     if (!comment) return;
-    commentFilter = comment.resolved ? "resolved" : "open";
-    renderStopComments(currentStop());
-    if (focusCommentThread(comment.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的批注`;
+    if (scope === "day") {
+      dayCommentFilter = comment.resolved ? "resolved" : "open";
+      renderDayComments(currentDay());
+      if (focusDayCommentThread(comment.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的当天批注`;
+    } else {
+      commentFilter = comment.resolved ? "resolved" : "open";
+      renderStopComments(currentStop());
+      if (focusCommentThread(comment.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的批注`;
+    }
     return;
   }
   const mark = event.target.closest("[data-field-comment-mark]");
   if (!mark) return;
   event.preventDefault();
   const field = mark.dataset.fieldCommentMark;
-  const { roots } = commentRootsAndReplies(currentStop()?.comments || []);
+  const meta = collabTextFieldMeta(field);
+  const scope = meta?.scope || "stop";
+  const { roots } = commentRootsAndReplies(scope === "day" ? currentDay()?.comments || [] : currentStop()?.comments || []);
   const matching = roots.filter((comment) => comment.anchor?.field === field);
   const firstOpen = matching.find((comment) => !comment.resolved);
   const target = firstOpen || matching[0];
   if (!target) return;
-  commentFilter = firstOpen ? "open" : "all";
-  renderStopComments(currentStop());
-  if (focusCommentThread(target.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(target.anchor)}的批注`;
+  if (scope === "day") {
+    dayCommentFilter = firstOpen ? "open" : "all";
+    renderDayComments(currentDay());
+    if (focusDayCommentThread(target.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(target.anchor)}的当天批注`;
+  } else {
+    commentFilter = firstOpen ? "open" : "all";
+    renderStopComments(currentStop());
+    if (focusCommentThread(target.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(target.anchor)}的批注`;
+  }
 });
 
 dom.commentFocusBtn.addEventListener("click", () => {

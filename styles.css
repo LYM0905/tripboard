@@ -75,6 +75,7 @@ button {
 .timeline-wrap,
 .candidate-panel,
 .day-editor-panel,
+.day-comments-panel,
 .guide-panel,
 .quick-add-panel,
 .transport-panel,
@@ -297,6 +298,7 @@ button {
 .timeline-wrap,
 .candidate-panel,
 .day-editor-panel,
+.day-comments-panel,
 .guide-panel,
 .quick-add-panel,
 .transport-panel,
@@ -2044,6 +2046,10 @@ button:disabled {
   overflow: auto;
 }
 
+.day-comment-list {
+  max-height: 150px;
+}
+
 .comment-filters {
   position: sticky;
   top: 0;
@@ -2610,6 +2616,7 @@ svg {
   .activity-panel,
   .sync-panel,
   .comments-panel,
+  .day-comments-panel,
   .transport-panel {
     grid-column: 1 / -1;
   }
