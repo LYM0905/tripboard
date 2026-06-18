@@ -172,6 +172,189 @@ function versionDiffSummary(versionPlan = {}, currentPlan = state) {
   return labels.length ? labels.slice(0, 4).join(" · ") : "内容有调整";
 }
 
+const PLAN_DIFF_FIELDS = [
+  ["name", "行程名"],
+  ["destination", "目的地"],
+  ["origin", "出发地"],
+  ["dateRange", "日期范围"],
+  ["startDate", "开始日期"],
+  ["endDate", "结束日期"],
+  ["partySize", "同行人数"],
+  ["budgetLimit", "预算上限"],
+  ["cover", "封面"],
+];
+
+const DAY_DIFF_FIELDS = [
+  ["date", "日期"],
+  ["title", "标题"],
+  ["route", "路线"],
+  ["weather", "天气"],
+  ["transport", "交通"],
+  ["amapRoute", "高德路线"],
+];
+
+const STOP_DIFF_FIELDS = [
+  ["time", "时间"],
+  ["title", "名称"],
+  ["type", "类型"],
+  ["address", "地址"],
+  ["note", "备注"],
+  ["budget", "预算"],
+  ["paid", "已付"],
+  ["payer", "付款人"],
+  ["lng", "经度"],
+  ["lat", "纬度"],
+  ["amapKeyword", "高德关键词"],
+  ["image", "图片"],
+  ["tags", "标签"],
+  ["comments", "批注"],
+  ["favorite", "收藏"],
+  ["voters", "必去投票"],
+  ["votes", "投票数"],
+];
+
+function diffItemKey(item = {}, prefix = "item", index = 0) {
+  return String(item?.id || item?.date || item?.orderNo || item?.code || `${prefix}:${item?.title || item?.name || item?.text || index}`);
+}
+
+function shortDiffLabel(value = "", fallback = "") {
+  const text = String(value || fallback || "").trim();
+  if (!text) return fallback || "未命名";
+  return text.length > 16 ? `${text.slice(0, 16)}...` : text;
+}
+
+function addDiffChange(changes, key, label) {
+  if (!key || !label || changes.has(key)) return;
+  changes.set(key, { label, value: undefined });
+}
+
+function addDiffFieldChange(changes, key, label, value) {
+  if (!key || !label || changes.has(key)) return;
+  changes.set(key, { label, value: clone(value) });
+}
+
+function collectListDiffChanges(changes, baseItems = [], nextItems = [], options = {}) {
+  const {
+    path = "list",
+    label = "列表",
+    prefix = "item",
+    fields = [],
+    itemLabel = (item, index) => shortDiffLabel(item?.title || item?.name || item?.text, `${label}${index + 1}`),
+  } = options;
+  const baseList = Array.isArray(baseItems) ? baseItems : [];
+  const nextList = Array.isArray(nextItems) ? nextItems : [];
+  const baseByKey = new Map(baseList.map((item, index) => [diffItemKey(item, prefix, index), { item, index }]));
+  const nextByKey = new Map(nextList.map((item, index) => [diffItemKey(item, prefix, index), { item, index }]));
+  nextByKey.forEach(({ item, index }, key) => {
+    const title = itemLabel(item, index);
+    if (!baseByKey.has(key)) {
+      addDiffChange(changes, `${path}.${key}.added`, `${label} + ${title}`);
+      return;
+    }
+    const baseItem = baseByKey.get(key).item;
+    if (fields.length) {
+      fields.forEach(([field, fieldLabel]) => {
+        if (!sameSerialized(baseItem?.[field], item?.[field])) {
+          addDiffFieldChange(changes, `${path}.${key}.${field}`, `${title} ${fieldLabel}`, item?.[field]);
+        }
+      });
+    } else if (!sameSerialized(baseItem, item)) {
+      addDiffChange(changes, `${path}.${key}.changed`, `${label} ${title}`);
+    }
+  });
+  baseByKey.forEach(({ item, index }, key) => {
+    if (!nextByKey.has(key)) addDiffChange(changes, `${path}.${key}.removed`, `${label} - ${itemLabel(item, index)}`);
+  });
+  if (!sameSerialized(baseList.map((item, index) => diffItemKey(item, prefix, index)), nextList.map((item, index) => diffItemKey(item, prefix, index)))) {
+    addDiffChange(changes, `${path}.order`, `${label}顺序`);
+  }
+}
+
+function collectPlanChangeMap(basePlan = {}, nextPlan = {}) {
+  const changes = new Map();
+  PLAN_DIFF_FIELDS.forEach(([field, label]) => {
+    if (!sameSerialized(basePlan?.[field], nextPlan?.[field])) addDiffFieldChange(changes, `plan.${field}`, label, nextPlan?.[field]);
+  });
+
+  const baseDays = Array.isArray(basePlan?.days) ? basePlan.days : [];
+  const nextDays = Array.isArray(nextPlan?.days) ? nextPlan.days : [];
+  const baseDayByKey = new Map(baseDays.map((day, index) => [diffItemKey(day, "day", index), { day, index }]));
+  const nextDayByKey = new Map(nextDays.map((day, index) => [diffItemKey(day, "day", index), { day, index }]));
+
+  nextDayByKey.forEach(({ day, index }, dayKey) => {
+    const dayLabel = shortDiffLabel(day?.title || day?.label || day?.date, `D${index + 1}`);
+    if (!baseDayByKey.has(dayKey)) {
+      addDiffChange(changes, `days.${dayKey}.added`, `日期 + ${dayLabel}`);
+      return;
+    }
+    const baseDay = baseDayByKey.get(dayKey).day;
+    DAY_DIFF_FIELDS.forEach(([field, label]) => {
+      if (!sameSerialized(baseDay?.[field], day?.[field])) addDiffFieldChange(changes, `days.${dayKey}.${field}`, `${dayLabel} ${label}`, day?.[field]);
+    });
+    if (!sameSerialized(normalizeComments(baseDay?.comments || []), normalizeComments(day?.comments || []))) {
+      addDiffFieldChange(changes, `days.${dayKey}.comments`, `${dayLabel} 当天批注`, normalizeComments(day?.comments || []));
+    }
+    collectListDiffChanges(changes, baseDay?.stops || [], day?.stops || [], {
+      path: `days.${dayKey}.stops`,
+      label: `${dayLabel} 地点`,
+      prefix: "stop",
+      fields: STOP_DIFF_FIELDS,
+      itemLabel: (stop, stopIndex) => shortDiffLabel(stop?.title || stop?.address, `地点${stopIndex + 1}`),
+    });
+    collectListDiffChanges(changes, normalizeDayBlocks(baseDay?.blocks || []), normalizeDayBlocks(day?.blocks || []), {
+      path: `days.${dayKey}.blocks`,
+      label: `${dayLabel} 协作块`,
+      prefix: "block",
+      fields: [["type", "类型"], ["text", "文字"], ["done", "状态"], ["comments", "批注"]],
+      itemLabel: (block, blockIndex) => shortDiffLabel(block?.text, `协作块${blockIndex + 1}`),
+    });
+  });
+  baseDayByKey.forEach(({ day, index }, dayKey) => {
+    if (!nextDayByKey.has(dayKey)) addDiffChange(changes, `days.${dayKey}.removed`, `日期 - ${shortDiffLabel(day?.title || day?.label || day?.date, `D${index + 1}`)}`);
+  });
+  if (!sameSerialized(baseDays.map((day, index) => diffItemKey(day, "day", index)), nextDays.map((day, index) => diffItemKey(day, "day", index)))) {
+    addDiffChange(changes, "days.order", "日期顺序");
+  }
+
+  collectListDiffChanges(changes, normalizeTransportQuotes(basePlan?.transportQuotes || []), normalizeTransportQuotes(nextPlan?.transportQuotes || []), {
+    path: "transportQuotes",
+    label: "交通报价",
+    prefix: "quote",
+    itemLabel: (quote, index) => shortDiffLabel(`${quote?.from || ""}-${quote?.to || ""} ${quote?.price || ""}`.trim(), `报价${index + 1}`),
+  });
+  collectListDiffChanges(changes, normalizeCandidateStops(basePlan?.candidates || []), normalizeCandidateStops(nextPlan?.candidates || []), {
+    path: "candidates",
+    label: "备选地点",
+    prefix: "candidate",
+    itemLabel: (candidate, index) => shortDiffLabel(candidate?.title || candidate?.address, `备选${index + 1}`),
+  });
+  collectListDiffChanges(changes, normalizeActivities(basePlan?.activities || []), normalizeActivities(nextPlan?.activities || []), {
+    path: "activities",
+    label: "活动记录",
+    prefix: "activity",
+    itemLabel: (activity, index) => shortDiffLabel(activity?.text || activity?.label, `活动${index + 1}`),
+  });
+  return changes;
+}
+
+function conflictDiffSummary(conflict = {}) {
+  const basePlan = conflict.base || lastSyncedState || {};
+  const localChanges = collectPlanChangeMap(basePlan, conflict.local || state);
+  const remoteChanges = collectPlanChangeMap(basePlan, conflict.remote || {});
+  const overlap = [...localChanges.keys()]
+    .filter((key) => remoteChanges.has(key))
+    .filter((key) => !sameSerialized(localChanges.get(key)?.value, remoteChanges.get(key)?.value))
+    .map((key) => localChanges.get(key)?.label);
+  return {
+    local: [...localChanges.values()].map((entry) => entry.label).slice(0, 6),
+    remote: [...remoteChanges.values()].map((entry) => entry.label).slice(0, 6),
+    overlap: [...new Set(overlap)].slice(0, 6),
+    localExtra: Math.max(0, localChanges.size - 6),
+    remoteExtra: Math.max(0, remoteChanges.size - 6),
+    overlapExtra: Math.max(0, overlap.length - 6),
+  };
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   bytes.forEach((byte) => {
@@ -1235,6 +1418,25 @@ function showConflictPanel(conflict) {
   dom.conflictPanel.hidden = false;
   dom.conflictText.textContent = conflictSummary(pendingConflict);
   dom.conflictDetail.textContent = "请选择处理方式：智能合并会尽量保留双方新增的地点、评论、交通报价和活动记录。";
+  if (dom.conflictDiff) {
+    const diff = conflictDiffSummary(pendingConflict);
+    const renderGroup = (title, items, extra, emptyText) => `
+      <div class="conflict-diff-group">
+        <strong>${escapeHtml(title)}</strong>
+        <ul>
+          ${items.length ? items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : `<li>${escapeHtml(emptyText)}</li>`}
+          ${extra ? `<li>还有 ${extra} 项变化</li>` : ""}
+        </ul>
+      </div>
+    `;
+    dom.conflictDiff.innerHTML = [
+      renderGroup("我的修改", diff.local, diff.localExtra, "没有检测到本地内容变化"),
+      renderGroup("云端修改", diff.remote, diff.remoteExtra, "没有检测到云端内容变化"),
+      diff.overlap.length || diff.overlapExtra
+        ? renderGroup("同位置冲突", diff.overlap, diff.overlapExtra, "")
+        : "",
+    ].join("");
+  }
   dom.collabMode.textContent = "待处理冲突";
   dom.saveState.textContent = "发现协作冲突";
   refreshIcons();
@@ -1243,6 +1445,7 @@ function showConflictPanel(conflict) {
 function hideConflictPanel() {
   pendingConflict = null;
   if (dom.conflictPanel) dom.conflictPanel.hidden = true;
+  if (dom.conflictDiff) dom.conflictDiff.innerHTML = "";
 }
 
 function setNoteCollabStatus(message) {
@@ -5796,6 +5999,7 @@ const dom = {
   editAccessStatus: document.querySelector("#editAccessStatus"),
   conflictPanel: document.querySelector("#conflictPanel"),
   conflictText: document.querySelector("#conflictText"),
+  conflictDiff: document.querySelector("#conflictDiff"),
   conflictDetail: document.querySelector("#conflictDetail"),
   mergeConflictBtn: document.querySelector("#mergeConflictBtn"),
   keepLocalConflictBtn: document.querySelector("#keepLocalConflictBtn"),
