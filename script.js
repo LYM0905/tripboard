@@ -8747,7 +8747,41 @@ function focusActivityDetail(detail = null) {
     dom.saveState.textContent = "已定位到活动对应批注";
     return true;
   }
+  if ((detail.type === "dayBlock" || detail.blockId) && focusDayBlockActivityTarget(detail)) return true;
   return false;
+}
+
+function dayBlockActivityTarget(dayId = "", blockId = "", extra = {}) {
+  return {
+    type: "dayBlock",
+    dayId: dayId || "",
+    blockId: blockId || "",
+    ...extra,
+  };
+}
+
+function focusDayBlockActivityTarget(detail = null) {
+  if (!detail || typeof detail !== "object") return false;
+  const blockId = detail.blockId || "";
+  const dayIndex = state.days.findIndex((day) => {
+    if (detail.dayId && day.id === detail.dayId) return true;
+    return blockId && normalizeDayBlocks(day.blocks || []).some((block) => block.id === blockId);
+  });
+  if (dayIndex < 0) return false;
+  activeDay = dayIndex;
+  activeStop = 0;
+  activeBlockPresenceId = blockId || activeBlockPresenceId;
+  render();
+  const block = blockId ? dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+  const target = block || document.querySelector(".day-blocks-panel");
+  if (!target) return false;
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  const input = block?.querySelector("[data-edit-day-block]");
+  input?.focus();
+  dom.saveState.textContent = block ? "已定位到活动对应协作块" : "协作块已不存在，已定位到当天协作块区域";
+  return true;
 }
 
 function renderGuideResult() {
@@ -10013,10 +10047,11 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
   if (!block) return;
   const added = await addDayBlockToDoc(day.id, block, "local-day-block-add");
   if (added) {
-    day.blocks = normalizeDayBlocks([...(day.blocks || []), added === true ? block : added]);
+    const addedBlock = added === true ? block : added;
+    day.blocks = normalizeDayBlocks([...(day.blocks || []), addedBlock]);
     dom.dayBlockInput.value = "";
     renderDayBlocks(day);
-    await logActivity(`添加协作块「${day.title}」`);
+    await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(day.id, addedBlock.id) });
     await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
     dom.saveState.textContent = "已添加协作块";
     return;
@@ -10026,6 +10061,7 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
     dom.dayBlockInput.value = "";
   }, { requireUnlocked: false, save: false, render: false })) return;
   await syncDayBlocksToDoc(currentDay().id, "local-day-block-add-fallback");
+  await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(currentDay().id, block.id) });
   await saveState(`添加协作块「${day.title}」`);
   render();
 });
@@ -10079,7 +10115,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (await updateDayBlockInDoc(day.id, blockId, { done: nextDone }, "local-day-block-toggle")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
-      await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`);
+      await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "toggle" }) });
       await saveCollaborativePlanChange("已更新协作块");
       return;
     }
@@ -10087,6 +10123,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback");
+    await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "toggle" }) });
     await saveState("已更新协作块");
     render();
     return;
@@ -10145,7 +10182,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       if (blockReplyingCommentId === commentId || !normalizeComments(currentDay()?.blocks?.find((item) => item.id === block.id)?.comments || []).some((item) => item.id === blockReplyingCommentId)) blockReplyingCommentId = "";
       renderDayBlocks(day);
-      await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`);
+      await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "", deleted: true } });
       await saveCollaborativePlanChange("已删除块级评论");
       return;
     }
@@ -10153,6 +10190,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId) } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-delete-fallback");
+    await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "", deleted: true } });
     await saveState("已删除块级评论");
     render();
     return;
@@ -10172,7 +10210,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
         updatedAt: new Date().toISOString(),
       });
       renderDayBlocks(day);
-      await logActivity(`排序协作块「${block.text.slice(0, 18)}」`);
+      await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "move", direction }) });
       await saveCollaborativePlanChange("已排序协作块");
       return;
     }
@@ -10180,6 +10218,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       currentDay().blocks = moveDayBlockList(currentDay().blocks || [], blockId, direction);
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-reorder-fallback");
+    await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "move", direction }) });
     await saveState("已排序协作块");
     render();
     return;
@@ -10195,7 +10234,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       renderDayBlocks(day);
-      await logActivity(`删除协作块「${block.text.slice(0, 18)}」`);
+      await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { deleted: true }) });
       await saveCollaborativePlanChange("已删除协作块");
       return;
     }
@@ -10203,6 +10242,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).filter((item) => item.id !== blockId));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-delete-fallback");
+    await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { deleted: true }) });
     await saveState("已删除协作块");
     render();
   }
@@ -10348,7 +10388,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
     });
     clearDayBlockDragState();
     renderDayBlocks(day);
-    await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`);
+    await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, draggedId, { action: "drag", targetIndex }) });
     await saveCollaborativePlanChange("已拖拽排序协作块");
     return;
   }
@@ -10360,6 +10400,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
   }
   await syncDayBlocksToDoc(currentDay().id, "local-day-block-drag-reorder-fallback");
   clearDayBlockDragState();
+  await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, draggedId, { action: "drag", targetIndex }) });
   await saveState("已拖拽排序协作块");
   render();
 });
