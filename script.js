@@ -4069,7 +4069,7 @@ function broadcastDayCreated(day, index) {
   });
 }
 
-function broadcastDayDeleted(day) {
+function broadcastDayDeleted(day, index = activeDay) {
   if (!realtimeChannel || !tripId || !day?.id) return;
   const planYjs = currentPlanYjsState();
   realtimeChannel.send({
@@ -4079,6 +4079,7 @@ function broadcastDayDeleted(day) {
       tripId,
       dayId: day.id,
       title: day.title || day.label || "当天",
+      index,
       planMeta: currentPlanMeta(),
       planYjs,
       memberId: memberProfile?.id || sessionId,
@@ -5498,9 +5499,10 @@ function dayOrderMatches(dayOrder = []) {
 
 async function applyRemoteStopCreated(payload = {}) {
   if (!payload.stop?.id || payload.tripId !== tripId) return;
+  const activityOptions = { broadcast: false, target: stopActivityTarget(payload.dayId || "", payload.stop.id || "", { action: "remote-create" }) };
   if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 新增地点协作快照`)) {
     if (stopExistsInPlan(payload.stop.id)) {
-      logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, { broadcast: false });
+      logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, activityOptions);
       dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了「${payload.stop.title || "地点"}」`;
       render();
       return;
@@ -5514,17 +5516,18 @@ async function applyRemoteStopCreated(payload = {}) {
   if (!day) return;
   day.stops = [...(day.stops || []), clone(payload.stop)];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, { broadcast: false });
+  logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, { ...activityOptions, target: stopActivityTarget(day.id || payload.dayId || "", payload.stop.id || "", { action: "remote-create" }) });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了「${payload.stop.title || "地点"}」`;
   render();
 }
 
 async function applyRemoteStopDeleted(payload = {}) {
   if (!payload.stopId || payload.tripId !== tripId) return;
+  const activityOptions = { broadcast: false, target: stopActivityTarget(payload.dayId || "", payload.stopId || "", { deleted: true, action: "remote-delete" }) };
   if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 删除地点协作快照`)) {
     if (!stopExistsInPlan(payload.stopId)) {
       destroyCollabTextDoc();
-      logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, { broadcast: false });
+      logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, activityOptions);
       dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了「${payload.title || "地点"}」`;
       render();
       return;
@@ -5544,16 +5547,17 @@ async function applyRemoteStopDeleted(payload = {}) {
   if (dayIndex === activeDay) clearCurrentAmapRoute();
   destroyCollabTextDoc();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, { broadcast: false });
+  logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, { ...activityOptions, target: stopActivityTarget(day.id || payload.dayId || "", payload.stopId || "", { deleted: true, action: "remote-delete" }) });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了「${payload.title || "地点"}」`;
   render();
 }
 
 async function applyRemoteStopsReordered(payload = {}) {
   if (!payload.dayId || !Array.isArray(payload.stopOrder) || payload.tripId !== tripId) return;
+  const activityOptions = { broadcast: false, target: dayActivityTarget(payload.dayId || "", { action: "remote-stop-reorder" }) };
   if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 调整地点顺序协作快照`)) {
     if (stopOrderMatches(payload.dayId, payload.stopOrder)) {
-      logActivity(`${payload.name || "协作者"} 调整地点顺序`, { broadcast: false });
+      logActivity(`${payload.name || "协作者"} 调整地点顺序`, activityOptions);
       dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了地点顺序`;
       render();
       return;
@@ -5573,17 +5577,18 @@ async function applyRemoteStopsReordered(payload = {}) {
   }
   if (dayIndex === activeDay) clearCurrentAmapRoute();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 调整地点顺序`, { broadcast: false });
+  logActivity(`${payload.name || "协作者"} 调整地点顺序`, activityOptions);
   dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了地点顺序`;
   render();
 }
 
 async function applyRemoteDayUpdated(payload = {}) {
   if (!payload.day?.id || payload.tripId !== tripId) return;
+  const activityOptions = { broadcast: false, target: dayActivityTarget(payload.day.id || payload.dayId || "", { action: "remote-settings" }) };
   if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 更新当天设置协作快照`)) {
     const day = state.days.find((item) => item.id === payload.day.id);
     if (day) {
-      logActivity(`${payload.name || "协作者"} 更新当天设置`, { broadcast: false });
+      logActivity(`${payload.name || "协作者"} 更新当天设置`, activityOptions);
       dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照更新了 ${day.label}`;
       render();
       return;
@@ -5605,16 +5610,17 @@ async function applyRemoteDayUpdated(payload = {}) {
   guideState.startDate = state.startDate || guideState.startDate;
   guideState.endDate = state.endDate || guideState.endDate;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 更新当天设置`, { broadcast: false });
+  logActivity(`${payload.name || "协作者"} 更新当天设置`, activityOptions);
   dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了 ${state.days[index].label}`;
   render();
 }
 
 async function applyRemoteDayCreated(payload = {}) {
   if (!payload.day?.id || payload.tripId !== tripId) return;
+  const activityOptions = { broadcast: false, target: dayActivityTarget(payload.day.id || "", { action: "remote-create" }) };
   if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 新增一天协作快照`)) {
     if (state.days.some((day) => day.id === payload.day.id)) {
-      logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, { broadcast: false });
+      logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, activityOptions);
       dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了 ${payload.day.title || "一天"}`;
       render();
       return;
@@ -5629,17 +5635,18 @@ async function applyRemoteDayCreated(payload = {}) {
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   activeStop = Math.min(activeStop, currentDay()?.stops?.length - 1 || 0);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, { broadcast: false });
+  logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, activityOptions);
   dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了 ${payload.day.title || "一天"}`;
   render();
 }
 
 async function applyRemoteDayDeleted(payload = {}) {
   if (!payload.dayId || payload.tripId !== tripId || state.days.length <= 1) return;
+  const activityOptions = { broadcast: false, target: dayActivityTarget(payload.dayId || "", { deleted: true, action: "remote-delete", fallbackIndex: Number(payload.index ?? activeDay) }) };
   if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 删除一天协作快照`)) {
     if (!state.days.some((day) => day.id === payload.dayId)) {
       destroyCollabTextDoc();
-      logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, { broadcast: false });
+      logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, activityOptions);
       dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了 ${payload.title || "一天"}`;
       render();
       return;
@@ -5659,16 +5666,17 @@ async function applyRemoteDayDeleted(payload = {}) {
     activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, { broadcast: false });
+  logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, { ...activityOptions, target: dayActivityTarget(payload.dayId || "", { deleted: true, action: "remote-delete", fallbackIndex: index }) });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了 ${payload.title || "一天"}`;
   render();
 }
 
 async function applyRemoteDaysReordered(payload = {}) {
   if (!Array.isArray(payload.dayOrder) || payload.tripId !== tripId) return;
+  const activityOptions = { broadcast: false, target: dayActivityTarget(currentDay()?.id || payload.dayOrder[0] || "", { action: "remote-day-reorder" }) };
   if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 调整日期顺序协作快照`)) {
     if (dayOrderMatches(payload.dayOrder)) {
-      logActivity(`${payload.name || "协作者"} 调整日期顺序`, { broadcast: false });
+      logActivity(`${payload.name || "协作者"} 调整日期顺序`, activityOptions);
       dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了日期顺序`;
       render();
       return;
@@ -5684,7 +5692,7 @@ async function applyRemoteDaysReordered(payload = {}) {
   resequencePlanDays();
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 调整日期顺序`, { broadcast: false });
+  logActivity(`${payload.name || "协作者"} 调整日期顺序`, { ...activityOptions, target: dayActivityTarget(activeDayId || currentDay()?.id || "", { action: "remote-day-reorder" }) });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了日期顺序`;
   render();
 }
@@ -9133,7 +9141,7 @@ dom.deleteDayBtn.addEventListener("click", async () => {
   }
   await syncPlanMetaToDoc("local-day-delete-meta");
   await saveState(label);
-  broadcastDayDeleted(deletedDay);
+  broadcastDayDeleted(deletedDay, deletedDayIndex);
   render();
 });
 
