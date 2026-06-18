@@ -4065,6 +4065,21 @@ function dayBlockSlashCommand(value = "") {
   return commands[command] || "";
 }
 
+function dayBlockMarkdownShortcut(value = "") {
+  const command = String(value || "").trim().toLowerCase();
+  const shortcuts = {
+    "#": "heading",
+    "##": "heading",
+    ">": "callout",
+    "!": "callout",
+    "-": "todo",
+    "*": "todo",
+    "[]": "todo",
+    "[ ]": "todo",
+  };
+  return shortcuts[command] || "";
+}
+
 function renderDayBlockComments(block) {
   const rendered = renderCommentThreads(block.comments || [], {
     filter: blockCommentFilters[block.id] || "all",
@@ -11354,6 +11369,36 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     focusDayBlockInput(blockId);
     await logActivity(`切换协作块为${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
     await saveCollaborativePlanChange("已切换协作块类型");
+    focusDayBlockInput(blockId);
+    return;
+  }
+  const shortcutType = dayBlockMarkdownShortcut(input.value);
+  if (shortcutType && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    clearTimeout(dayBlockEditTimer);
+    if (!requireEdit("使用快捷标记切换协作块类型")) return;
+    activeBlockPresenceId = blockId;
+    noteRemoteBlockEditors(blockId, "使用快捷标记");
+    const patch = { type: shortcutType, text: "", textYjs: "" };
+    const updatedShortcutBlock = await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-markdown-shortcut");
+    if (updatedShortcutBlock) {
+      const visiblePatch = typeof updatedShortcutBlock === "object" ? { ...patch, ...updatedShortcutBlock } : patch;
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...visiblePatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      renderDayBlocks(day);
+      focusDayBlockInput(blockId);
+      await logActivity(`用快捷标记切换协作块为${dayBlockTypeLabel(shortcutType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "markdown-shortcut", blockType: shortcutType }) });
+      await saveCollaborativePlanChange("已用快捷标记切换协作块类型");
+      focusDayBlockInput(blockId);
+      return;
+    }
+    if (!mutate("使用快捷标记切换协作块类型", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(day.id, "local-day-block-markdown-shortcut-fallback");
+    renderDayBlocks(currentDay());
+    focusDayBlockInput(blockId);
+    await logActivity(`用快捷标记切换协作块为${dayBlockTypeLabel(shortcutType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "markdown-shortcut", blockType: shortcutType }) });
+    await saveCollaborativePlanChange("已用快捷标记切换协作块类型");
     focusDayBlockInput(blockId);
     return;
   }
