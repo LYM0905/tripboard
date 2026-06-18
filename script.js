@@ -784,8 +784,17 @@ function amapMarkerUrl(stop) {
   return amapSearchUrl(keyword);
 }
 
+function officialImageSearchUrl(stopOrKeyword = "") {
+  const keyword = typeof stopOrKeyword === "string"
+    ? stopOrKeyword
+    : [stopOrKeyword?.address, stopOrKeyword?.title || stopOrKeyword?.amapKeyword, "?? ??"].filter(Boolean).join(" ");
+  return `https://www.baidu.com/s?wd=${encodeURIComponent(keyword || "?? ?? ??")}`;
+}
+
 function normalizeAmapPlace(place, keyword = "") {
   if (!place) return null;
+  const photos = Array.isArray(place.photos) ? place.photos : [];
+  const firstPhoto = photos.find((photo) => photo?.url || photo?.src || photo?.image);
   return {
     id: place.id || place.uid || "",
     title: place.title || place.name || keyword,
@@ -795,6 +804,7 @@ function normalizeAmapPlace(place, keyword = "") {
     adcode: place.adcode || "",
     city: place.city || "",
     type: place.type || "",
+    image: place.image || place.photo || firstPhoto?.url || firstPhoto?.src || firstPhoto?.image || "",
     source: place.source || "?? Web??",
   };
 }
@@ -2420,6 +2430,7 @@ function normalizeTransportQuotes(quotes = []) {
       source: quote.source || "????",
       carrier: quote.carrier || quote.airline || "",
       stops: Number(quote.stops || 0),
+      selected: Boolean(quote.selected),
       createdBy: quote.createdBy || "",
       createdAt: quote.createdAt || new Date().toISOString(),
       updatedBy: quote.updatedBy || "",
@@ -2448,6 +2459,7 @@ function normalizeCandidateStops(candidates = []) {
       note: stop.note || "??????????????????",
       tags: normalizeTags(stop.tags || ["??"]),
       budget: numberValue(stop.budget),
+      selected: Boolean(stop.selected || stop.preselected),
       image: stop.image || state.cover || images.city,
       createdBy: stop.createdBy || "",
       createdAt: stop.createdAt || new Date().toISOString(),
@@ -6838,6 +6850,7 @@ const dom = {
   partySizeInput: document.querySelector("#partySizeInput"),
   budgetLimitInput: document.querySelector("#budgetLimitInput"),
   budgetSettlement: document.querySelector("#budgetSettlement"),
+  budgetCombo: document.querySelector("#budgetCombo"),
   versionCount: document.querySelector("#versionCount"),
   versionPreview: document.querySelector("#versionPreview"),
   versionList: document.querySelector("#versionList"),
@@ -6907,6 +6920,7 @@ const dom = {
   fieldTags: document.querySelector("#fieldTags"),
   fieldNote: document.querySelector("#fieldNote"),
   noteCollabStatus: document.querySelector("#noteCollabStatus"),
+  officialImageSearchLink: document.querySelector("#officialImageSearchLink"),
   editorPanel: document.querySelector(".editor-panel"),
   editorLockState: document.querySelector("#editorLockState"),
   editLockBanner: document.querySelector("#editLockBanner"),
@@ -8492,6 +8506,7 @@ function normalizeTransportItem(item, index, fallbackRoute) {
     source: item.source || "????",
     carrier: item.carrier || item.airline || "",
     stops: Number.isFinite(stops) ? Math.max(0, stops) : 0,
+    selected: Boolean(item.selected),
   };
 }
 
@@ -8623,6 +8638,7 @@ function setCandidateEditing(candidate = null) {
       address: candidate.address || "",
       lng: candidate.lng || "",
       lat: candidate.lat || "",
+      image: candidate.image || "",
     } : null;
   }
   if (dom.addCandidateBtn) {
@@ -8695,12 +8711,13 @@ async function applyFieldAmapPlace(place, keyword = "") {
   if (place.address) dom.fieldAddress.value = place.address;
   if (place.lng) dom.fieldLng.value = place.lng;
   if (place.lat) dom.fieldLat.value = place.lat;
+  if (place.image && !dom.fieldImage.value.trim()) dom.fieldImage.value = place.image;
   if (keyword && !dom.fieldAmapKeyword.value.trim()) dom.fieldAmapKeyword.value = keyword;
   await Promise.all([
     syncCollabTextFieldToDoc("title", dom.fieldTitle.value),
     syncCollabTextFieldToDoc("address", dom.fieldAddress.value),
     syncCollabTextFieldToDoc("amapKeyword", dom.fieldAmapKeyword.value),
-    syncCollabStructValuesToDoc({ lng: dom.fieldLng.value, lat: dom.fieldLat.value }, "local-amap-place-select"),
+    syncCollabStructValuesToDoc({ lng: dom.fieldLng.value, lat: dom.fieldLat.value, image: dom.fieldImage.value.trim() }, "local-amap-place-select"),
   ]);
   dom.saveState.textContent = place.lng && place.lat ? `????????${place.title || keyword}` : `???????????????${place.title || keyword}`;
 }
@@ -8735,6 +8752,73 @@ async function saveProviderTransportQuotes(items = [], day = currentDay(), sourc
   state.transportQuotes = normalizeTransportQuotes([...additions, ...existing]).slice(0, 80);
   await syncTransportQuotesToDoc("local-provider-transport-quotes-fallback");
   return additions.length;
+}
+
+async function toggleTransportQuoteSelection(quoteId) {
+  const day = currentDay();
+  const quote = (state.transportQuotes || []).find((item) => item.id === quoteId);
+  if (!requireEdit("??????")) return;
+  if (!quote) {
+    const route = defaultTransportRoute(day);
+    const option = [...transportProviderItems, ...buildTransportOptions(day, activeDay)].find((item) => item.id === quoteId);
+    const draft = normalizeTransportQuotes([{
+      ...(option || {}),
+      id: option?.id || quoteId || uid(),
+      dayId: day?.id || "",
+      date: day?.date || "",
+      from: option?.from || route.from,
+      to: option?.to || route.to,
+      selected: true,
+      source: option?.source || "????",
+      createdBy: getCollabName(),
+      createdAt: new Date().toISOString(),
+    }])[0];
+    if (!draft) return;
+    if (await addCollaborativeTransportQuote(draft)) {
+      persistCurrentPlanFromDoc("?????????");
+      await logActivity(`???? ${draft.code}`, { target: transportQuoteActivityTarget(draft.id, draft.dayId || "", { action: "select" }) });
+      await saveCollaborativePlanChange("??????");
+      refreshRealtimePlanViews();
+      return;
+    }
+    mutate(`???? ${draft.code}`, () => {
+      state.transportQuotes = mergedTransportQuotesWithPatch("add", draft);
+    }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(draft.id, draft.dayId || "", { action: "select" }) });
+    await syncTransportQuotesToDoc("local-transport-selection-add-fallback");
+    await saveCollaborativePlanChange("??????");
+    return;
+  }
+  const selected = !quote.selected;
+  if (await updateTransportQuoteInDoc(quoteId, { selected })) {
+    persistCurrentPlanFromDoc("?????????");
+    await logActivity(`${selected ? "??" : "??"}?? ${quote.code}`, { target: transportQuoteActivityTarget(quoteId, quote.dayId || "", { action: selected ? "select" : "unselect" }) });
+    await saveCollaborativePlanChange("??????");
+    refreshRealtimePlanViews();
+    return;
+  }
+  mutate(`${selected ? "??" : "??"}?? ${quote.code}`, () => {
+    state.transportQuotes = mergedTransportQuotesWithPatch("update", { selected }, quoteId);
+  }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(quoteId, quote.dayId || "", { action: selected ? "select" : "unselect" }) });
+  await syncTransportQuotesToDoc("local-transport-selection-fallback");
+  await saveCollaborativePlanChange("??????");
+}
+
+async function toggleCandidateSelection(candidateId) {
+  const candidate = (state.candidates || []).find((item) => item.id === candidateId);
+  if (!candidate || !requireEdit("??????")) return;
+  const selected = !candidate.selected;
+  if (await updateCandidateInDoc(candidateId, { selected })) {
+    persistCurrentPlanFromDoc("???????");
+    await logActivity(`${selected ? "??" : "????"}${candidate.title}`, { target: candidateActivityTarget(candidateId, { action: selected ? "select" : "unselect" }) });
+    await saveCollaborativePlanChange("??????");
+    refreshRealtimePlanViews();
+    return;
+  }
+  mutate(`${selected ? "??" : "????"}${candidate.title}`, () => {
+    state.candidates = mergedCandidatesWithPatch("update", { selected }, candidateId);
+  }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(candidateId, { action: selected ? "select" : "unselect" }) });
+  await syncCandidatesToDoc("local-candidate-selection-fallback");
+  await saveCollaborativePlanChange("??????");
 }
 
 function manualTransportQuotes() {
@@ -9008,7 +9092,8 @@ function renderTransport() {
   const manualQuotes = currentManualQuotes(day);
   const savedQuoteKeys = new Set(manualQuotes.map(transportOptionIdentity));
   const providerOptions = transportProviderItems.filter((item) => !savedQuoteKeys.has(transportOptionIdentity(item)));
-  const baseOptions = transportProviderItems.length ? providerOptions : buildTransportOptions(day, activeDay);
+  const generatedOptions = buildTransportOptions(day, activeDay).filter((item) => !savedQuoteKeys.has(transportOptionIdentity(item)));
+  const baseOptions = transportProviderItems.length ? providerOptions : generatedOptions;
   const options = [...manualQuotes, ...baseOptions];
   const filtered = options.filter(matchesTransportFilter);
   const visible = transportFilterApplied ? filtered : filtered.slice(0, 4);
@@ -9047,20 +9132,26 @@ function renderTransport() {
   dom.transportList.innerHTML =
     visible
       .map(
-        (item) => `
-          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}" data-quote="${escapeHtml(item.id || "")}">
+        (item) => {
+          const selected = Boolean(item.selected);
+          return `
+          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-quote="${escapeHtml(item.id || "")}">
             <span class="transport-icon">${icon(item.type === "flight" ? "plane" : "train-front")}</span>
             <div>
               <strong>${escapeHtml(item.code)} ? ${escapeHtml(item.from)} ? ${escapeHtml(item.to)}</strong>
               <span>${escapeHtml(item.depart)} - ${escapeHtml(item.arrive)} ? ?${Math.floor(item.duration / 60)}??${item.duration % 60}? ? ${escapeHtml(item.source)}</span>
             </div>
             <em>${money(item.price)}</em>
-            ${manualQuoteIds.has(item.id) ? `<span class="transport-actions">
+            <span class="transport-actions">
+              <button type="button" class="icon-btn subtle" data-toggle-quote-selected="${escapeHtml(item.id)}" aria-label="${selected ? "??????" : "??????"}" title="${selected ? "??????" : "??????"}">${icon(selected ? "check-circle-2" : "circle")}</button>
+              ${manualQuoteIds.has(item.id) ? `
               <button type="button" class="icon-btn subtle" data-edit-quote="${escapeHtml(item.id)}" aria-label="????">${icon("pencil")}</button>
               <button type="button" class="icon-btn subtle danger-icon" data-delete-quote="${escapeHtml(item.id)}" aria-label="????">${icon("trash-2")}</button>
-            </span>` : ""}
+              ` : ""}
+            </span>
           </article>
-        `,
+        `;
+        },
       )
       .join("") || `<p class="empty-state">??????????????????????????</p>`;
 }
@@ -9327,6 +9418,110 @@ function settlementSuggestions() {
   };
 }
 
+function budgetTextForItem(item = {}) {
+  return `${item.title || ""} ${item.type || ""} ${(item.tags || []).join(" ")} ${item.note || ""}`;
+}
+
+function budgetCategoryForItem(item = {}) {
+  const text = budgetTextForItem(item);
+  if (/hotel|??|??|??|??|??|?/.test(text)) return "??";
+  if (/flight|train|Transit|??|??|??|??|??|??|??|??|??/.test(text)) return "??";
+  if (/?|?|Cafe|Dinner|Lunch|Market|??|??|??|??|??/.test(text)) return "??";
+  return "??";
+}
+
+function inferTicketPrice(item = {}) {
+  if (numberValue(item.budget)) return 0;
+  const text = budgetTextForItem(item);
+  if (/??|??|???|??|????/.test(text)) return 0;
+  const rules = [
+    [/???|??|Grottoes/i, 238],
+    [/??|??|Geopark|????/i, 120],
+    [/???|??|??|Heritage|Fortress/i, 110],
+    [/??|???|???|Desert/i, 110],
+    [/???|Museum/i, 0],
+    [/?|Temple|?|?|?|??|??|??|Scenic/i, 80],
+  ];
+  const matched = rules.find(([pattern]) => pattern.test(text));
+  return matched ? matched[1] : 0;
+}
+
+function transportBudgetLabel(item = {}) {
+  const type = item.type === "train" ? "??/??" : "??";
+  return `${type} ${item.code || ""}`.trim();
+}
+
+function budgetComboItems() {
+  const confirmedStops = (state.days || []).flatMap((day) =>
+    (day.stops || []).map((stop) => ({
+      id: `stop-${day.id || day.label}-${stop.id || stop.title}`,
+      label: stop.title || "??",
+      category: budgetCategoryForItem(stop),
+      amount: numberValue(stop.budget) || inferTicketPrice(stop),
+      paid: numberValue(stop.paid),
+      source: "??",
+      estimated: !numberValue(stop.budget) && inferTicketPrice(stop) > 0,
+    })),
+  );
+  const selectedQuotes = (state.transportQuotes || [])
+    .filter((quote) => quote.selected)
+    .map((quote) => ({
+      id: `quote-${quote.id}`,
+      label: transportBudgetLabel(quote),
+      category: "??",
+      amount: numberValue(quote.price),
+      paid: 0,
+      source: "????",
+      estimated: false,
+    }));
+  const selectedCandidates = (state.candidates || [])
+    .filter((candidate) => candidate.selected)
+    .map((candidate) => ({
+      id: `candidate-${candidate.id}`,
+      label: candidate.title || "????",
+      category: budgetCategoryForItem(candidate),
+      amount: numberValue(candidate.budget) || inferTicketPrice(candidate),
+      paid: numberValue(candidate.paid),
+      source: "??",
+      estimated: !numberValue(candidate.budget) && inferTicketPrice(candidate) > 0,
+    }));
+  return [...confirmedStops, ...selectedQuotes, ...selectedCandidates].filter((item) => item.amount || item.paid);
+}
+
+function budgetComboSummary() {
+  const items = budgetComboItems();
+  const total = items.reduce((sum, item) => sum + numberValue(item.amount), 0);
+  const paid = items.reduce((sum, item) => sum + numberValue(item.paid), 0);
+  const byCategory = items.reduce((groups, item) => {
+    groups[item.category] = (groups[item.category] || 0) + numberValue(item.amount);
+    return groups;
+  }, {});
+  const estimates = items.filter((item) => item.estimated);
+  return { items, total, paid, unpaid: Math.max(0, total - paid), byCategory, estimates };
+}
+
+function renderBudgetCombo() {
+  const summary = budgetComboSummary();
+  const people = partySize();
+  const selectedTransportCount = (state.transportQuotes || []).filter((quote) => quote.selected).length;
+  const selectedCandidateCount = (state.candidates || []).filter((candidate) => candidate.selected).length;
+  const categoryRows = Object.entries(summary.byCategory)
+    .map(([key, value]) => `<span>${escapeHtml(key)} ${money(value)}</span>`)
+    .join("");
+  const estimateRows = summary.estimates
+    .slice(0, 4)
+    .map((item) => `<span>${escapeHtml(item.label)} ????? ${money(item.amount)}</span>`)
+    .join("");
+  return `
+    <strong>????</strong>
+    <span>???? ${money(summary.total)} ? ?? ${money(Math.round(summary.total / people))}</span>
+    <span>?? ${money(summary.paid)} ? ?? ${money(summary.unpaid)}</span>
+    <span>???? ${selectedTransportCount} ? ? ???? ${selectedCandidateCount} ?</span>
+    <div class="budget-combo-categories">${categoryRows || "<span>???????</span>"}</div>
+    ${estimateRows ? `<div class="budget-ticket-hints">${estimateRows}</div>` : ""}
+  `;
+}
+
 function categoryBudget() {
   const groups = { ??: 0, ??: 0, ??: 0, ??: 0 };
   state.days.forEach((day) => {
@@ -9379,6 +9574,8 @@ function renderShell() {
     ${transferRows || "<span>??????????????</span>"}
     ${settlement.missingPayer ? `<span>?????? ${money(settlement.missingPayer)}?????????</span>` : ""}
   `;
+  if (dom.budgetCombo) dom.budgetCombo.innerHTML = renderBudgetCombo();
+
 }
 
 function renderDays() {
@@ -9535,6 +9732,9 @@ function renderDetail() {
   const detailKeyword = dom.fieldAmapKeyword.value || stop.title;
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
   dom.fieldAmapLink.textContent = `??????${detailKeyword}`;
+  if (dom.officialImageSearchLink) {
+    dom.officialImageSearchLink.href = officialImageSearchUrl({ ...stop, title: dom.fieldTitle.value || stop.title, address: dom.fieldAddress.value || stop.address, amapKeyword: detailKeyword });
+  }
 
   renderStopComments(stop);
 }
@@ -9546,17 +9746,22 @@ function renderCandidates() {
   }
   dom.candidateGrid.innerHTML = state.candidates
     .map(
-      (stop, index) => `
-        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
+      (stop, index) => {
+        const selected = Boolean(stop.selected);
+        const estimatedTicket = inferTicketPrice(stop);
+        return `
+        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
           ${icon(stop.type === "Market" ? "shopping-bag" : stop.type === "Cafe" ? "coffee" : "landmark")}
           <span class="candidate-title">${escapeHtml(stop.title)}</span>
-          <span class="candidate-price">${money(stop.budget)}</span>
+          <span class="candidate-price">${money(stop.budget || estimatedTicket)}${!numberValue(stop.budget) && estimatedTicket ? " ?" : ""}</span>
           ${editable ? `<span class="candidate-actions">
+            <button type="button" class="icon-btn subtle" data-toggle-candidate-selected="${escapeHtml(stop.id)}" aria-label="${selected ? "????" : "????"}" title="${selected ? "????" : "????"}">${icon(selected ? "check-circle-2" : "circle")}</button>
             <button type="button" class="icon-btn subtle" data-edit-candidate="${escapeHtml(stop.id)}" aria-label="????">${icon("pencil")}</button>
             <button type="button" class="icon-btn subtle danger-icon" data-delete-candidate="${escapeHtml(stop.id)}" aria-label="????">${icon("trash-2")}</button>
           </span>` : ""}
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -9953,7 +10158,7 @@ function quickPlaceDraft(extra = {}) {
     lat: locatedPlace?.lat || "",
     x: extra.x ?? 50,
     y: extra.y ?? 50,
-    image: state.cover || images.city,
+    image: locatedPlace?.image || state.cover || images.city,
   });
 }
 
@@ -12029,6 +12234,13 @@ dom.cancelCandidateEditBtn?.addEventListener("click", () => {
 });
 
 dom.candidateGrid.addEventListener("click", async (event) => {
+  const selectButton = event.target.closest("[data-toggle-candidate-selected]");
+  if (selectButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await toggleCandidateSelection(selectButton.dataset.toggleCandidateSelected);
+    return;
+  }
   const editButton = event.target.closest("[data-edit-candidate]");
   if (editButton) {
     event.preventDefault();
@@ -12085,7 +12297,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
 dom.candidateGrid.addEventListener("keydown", (event) => {
   if (!["Enter", " "].includes(event.key)) return;
   const card = event.target.closest("[data-candidate]");
-  if (!card || event.target.closest("[data-delete-candidate], [data-edit-candidate]")) return;
+  if (!card || event.target.closest("[data-delete-candidate], [data-edit-candidate], [data-toggle-candidate-selected]")) return;
   event.preventDefault();
   card.click();
 });
@@ -12141,6 +12353,13 @@ dom.transportFilterForm.addEventListener("submit", (event) => {
 });
 
 dom.transportList.addEventListener("click", async (event) => {
+  const selectButton = event.target.closest("[data-toggle-quote-selected]");
+  if (selectButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await toggleTransportQuoteSelection(selectButton.dataset.toggleQuoteSelected);
+    return;
+  }
   const editButton = event.target.closest("[data-edit-quote]");
   if (editButton) {
     event.preventDefault();

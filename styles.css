@@ -393,6 +393,43 @@ button {
   font-weight: 800;
 }
 
+.budget-combo {
+  display: grid;
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.budget-combo strong {
+  color: var(--green);
+  font-size: 12px;
+}
+
+.budget-combo > span,
+.budget-combo-categories span,
+.budget-ticket-hints span {
+  display: block;
+  padding: 8px;
+  color: #34464f;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.budget-combo-categories,
+.budget-ticket-hints {
+  display: grid;
+  gap: 6px;
+}
+
+.budget-ticket-hints span {
+  color: #7a4b07;
+  background: rgba(246, 184, 77, 0.16);
+  border-color: rgba(246, 184, 77, 0.35);
+}
+
 .version-item {
   display: grid;
   gap: 3px;
@@ -1098,6 +1135,11 @@ button:disabled {
   box-shadow: 0 10px 24px rgba(36, 115, 92, 0.12);
 }
 
+.transport-item.is-selected {
+  border-color: rgba(36, 115, 92, 0.55);
+  background: linear-gradient(0deg, rgba(218, 240, 222, 0.55), rgba(255, 255, 255, 0.94));
+}
+
 .transport-icon {
   display: grid;
   place-items: center;
@@ -1791,6 +1833,11 @@ button:disabled {
 .candidate.is-editing {
   border-color: rgba(36, 115, 92, 0.55);
   box-shadow: 0 10px 22px rgba(36, 115, 92, 0.1);
+}
+
+.candidate.is-selected {
+  border-color: rgba(36, 115, 92, 0.55);
+  background: linear-gradient(0deg, rgba(218, 240, 222, 0.62), #fff);
 }
 
 .candidate-title {
