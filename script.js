@@ -4333,7 +4333,7 @@ async function bindCollabPlanDoc() {
   }
   collabPlanDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentPlanFromDoc("收到协作者计划结构更新");
+      persistCurrentPlanFromDoc("收到协作者计划结构更新", { scheduleSave: !pendingConflict });
       return;
     }
     if (origin === "restore" || String(origin || "").startsWith("pending:")) {
@@ -5586,8 +5586,9 @@ async function applyRemotePlanYjsUpdate(payload = {}) {
   }
 }
 
-async function mergePlanYjsStateIntoLiveDoc(planYjs, label = "已合并计划结构协作快照") {
+async function mergePlanYjsStateIntoLiveDoc(planYjs, label = "已合并计划结构协作快照", options = {}) {
   if (!planYjs) return false;
+  const { scheduleSave = true } = options;
   if (!collabPlanDoc || collabPlanTripId !== tripId) await bindCollabPlanDoc();
   if (!collabPlanDoc || isReadonlyMode) return applyPlanYjsStateToCurrentPlan(planYjs, label);
   let Y;
@@ -5605,7 +5606,20 @@ async function mergePlanYjsStateIntoLiveDoc(planYjs, label = "已合并计划结
   } finally {
     isApplyingCollabPlanRemote = false;
   }
-  persistCurrentPlanFromDoc(label);
+  persistCurrentPlanFromDoc(label, { scheduleSave });
+  return true;
+}
+
+async function mergeConflictPlanYjsSnapshot(remotePlan = {}, label = "已通过协作快照合并冲突") {
+  if (!remotePlan?.planYjs || !canEdit() || isReadonlyMode) return false;
+  await refreshLiveCollabStateBeforeRemoteSave("合并冲突前已刷新本地协作快照");
+  if (!collabPlanDoc || collabPlanTripId !== tripId) await bindCollabPlanDoc();
+  if (!collabPlanDoc) return false;
+  const merged = await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, label, { scheduleSave: false });
+  if (!merged) return false;
+  state = ensurePlanDates(state);
+  state.planYjs = currentPlanYjsState();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   return true;
 }
 
@@ -6164,13 +6178,21 @@ async function resolveConflict(mode) {
       render();
       return;
     }
-    state = mode === "merge" ? mergePlans(localPlan, remotePlan, basePlan) : ensurePlanDates(localPlan);
+    let mergedWithYjsSnapshot = false;
+    if (mode === "merge") {
+      mergedWithYjsSnapshot = await mergeConflictPlanYjsSnapshot(remotePlan, "已通过协作快照合并冲突");
+      if (!mergedWithYjsSnapshot) state = mergePlans(localPlan, remotePlan, basePlan);
+    } else {
+      state = ensurePlanDates(localPlan);
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     lastRemoteUpdatedAt = conflict.updatedAt || lastRemoteUpdatedAt;
     hideConflictPanel();
-    logActivity(mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
-    await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep");
-    await pushRemoteState(mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
+    await logActivity(mergedWithYjsSnapshot ? "通过协作快照合并冲突" : mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
+    if (!mergedWithYjsSnapshot) {
+      await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep");
+    }
+    await pushRemoteState(mergedWithYjsSnapshot ? "已通过协作快照合并冲突" : mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
     render();
   } catch (error) {
     pendingConflict = conflict;
