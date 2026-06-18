@@ -11221,6 +11221,41 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
     await saveCollaborativePlanChange("已删除空白协作块");
     focusDayBlockInput(previousBlockId);
+    return;
+  }
+  if (event.key === "Backspace" && !event.isComposing && input.selectionStart === 0 && input.selectionEnd === 0 && blockIndex > 0 && input.value.trim()) {
+    event.preventDefault();
+    const previousBlock = blocks[blockIndex - 1];
+    if (!previousBlock || !requireEdit("合并协作块")) return;
+    const mergedText = `${previousBlock.text || ""}${previousBlock.text ? " " : ""}${input.value.trim()}`.trim();
+    const mergedComments = normalizeComments([...(previousBlock.comments || []), ...(block.comments || [])]);
+    const previousPatch = { text: mergedText, textYjs: "", comments: mergedComments, level: previousBlock.level || 0 };
+    const previousUpdated = await updateDayBlockInDoc(day.id, previousBlock.id, previousPatch, "local-day-block-keyboard-merge-previous");
+    const deleted = previousUpdated ? await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-merge-delete") : false;
+    if (deleted) {
+      day.blocks = normalizeDayBlocks((day.blocks || [])
+        .map((item) => (item.id === previousBlock.id ? { ...item, ...previousPatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item))
+        .filter((item) => item.id !== blockId));
+      activeBlockPresenceId = previousBlock.id;
+      renderDayBlocks(day);
+      focusDayBlockInput(previousBlock.id);
+      await logActivity("用键盘合并协作块", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
+      await saveCollaborativePlanChange("已用键盘合并协作块");
+      focusDayBlockInput(previousBlock.id);
+      return;
+    }
+    if (!mutate("用键盘合并协作块", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || [])
+        .map((item) => (item.id === previousBlock.id ? { ...item, ...previousPatch } : item))
+        .filter((item) => item.id !== blockId));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-merge-fallback");
+    activeBlockPresenceId = previousBlock.id;
+    renderDayBlocks(currentDay());
+    focusDayBlockInput(previousBlock.id);
+    await logActivity("用键盘合并协作块", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
+    await saveCollaborativePlanChange("已用键盘合并协作块");
+    focusDayBlockInput(previousBlock.id);
   }
 });
 
