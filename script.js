@@ -355,6 +355,14 @@ function conflictDiffSummary(conflict = {}) {
   };
 }
 
+function versionPreviewSummary(versionPlan = {}, currentPlan = state) {
+  const changes = collectPlanChangeMap(currentPlan, versionPlan);
+  return {
+    items: [...changes.values()].map((entry) => entry.label).slice(0, 8),
+    extra: Math.max(0, changes.size - 8),
+  };
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   bytes.forEach((byte) => {
@@ -6011,6 +6019,7 @@ const dom = {
   budgetLimitInput: document.querySelector("#budgetLimitInput"),
   budgetSettlement: document.querySelector("#budgetSettlement"),
   versionCount: document.querySelector("#versionCount"),
+  versionPreview: document.querySelector("#versionPreview"),
   versionList: document.querySelector("#versionList"),
   commentIndexCount: document.querySelector("#commentIndexCount"),
   commentIndexFilters: document.querySelector("#commentIndexFilters"),
@@ -6228,6 +6237,7 @@ let lastRemoteUpdatedAt = "";
 let lastSyncedState = null;
 let pendingLocalRemoteUpdatedAt = "";
 let pendingConflict = null;
+let pendingVersionRestoreId = "";
 let isResolvingConflict = false;
 let editLockEnabled = true;
 let remoteVersionHistoryEnabled = true;
@@ -6431,10 +6441,41 @@ async function loadRemoteVersionHistory() {
   localStorage.setItem(historyKey(), JSON.stringify(deduped.slice(0, MAX_VERSION_HISTORY)));
 }
 
+function selectedVersionEntry(versionId = pendingVersionRestoreId) {
+  return versionHistory().find((item) => item.id === versionId) || null;
+}
+
+function renderVersionPreview() {
+  if (!dom.versionPreview) return;
+  const entry = selectedVersionEntry();
+  if (!entry?.data?.days?.length) {
+    dom.versionPreview.hidden = true;
+    dom.versionPreview.innerHTML = "";
+    return;
+  }
+  const summary = versionPreviewSummary(entry.data, state);
+  const when = entry.at ? new Date(entry.at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "刚刚";
+  dom.versionPreview.hidden = false;
+  dom.versionPreview.innerHTML = `
+    <strong>准备恢复：${escapeHtml(entry.reason || "历史版本")}</strong>
+    <span>${escapeHtml(when)} · ${escapeHtml(entry.by || "未知成员")}</span>
+    <small>${escapeHtml(versionDiffSummary(entry.data, state))}</small>
+    <ul>
+      ${summary.items.length ? summary.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "<li>与当前版本一致</li>"}
+      ${summary.extra ? `<li>还有 ${summary.extra} 项变化</li>` : ""}
+    </ul>
+    <div class="version-preview-actions">
+      <button type="button" class="primary-btn" data-confirm-version-restore="${escapeHtml(entry.id)}">${icon("rotate-ccw")}确认恢复</button>
+      <button type="button" class="text-btn" data-cancel-version-restore>${icon("x")}取消</button>
+    </div>
+  `;
+}
+
 async function restoreVersion(versionId) {
   if (!requireEdit("恢复历史版本")) return;
   const entry = versionHistory().find((item) => item.id === versionId);
   if (!entry?.data?.days?.length) return;
+  pendingVersionRestoreId = "";
   saveVersionSnapshot("恢复前版本");
   state = ensurePlanDates(clone(entry.data));
   activeDay = 0;
@@ -6720,6 +6761,7 @@ function applyReadonlyUi() {
 
 function renderVersionHistory() {
   const history = versionHistory();
+  if (pendingVersionRestoreId && !history.some((entry) => entry.id === pendingVersionRestoreId)) pendingVersionRestoreId = "";
   dom.versionCount.textContent = `${history.length} 条`;
   dom.versionList.innerHTML =
     history
@@ -6727,7 +6769,7 @@ function renderVersionHistory() {
         const date = new Date(entry.at);
         const time = Number.isNaN(date.getTime()) ? "刚刚" : date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
         return `
-          <button class="version-item" data-version="${entry.id}">
+          <button class="version-item${pendingVersionRestoreId === entry.id ? " is-selected" : ""}" data-version="${entry.id}">
             <strong>${entry.reason || "历史版本"}</strong>
             <span>${time} · ${entry.by || "未知成员"}</span>
             <small class="version-diff">${escapeHtml(versionDiffSummary(entry.data, state))}</small>
@@ -6735,6 +6777,7 @@ function renderVersionHistory() {
         `;
       })
       .join("") || `<div class="member-empty">开始编辑后会自动保存最近 ${MAX_VERSION_HISTORY} 个版本。</div>`;
+  renderVersionPreview();
 }
 
 function renderCommentIndex() {
@@ -10709,7 +10752,22 @@ dom.useRemoteConflictBtn?.addEventListener("click", () => resolveConflict("remot
 dom.versionList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-version]");
   if (!button) return;
-  restoreVersion(button.dataset.version);
+  pendingVersionRestoreId = button.dataset.version || "";
+  renderVersionHistory();
+  dom.saveState.textContent = "请确认是否恢复该历史版本";
+});
+
+dom.versionPreview?.addEventListener("click", (event) => {
+  const confirmButton = event.target.closest("[data-confirm-version-restore]");
+  if (confirmButton) {
+    restoreVersion(confirmButton.dataset.confirmVersionRestore || "");
+    return;
+  }
+  if (event.target.closest("[data-cancel-version-restore]")) {
+    pendingVersionRestoreId = "";
+    renderVersionHistory();
+    dom.saveState.textContent = "已取消恢复历史版本";
+  }
 });
 
 dom.commentIndexFilters?.addEventListener("click", (event) => {
