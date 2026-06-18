@@ -2287,6 +2287,13 @@ button:disabled {
   outline: 0;
 }
 
+.day-block-text {
+  resize: vertical;
+  min-height: 56px;
+  padding: 8px 10px;
+  line-height: 1.45;
+}
+
 .day-block-list {
   display: grid;
   gap: 8px;
@@ -2329,6 +2336,7 @@ button:disabled {
   color: var(--ink);
   font-size: 18px;
   font-weight: 900;
+  resize: none;
 }
 
 .day-block.is-heading .day-block-toggle {
@@ -2348,8 +2356,8 @@ button:disabled {
 
 .day-block-text-presence {
   top: 0;
-  bottom: auto;
-  height: 39px;
+  bottom: 0;
+  height: auto;
 }
 
 .day-block-text-presence b {
