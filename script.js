@@ -2443,14 +2443,15 @@ function normalizeDayBlock(block = {}) {
   if (!block) return null;
   const type = ["todo", "note", "decision"].includes(block.type) ? block.type : "todo";
   const text = String(block.text || block.title || "").trim();
-  if (!text) return null;
+  const comments = normalizeComments(block.comments || []);
+  if (!text && !block.id && !comments.length) return null;
   return {
     id: block.id || uid(),
     type,
     text,
     textYjs: block.textYjs || "",
     done: Boolean(block.done),
-    comments: normalizeComments(block.comments || []),
+    comments,
     createdBy: block.createdBy || "",
     createdAt: block.createdAt || new Date().toISOString(),
     updatedBy: block.updatedBy || "",
@@ -2500,6 +2501,18 @@ function reorderDayBlockList(blocks = [], blockId = "", targetIndex = 0, patch =
   const nextBlocks = [...normalized];
   const [moved] = nextBlocks.splice(index, 1);
   nextBlocks.splice(boundedIndex, 0, normalizeDayBlock({ ...moved, ...patch, id: moved.id }) || moved);
+  return normalizeDayBlocks(nextBlocks);
+}
+
+function insertDayBlockList(blocks = [], block = {}, targetIndex = null) {
+  const normalized = normalizeDayBlocks(blocks);
+  const normalizedBlock = normalizeDayBlock(block);
+  if (!normalizedBlock || normalized.some((item) => item.id === normalizedBlock.id)) return normalized;
+  const insertIndex = targetIndex === null || targetIndex === undefined
+    ? normalized.length
+    : Math.max(0, Math.min(Number(targetIndex) || 0, normalized.length));
+  const nextBlocks = [...normalized];
+  nextBlocks.splice(insertIndex, 0, normalizedBlock);
   return normalizeDayBlocks(nextBlocks);
 }
 
@@ -4098,6 +4111,17 @@ function renderDayBlocks(day = currentDay()) {
   requestAnimationFrame(() => refreshDayBlockTextPresence());
 }
 
+function focusDayBlockInput(blockId = "") {
+  if (!blockId || !dom.dayBlockList) return;
+  requestAnimationFrame(() => {
+    const input = dom.dayBlockList.querySelector(`[data-edit-day-block="${CSS.escape(blockId)}"]`);
+    if (!input) return;
+    input.focus();
+    const length = input.value.length;
+    input.setSelectionRange?.(length, length);
+  });
+}
+
 function applyStopRealtimeFields(stop) {
   dom.placeType.textContent = stop.type || "Place";
   dom.placeTitle.textContent = stop.title || "未命名地点";
@@ -4988,7 +5012,7 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
   return { text: nextText, textYjs: nextState };
 }
 
-async function addDayBlockToDoc(dayId, block, origin = "local-day-block-add") {
+async function addDayBlockToDoc(dayId, block, origin = "local-day-block-add", insertIndex = null) {
   if (!canEdit() || isReadonlyMode || !dayId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
@@ -5018,7 +5042,10 @@ async function addDayBlockToDoc(dayId, block, origin = "local-day-block-add") {
       collabDayBlockTextsMap?.set(blockKey, yText);
     }
     if (textState) collabDayBlockTextStatesMap?.set(blockKey, textState);
-    blockArray.insert(blockArray.length, [normalized]);
+    const boundedIndex = insertIndex === null || insertIndex === undefined
+      ? blockArray.length
+      : Math.max(0, Math.min(Number(insertIndex) || 0, blockArray.length));
+    blockArray.insert(boundedIndex, [normalized]);
   }, origin);
   return normalized;
 }
@@ -11040,6 +11067,76 @@ dom.dayBlockList?.addEventListener("dragend", () => {
   schedulePresenceTrack(120);
 });
 
+dom.dayBlockList?.addEventListener("keydown", async (event) => {
+  const input = event.target.closest("[data-edit-day-block]");
+  if (!input || !canEdit() || isReadonlyMode) return;
+  const day = currentDay();
+  const blockId = input.dataset.editDayBlock;
+  const blocks = normalizeDayBlocks(day?.blocks || []);
+  const blockIndex = blocks.findIndex((block) => block.id === blockId);
+  const block = blockIndex >= 0 ? blocks[blockIndex] : null;
+  if (!day || !block) return;
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    const newBlock = normalizeDayBlock({
+      id: uid(),
+      type: block.type || "note",
+      text: "",
+      createdBy: getCollabName(),
+      createdAt: new Date().toISOString(),
+    });
+    if (!newBlock || !requireEdit("新增协作块")) return;
+    activeBlockPresenceId = newBlock.id;
+    const insertIndex = blockIndex + 1;
+    const added = await addDayBlockToDoc(day.id, newBlock, "local-day-block-keyboard-add", insertIndex);
+    if (added) {
+      const addedBlock = added === true ? newBlock : added;
+      day.blocks = insertDayBlockList(day.blocks || [], addedBlock, insertIndex);
+      renderDayBlocks(day);
+      focusDayBlockInput(addedBlock.id);
+      await logActivity("用键盘新增协作块", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: "keyboard-add" }) });
+      await saveCollaborativePlanChange("已用键盘新增协作块");
+      focusDayBlockInput(addedBlock.id);
+      return;
+    }
+    if (!mutate("用键盘新增协作块", () => {
+      currentDay().blocks = insertDayBlockList(currentDay().blocks || [], newBlock, insertIndex);
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-add-fallback");
+    renderDayBlocks(currentDay());
+    focusDayBlockInput(newBlock.id);
+    await logActivity("用键盘新增协作块", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: "keyboard-add" }) });
+    await saveCollaborativePlanChange("已用键盘新增协作块");
+    focusDayBlockInput(newBlock.id);
+    return;
+  }
+  if (event.key === "Backspace" && !event.isComposing && !input.value.trim() && blocks.length > 1) {
+    event.preventDefault();
+    const previousBlockId = blocks[Math.max(0, blockIndex - 1)]?.id || blocks[blockIndex + 1]?.id || "";
+    if (!requireEdit("删除空白协作块")) return;
+    if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-delete-empty")) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
+      activeBlockPresenceId = previousBlockId;
+      renderDayBlocks(day);
+      focusDayBlockInput(previousBlockId);
+      await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
+      await saveCollaborativePlanChange("已删除空白协作块");
+      focusDayBlockInput(previousBlockId);
+      return;
+    }
+    if (!mutate("删除空白协作块", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).filter((item) => item.id !== blockId));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-delete-empty-fallback");
+    activeBlockPresenceId = previousBlockId;
+    renderDayBlocks(currentDay());
+    focusDayBlockInput(previousBlockId);
+    await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
+    await saveCollaborativePlanChange("已删除空白协作块");
+    focusDayBlockInput(previousBlockId);
+  }
+});
+
 dom.dayBlockList?.addEventListener("input", (event) => {
   const input = event.target.closest("[data-edit-day-block]");
   if (!input || !canEdit() || isReadonlyMode) return;
@@ -11050,7 +11147,7 @@ dom.dayBlockList?.addEventListener("input", (event) => {
     const day = currentDay();
     const blockId = input.dataset.editDayBlock;
     const text = input.value.trim();
-    if (!day || !blockId || !text) return;
+    if (!day || !blockId) return;
     const updatedText = await updateDayBlockTextInDoc(day.id, blockId, text, "local-day-block-text-crdt");
     if (updatedText) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
