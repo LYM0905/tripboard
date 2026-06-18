@@ -29,6 +29,23 @@ const COMMENT_INDEX_FILTERS = [
   { value: "all", label: "全部" },
   { value: "resolved", label: "已解决" },
 ];
+const ACTIVITY_FILTERS = [
+  { value: "all", label: "全部" },
+  { value: "restore", label: "恢复" },
+  { value: "conflict", label: "冲突" },
+  { value: "comment", label: "批注" },
+  { value: "transport", label: "交通" },
+  { value: "map", label: "路线" },
+  { value: "edit", label: "编辑" },
+];
+const ACTIVITY_TYPE_LABELS = {
+  restore: "恢复",
+  conflict: "冲突",
+  comment: "批注",
+  transport: "交通",
+  map: "路线",
+  edit: "编辑",
+};
 const COLLAB_DAY_TEXT_FIELDS = [
   { field: "day:title", docField: "title", domKey: "fieldDayTitle", label: "当天标题", presenceId: "fieldDayTitlePresence", scope: "day" },
   { field: "day:route", docField: "route", domKey: "fieldDayRoute", label: "当天路线", presenceId: "fieldDayRoutePresence", scope: "day" },
@@ -368,6 +385,16 @@ function restoredVersionLabel(reason = "历史版本", at = "") {
     ? new Date(at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
     : "";
   return [reason || "历史版本", restoredAt].filter(Boolean).join(" · ");
+}
+
+function inferActivityType(text = "") {
+  const value = String(text || "");
+  if (/恢复历史版本|历史版本|恢复前版本/.test(value)) return "restore";
+  if (/冲突|合并|保留我的版本|云端版本/.test(value)) return "conflict";
+  if (/批注|评论|回复|解决|重新打开/.test(value)) return "comment";
+  if (/航班|动车|报价|交通|Google Flights|出发地/.test(value)) return "transport";
+  if (/高德|路线|路径|地图|定位|AI 优化|优化当天/.test(value)) return "map";
+  return "edit";
 }
 
 function memberActivityLabel(member = {}) {
@@ -2290,6 +2317,7 @@ function normalizeActivities(activities = []) {
     .map((activity) => ({
       id: activity.id || uid(),
       text: String(activity.text || "").trim(),
+      type: activity.type || inferActivityType(activity.text || ""),
       at: activity.at || new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
       createdAt: activity.createdAt || new Date().toISOString(),
       createdBy: activity.createdBy || "",
@@ -6231,6 +6259,7 @@ const dom = {
   saveServiceConfigBtn: document.querySelector("#saveServiceConfigBtn"),
   syncWeatherBtn: document.querySelector("#syncWeatherBtn"),
   serviceStatusText: document.querySelector("#serviceStatusText"),
+  activityFilters: document.querySelector("#activityFilters"),
   activityList: document.querySelector("#activityList"),
 };
 
@@ -6319,6 +6348,7 @@ let commentFilter = "all";
 let dayReplyingCommentId = "";
 let dayCommentFilter = "all";
 let commentIndexFilter = "open";
+let activityFilter = "all";
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
@@ -6554,6 +6584,7 @@ function logActivity(text, options = {}) {
   const localActivity = normalizeActivities([{
     id: uid(),
     text,
+    type: options.type || inferActivityType(text),
     at: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
     createdAt: new Date().toISOString(),
     createdBy: getCollabName(),
@@ -8649,13 +8680,28 @@ function renderCandidates() {
 }
 
 function renderActivities() {
-  const list = state.activities || [];
-  dom.activityList.innerHTML = list
+  const list = normalizeActivities(state.activities || []);
+  const counts = list.reduce((result, item) => {
+    result.all += 1;
+    result[item.type] = (result[item.type] || 0) + 1;
+    return result;
+  }, { all: 0 });
+  if (activityFilter !== "all" && !counts[activityFilter]) activityFilter = "all";
+  if (dom.activityFilters) {
+    dom.activityFilters.innerHTML = ACTIVITY_FILTERS.map((filter) => `
+      <button type="button" class="activity-filter${activityFilter === filter.value ? " is-active" : ""}" data-activity-filter="${filter.value}">
+        ${filter.label}<span>${counts[filter.value] || 0}</span>
+      </button>
+    `).join("");
+  }
+  const visibleList = list.filter((item) => activityFilter === "all" || item.type === activityFilter);
+  dom.activityList.innerHTML = visibleList
     .map((item) => {
       const entry = typeof item === "string" ? { text: item, at: "刚刚" } : item;
-      return `<div class="activity-item"><span class="avatar a1">我</span><p>${entry.text}<br><small>${entry.at || ""}</small></p></div>`;
+      const type = entry.type || inferActivityType(entry.text || "");
+      return `<div class="activity-item" data-activity-type="${escapeHtml(type)}"><span class="avatar a1">${escapeHtml((ACTIVITY_TYPE_LABELS[type] || "记").slice(0, 1))}</span><p><span class="activity-type">${escapeHtml(ACTIVITY_TYPE_LABELS[type] || "记录")}</span>${escapeHtml(entry.text)}<br><small>${escapeHtml(entry.at || "")}${entry.createdBy ? ` · ${escapeHtml(entry.createdBy)}` : ""}</small></p></div>`;
     })
-    .join("");
+    .join("") || `<div class="member-empty">${activityFilter === "all" ? "还没有操作记录。" : "当前类型暂无记录。"}</div>`;
 }
 
 function renderGuideResult() {
@@ -10827,6 +10873,13 @@ dom.commentIndexFilters?.addEventListener("click", (event) => {
   commentIndexFilter = button.dataset.commentIndexFilter || "open";
   renderCommentIndex();
   refreshIcons();
+});
+
+dom.activityFilters?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-activity-filter]");
+  if (!button) return;
+  activityFilter = button.dataset.activityFilter || "all";
+  renderActivities();
 });
 
 dom.commentIndexList?.addEventListener("click", (event) => {
