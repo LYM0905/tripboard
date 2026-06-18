@@ -1440,6 +1440,41 @@ button:disabled {
   line-height: 1.45;
 }
 
+.conflict-diff {
+  display: grid;
+  gap: 7px;
+}
+
+.conflict-diff-group {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(240, 214, 155, 0.8);
+  border-radius: 8px;
+}
+
+.conflict-diff-group strong {
+  color: #7a4f0d;
+  font-size: 12px;
+}
+
+.conflict-diff-group ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conflict-diff-group li {
+  color: #5e6b71;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .conflict-actions {
   display: grid;
   gap: 8px;
