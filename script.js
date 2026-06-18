@@ -120,6 +120,53 @@ function samePlanContent(a, b) {
   return sameSerialized(planContentSnapshot(a), planContentSnapshot(b));
 }
 
+function planVersionStats(plan = {}) {
+  const days = Array.isArray(plan.days) ? plan.days : [];
+  const stops = days.flatMap((day) => day.stops || []);
+  const blocks = days.flatMap((day) => day.blocks || []);
+  const stopComments = stops.reduce((sum, stop) => sum + normalizeComments(stop.comments || []).length, 0);
+  const dayComments = days.reduce((sum, day) => sum + normalizeComments(day.comments || []).length, 0);
+  const blockComments = blocks.reduce((sum, block) => sum + normalizeComments(block.comments || []).length, 0);
+  const budget = stops.reduce((sum, stop) => sum + numberValue(stop.budget), 0);
+  return {
+    days: days.length,
+    stops: stops.length,
+    blocks: blocks.length,
+    comments: stopComments + dayComments + blockComments,
+    quotes: normalizeTransportQuotes(plan.transportQuotes || []).length,
+    candidates: normalizeCandidateStops(plan.candidates || []).length,
+    budget,
+  };
+}
+
+function versionStatDiffLabel(label, currentValue, versionValue, formatter = (value) => String(value)) {
+  const delta = Number(versionValue || 0) - Number(currentValue || 0);
+  if (!delta) return "";
+  const direction = delta > 0 ? "+" : "";
+  return `${label} ${direction}${formatter(delta)}`;
+}
+
+function moneyDiff(value) {
+  const absValue = Math.abs(Number(value || 0));
+  return `${value < 0 ? "-" : ""}${money(absValue)}`;
+}
+
+function versionDiffSummary(versionPlan = {}, currentPlan = state) {
+  const currentStats = planVersionStats(currentPlan);
+  const versionStats = planVersionStats(versionPlan);
+  const labels = [
+    versionStatDiffLabel("天数", currentStats.days, versionStats.days),
+    versionStatDiffLabel("地点", currentStats.stops, versionStats.stops),
+    versionStatDiffLabel("协作块", currentStats.blocks, versionStats.blocks),
+    versionStatDiffLabel("批注", currentStats.comments, versionStats.comments),
+    versionStatDiffLabel("交通报价", currentStats.quotes, versionStats.quotes),
+    versionStatDiffLabel("备选", currentStats.candidates, versionStats.candidates),
+    versionStatDiffLabel("预算", currentStats.budget, versionStats.budget, moneyDiff),
+  ].filter(Boolean);
+  if (sameSerialized(planContentSnapshot(versionPlan), planContentSnapshot(currentPlan))) return "与当前版本一致";
+  return labels.length ? labels.slice(0, 4).join(" · ") : "内容有调整";
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   bytes.forEach((byte) => {
@@ -6308,6 +6355,7 @@ function renderVersionHistory() {
           <button class="version-item" data-version="${entry.id}">
             <strong>${entry.reason || "历史版本"}</strong>
             <span>${time} · ${entry.by || "未知成员"}</span>
+            <small class="version-diff">${escapeHtml(versionDiffSummary(entry.data, state))}</small>
           </button>
         `;
       })
