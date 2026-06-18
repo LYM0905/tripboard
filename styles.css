@@ -461,6 +461,19 @@ button {
   list-style: none;
 }
 
+.version-impact {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(240, 214, 155, 0.8);
+  border-radius: 8px;
+}
+
+.version-impact strong {
+  color: #7a4f0d;
+}
+
 .version-preview-actions {
   display: grid;
   gap: 7px;
