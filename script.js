@@ -4011,6 +4011,19 @@ function dayBlockIcon(type = "todo") {
   return "check-square";
 }
 
+function dayBlockSlashCommand(value = "") {
+  const command = String(value || "").trim().toLowerCase();
+  const commands = {
+    "/todo": "todo",
+    "/待办": "todo",
+    "/note": "note",
+    "/备注": "note",
+    "/decision": "decision",
+    "/决定": "decision",
+  };
+  return commands[command] || "";
+}
+
 function renderDayBlockComments(block) {
   const rendered = renderCommentThreads(block.comments || [], {
     filter: blockCommentFilters[block.id] || "all",
@@ -11076,6 +11089,33 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   const blockIndex = blocks.findIndex((block) => block.id === blockId);
   const block = blockIndex >= 0 ? blocks[blockIndex] : null;
   if (!day || !block) return;
+  const slashType = dayBlockSlashCommand(input.value);
+  if (slashType && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    clearTimeout(dayBlockEditTimer);
+    if (!requireEdit("切换协作块类型")) return;
+    activeBlockPresenceId = blockId;
+    const patch = { type: slashType, text: "", textYjs: "" };
+    if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-slash-command")) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      renderDayBlocks(day);
+      focusDayBlockInput(blockId);
+      await logActivity(`切换协作块为${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
+      await saveCollaborativePlanChange("已切换协作块类型");
+      focusDayBlockInput(blockId);
+      return;
+    }
+    if (!mutate("切换协作块类型", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(day.id, "local-day-block-slash-command-fallback");
+    renderDayBlocks(currentDay());
+    focusDayBlockInput(blockId);
+    await logActivity(`切换协作块为${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
+    await saveCollaborativePlanChange("已切换协作块类型");
+    focusDayBlockInput(blockId);
+    return;
+  }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     const newBlock = normalizeDayBlock({
