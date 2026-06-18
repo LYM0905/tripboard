@@ -5979,6 +5979,9 @@ async function applyRemotePlan(remotePlan, meta = {}) {
     budgetLimit: numberValue(state.budgetLimit || 10000),
   };
   state = ensurePlanDates(clone(remotePlan));
+  if (state.planYjs) {
+    await applyPlanYjsStateToCurrentPlan(state.planYjs, meta.label || "已应用云端计划结构协作快照");
+  }
   lastSyncedState = clone(state);
   lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
   const remoteTextState = remoteActiveStop?.textYjs || remoteActiveStop?.noteYjs || "";
@@ -6051,6 +6054,32 @@ async function handleRemotePlanUpdate(next) {
     pendingLocalRemoteUpdatedAt = "";
     hideConflictPanel();
     return;
+  }
+  if (remotePlan.planYjs) {
+    const localHadChanges = hasLocalChanges();
+    if (!localHadChanges) saveVersionSnapshot("协作者更新前版本");
+    const appliedYjs = await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, `${next.updated_by || "协作者"} 的云端协作快照已合并`);
+    if (appliedYjs) {
+      lastRemoteUpdatedAt = next.updated_at || lastRemoteUpdatedAt;
+      if (!localHadChanges) lastSyncedState = clone(state);
+      pendingLocalRemoteUpdatedAt = "";
+      await refreshEditAccessFromUrl();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      hideConflictPanel();
+      dom.saveState.textContent = "收到协作者协作快照";
+      dom.collabStatus.textContent = localHadChanges
+        ? `${next.updated_by || "协作者"} 的协作快照已合并，本地修改会继续保留。`
+        : next.updated_by
+          ? `${next.updated_by} 刚刚同步了协作快照`
+          : "共享计划协作快照已更新";
+      render();
+      if (localHadChanges && pendingPlanUpdates().length) {
+        flushPendingPlanUpdates("合并云端协作快照后重放离线协作更新").catch((error) => {
+          dom.collabStatus.textContent = `重放离线协作更新失败：${error.message}`;
+        });
+      }
+      return;
+    }
   }
   if (hasLocalChanges() && !samePlanContent(state, remotePlan)) {
     savePlanSnapshot(remotePlan, "待合并的云端版本", next.updated_by || "协作者");
