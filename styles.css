@@ -2978,6 +2978,12 @@ button:disabled {
   grid-template-columns: 30px 1fr;
   gap: 10px;
   align-items: center;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
 }
 
 .activity-item p {
@@ -2985,6 +2991,10 @@ button:disabled {
   color: #34464f;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.activity-item:hover p {
+  color: var(--green);
 }
 
 .activity-type {
@@ -2998,6 +3008,22 @@ button:disabled {
   border-radius: 6px;
   font-size: 11px;
   font-weight: 900;
+}
+
+.activity-target-pulse {
+  animation: activity-target-pulse 1.3s ease;
+}
+
+@keyframes activity-target-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(36, 115, 92, 0.32);
+  }
+  45% {
+    box-shadow: 0 0 0 6px rgba(36, 115, 92, 0.14);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(36, 115, 92, 0);
+  }
 }
 
 svg {
