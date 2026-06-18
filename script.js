@@ -4155,6 +4155,8 @@ function destroyCollabDayTextDoc() {
 function destroyCollabPlanDoc() {
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = null;
+  Object.values(planMetaInputSyncTimers).forEach((timer) => clearTimeout(timer));
+  planMetaInputSyncTimers = {};
   collabPlanTripId = "";
   collabDayMetasArray = null;
   collabDayTextStatesMap = null;
@@ -6355,6 +6357,7 @@ let collabPlanTripId = "";
 let collabPlanSaveTimer = null;
 let isApplyingCollabPlanRemote = false;
 let collabPlanBindRequestId = 0;
+let planMetaInputSyncTimers = {};
 let dayFieldSyncTimer = null;
 let dayBlockEditTimer = null;
 let blockReplyingCommentId = "";
@@ -8760,6 +8763,7 @@ function focusActivityDetail(detail = null) {
   if ((detail.type === "transportQuote" || detail.quoteId) && focusTransportQuoteActivityTarget(detail)) return true;
   if ((detail.type === "candidate" || detail.candidateId) && focusCandidateActivityTarget(detail)) return true;
   if (detail.type === "budgetSetting" && focusBudgetSettingActivityTarget(detail)) return true;
+  if (detail.type === "planMeta" && focusPlanMetaActivityTarget(detail)) return true;
   if ((detail.type === "stop" || detail.stopId) && focusStopActivityTarget(detail)) return true;
   if ((detail.type === "day" || detail.dayId) && focusDayActivityTarget(detail)) return true;
   return false;
@@ -8802,6 +8806,14 @@ function transportQuoteActivityTarget(quoteId = "", dayId = "", extra = {}) {
 function budgetSettingActivityTarget(field = "", extra = {}) {
   return {
     type: "budgetSetting",
+    field: field || "",
+    ...extra,
+  };
+}
+
+function planMetaActivityTarget(field = "", extra = {}) {
+  return {
+    type: "planMeta",
     field: field || "",
     ...extra,
   };
@@ -8894,6 +8906,20 @@ function focusBudgetSettingActivityTarget(detail = null) {
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
   fieldTarget?.focus();
   dom.saveState.textContent = "已定位到活动对应预算设置";
+  return true;
+}
+
+function focusPlanMetaActivityTarget(detail = null) {
+  syncGuideStateFromPlan();
+  renderGuideResult();
+  const fieldTarget = detail?.field === "destination" ? dom.destinationInput : detail?.field === "origin" ? dom.originInput : null;
+  const target = fieldTarget || document.querySelector(".guide-controls");
+  if (!target) return false;
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  fieldTarget?.focus();
+  dom.saveState.textContent = "已定位到活动对应计划基础信息";
   return true;
 }
 
@@ -10930,15 +10956,47 @@ dom.budgetLimitInput.addEventListener("change", async () => {
   await saveCollaborativePlanChange("更新预算上限");
 });
 
+async function syncPlanMetaFieldInput(field, value, label) {
+  if (!canEdit() || isReadonlyMode) return;
+  if (await syncPlanSettingToDoc(field, value)) {
+    persistCurrentPlanFromDoc("计划基础信息协作内容已实时同步");
+    await logActivity(label, { target: planMetaActivityTarget(field, { action: "update" }) });
+    await saveCollaborativePlanChange(label);
+    return;
+  }
+  state[field] = normalizePlanSettingValue(field, value);
+  await syncPlanMetaToDoc(`local-plan-meta-${field}-fallback`);
+  await logActivity(label, { target: planMetaActivityTarget(field, { action: "update" }) });
+  await saveCollaborativePlanChange(label);
+}
+
+function schedulePlanMetaInputSync(field, value, label) {
+  clearTimeout(planMetaInputSyncTimers[field]);
+  planMetaInputSyncTimers[field] = setTimeout(() => {
+    delete planMetaInputSyncTimers[field];
+    syncPlanMetaFieldInput(field, value, label).catch((error) => {
+      console.warn("Plan meta field sync failed", error);
+      dom.saveState.textContent = `${label}同步失败：${error.message}`;
+    });
+  }, 650);
+}
+
 dom.destinationInput.addEventListener("input", () => {
-  guideState.destination = dom.destinationInput.value.trim() || "自定义";
+  const destination = dom.destinationInput.value.trim() || "自定义";
+  guideState.destination = destination;
+  state.destination = destination;
   renderGuideResult();
+  renderShell();
+  schedulePlanMetaInputSync("destination", destination, "更新目的地");
 });
 
 dom.originInput.addEventListener("input", () => {
-  guideState.origin = dom.originInput.value.trim() || "出发城市";
+  const origin = dom.originInput.value.trim() || "出发城市";
+  guideState.origin = origin;
+  state.origin = origin;
   dom.transportFrom.value = guideState.origin;
   renderGuideResult();
+  schedulePlanMetaInputSync("origin", origin, "更新出发地");
 });
 
 function closeCreateChoice() {
