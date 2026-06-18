@@ -1020,14 +1020,75 @@ function mergeUniqueList(localItems = [], remoteItems = [], prefix = "item") {
 }
 
 function mergeComments(localComments = [], remoteComments = []) {
+  return normalizeComments([...(localComments || []), ...(remoteComments || [])]);
+}
+
+function commentRevisionTime(comment = {}) {
+  return Math.max(
+    new Date(comment.updatedAt || 0).getTime() || 0,
+    new Date(comment.resolvedAt || 0).getTime() || 0,
+    new Date(comment.at || 0).getTime() || 0,
+  );
+}
+
+function mergeCommentEntry(first = {}, second = {}) {
+  const firstTime = commentRevisionTime(first);
+  const secondTime = commentRevisionTime(second);
+  const base = secondTime >= firstTime ? second : first;
+  const other = base === second ? first : second;
+  const merged = { ...clone(other), ...clone(base) };
+  if (base.resolved) {
+    merged.resolved = true;
+    merged.resolvedAt = base.resolvedAt || merged.resolvedAt || base.updatedAt || new Date().toISOString();
+    merged.resolvedBy = base.resolvedBy || merged.resolvedBy || "";
+  } else {
+    delete merged.resolved;
+    delete merged.resolvedAt;
+    delete merged.resolvedBy;
+  }
+  return merged;
+}
+
+function commentCreatedTime(comment = {}) {
+  return new Date(comment.at || 0).getTime() || 0;
+}
+
+function commentAnchorIdentity(anchor = null) {
+  if (!anchor) return "";
+  return JSON.stringify({
+    scope: anchor.scope || "",
+    field: anchor.field || "",
+    start: Number(anchor.start || 0),
+    end: Number(anchor.end || 0),
+    dayId: anchor.dayId || "",
+    stopId: anchor.stopId || "",
+    blockId: anchor.blockId || "",
+    excerpt: anchor.excerpt || "",
+  });
+}
+
+function commentDuplicateKey(comment = {}) {
+  return [
+    comment.parentId || "root",
+    String(comment.author || "").trim(),
+    String(comment.text || "").trim(),
+    commentAnchorIdentity(comment.anchor || null),
+  ].join("|");
+}
+
+function shouldMergeCommentEntries(first = {}, second = {}) {
+  if (first.id && second.id && first.id === second.id) return true;
+  if (commentDuplicateKey(first) !== commentDuplicateKey(second)) return false;
+  const createdDiff = Math.abs(commentCreatedTime(first) - commentCreatedTime(second));
+  return createdDiff <= 24 * 60 * 60 * 1000 || first.resolved || second.resolved;
+}
+
+function mergeCommentListEntries(comments = []) {
   const result = [];
-  const seen = new Set();
-  [...localComments, ...remoteComments].forEach((comment) => {
-    if (!comment) return;
-    const key = String(comment.id || `${comment.author || ""}:${comment.text || ""}`);
-    if (seen.has(key)) return;
-    seen.add(key);
-    result.push(clone(comment));
+  comments.forEach((comment) => {
+    const index = result.findIndex((existing) => shouldMergeCommentEntries(existing, comment));
+    if (index < 0) result.push(comment);
+    else result[index] = mergeCommentEntry(result[index], comment);
   });
   return result;
 }
@@ -2939,6 +3000,7 @@ function normalizeCommentEntry(comment = {}) {
     author: comment.author || "我",
     text: String(comment.text || "").trim(),
     at: comment.at || new Date().toISOString(),
+    updatedAt: comment.updatedAt || comment.resolvedAt || comment.at || new Date().toISOString(),
   };
   if (parentId && parentId !== normalized.id) normalized.parentId = parentId;
   if (!normalized.parentId && anchor) normalized.anchor = anchor;
@@ -2955,16 +3017,21 @@ function normalizeCommentEntry(comment = {}) {
 }
 
 function normalizeComments(comments = []) {
-  const seen = new Set();
-  const normalized = (comments || [])
+  const byKey = new Map();
+  const order = [];
+  (comments || [])
     .map((comment) => normalizeCommentEntry(comment))
-    .filter((comment) => {
-      if (!comment?.text) return false;
+    .filter((comment) => comment?.text)
+    .forEach((comment) => {
       const key = comment.id || `${comment.author}:${comment.text}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+      if (!byKey.has(key)) {
+        order.push(key);
+        byKey.set(key, comment);
+        return;
+      }
+      byKey.set(key, mergeCommentEntry(byKey.get(key), comment));
     });
+  const normalized = mergeCommentListEntries(order.map((key) => byKey.get(key)).filter(Boolean));
   const byId = new Map(normalized.map((comment) => [comment.id, comment]));
   return normalized.map((comment) => {
     if (!comment.parentId) return comment;
@@ -3131,6 +3198,13 @@ function commentIndexCounts(items = []) {
 function commentIndexTimeValue(item = {}) {
   const time = new Date(item.at || 0).getTime();
   return Number.isFinite(time) ? time : 0;
+}
+
+function resolvedCommentPatch(isResolved) {
+  const updatedAt = new Date().toISOString();
+  return isResolved
+    ? { resolved: false, updatedAt }
+    : { resolved: true, resolvedAt: updatedAt, resolvedBy: getCollabName(), updatedAt };
 }
 
 function commentAnchorLabel(anchor = null) {
@@ -6469,15 +6543,62 @@ function renderCommentIndex() {
       const replyText = item.replies ? ` · ${item.replies} 回复` : "";
       const meta = `${item.dayLabel} · ${item.scopeLabel}${anchorLabel ? ` · ${anchorLabel}` : ""}${replyText}`;
       return `
-        <button type="button" class="comment-index-item${item.resolved ? " is-resolved" : ""}" data-comment-index-id="${escapeHtml(item.id)}" data-comment-index-scope="${escapeHtml(item.scope)}">
+        <article class="comment-index-item${item.resolved ? " is-resolved" : ""}" data-comment-index-id="${escapeHtml(item.id)}" data-comment-index-scope="${escapeHtml(item.scope)}" role="button" tabindex="0">
           <span class="comment-index-status">${icon(item.resolved ? "check-circle-2" : "message-square-more")}${status}</span>
           <strong>${escapeHtml(item.targetLabel)}</strong>
           <p>${escapeHtml(item.text)}</p>
           <small>${escapeHtml(meta)}</small>
-        </button>
+          ${canEdit() ? `<span class="comment-index-actions"><span class="comment-index-author">${escapeHtml(item.author || "我")}${item.at ? ` · ${escapeHtml(formatCommentTime(item.at))}` : ""}</span><button type="button" class="comment-action" data-comment-index-resolve="${escapeHtml(item.id)}">${item.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}解决`}</button></span>` : ""}
+        </article>
       `;
     })
     .join("") || `<div class="member-empty">${commentIndexFilter === "open" ? "当前没有未解决批注。" : "还没有批注记录。"}</div>`;
+}
+
+async function toggleCommentIndexResolved(commentId = "") {
+  const item = commentIndexItems().find((entry) => entry.id === commentId);
+  if (!item || !requireEdit(item.resolved ? "重新打开批注" : "解决批注")) return false;
+  const patch = resolvedCommentPatch(item.resolved);
+  const actionText = item.resolved ? "重新打开" : "解决";
+  const day = state.days[item.dayIndex] || state.days.find((entry) => entry.id === item.dayId);
+  if (!day) return false;
+  if (item.scope === "stop") {
+    const stop = (day.stops || []).find((entry, index) => (item.stopId && entry.id === item.stopId) || index === item.stopIndex);
+    if (!stop) return false;
+    const wasCurrentStop = currentStop()?.id === stop.id;
+    let updated = false;
+    if (wasCurrentStop) updated = await updateCollaborativeComment(commentId, patch);
+    stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, patch);
+    await logActivity(`${actionText}批注「${stop.title || "地点"}」`);
+    await syncStopSnapshotToPlanDoc(stop.id, updated ? "comment-index-stop-resolve-snapshot" : "comment-index-stop-resolve-fallback-snapshot");
+    if (wasCurrentStop) await saveCollaborativeTextChange(`${actionText}批注「${stop.title || "地点"}」`);
+    else await saveCollaborativePlanChange(`${actionText}批注「${stop.title || "地点"}」`);
+  } else if (item.scope === "day") {
+    const wasCurrentDay = currentDay()?.id === day.id;
+    let updated = false;
+    if (wasCurrentDay) updated = await updateCollaborativeDayComment(commentId, patch);
+    day.comments = commentsWithUpdatedComment(day.comments || [], commentId, patch);
+    await logActivity(`${actionText}当天批注「${day.title || day.label}」`);
+    await patchDayMetaInDoc(day.id, { comments: day.comments }, updated ? "comment-index-day-resolve-snapshot" : "comment-index-day-resolve-fallback-snapshot");
+    if (wasCurrentDay) await saveCollaborativeTextChange(`${actionText}当天批注「${day.title || day.label}」`);
+    else await saveCollaborativePlanChange(`${actionText}当天批注「${day.title || day.label}」`);
+  } else if (item.scope === "block") {
+    const blocks = normalizeDayBlocks(day.blocks || []);
+    const block = blocks.find((entry) => entry.id === item.blockId);
+    if (!block) return false;
+    const updated = await updateDayBlockCommentInDoc(day.id, block.id, commentId, patch, "comment-index-block-comment-resolve");
+    day.blocks = normalizeDayBlocks(blocks.map((entry) => (
+      entry.id === block.id
+        ? { ...entry, comments: commentsWithUpdatedComment(entry.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() }
+        : entry
+    )));
+    await logActivity(`${actionText}块级批注「${block.text.slice(0, 18)}」`);
+    if (!updated) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-resolve-fallback");
+    await saveCollaborativePlanChange(`${actionText}块级批注`);
+  }
+  render();
+  dom.saveState.textContent = item.resolved ? "已重新打开批注" : "已标记批注解决";
+  return true;
 }
 
 function focusCommentIndexItem(commentId = "") {
@@ -9225,9 +9346,7 @@ dom.commentList.addEventListener("click", async (event) => {
     const stop = currentStop();
     const comment = normalizeComments(stop.comments || []).find((item) => item.id === commentId && !item.parentId);
     if (!comment || !requireEdit(comment.resolved ? "重新打开评论" : "标记评论已解决")) return;
-    const nextPatch = comment.resolved
-      ? { resolved: false }
-      : { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: getCollabName() };
+    const nextPatch = resolvedCommentPatch(comment.resolved);
     const updated = await updateCollaborativeComment(commentId, nextPatch);
     if (updated) {
       stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, nextPatch);
@@ -9369,9 +9488,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     const day = currentDay();
     const comment = normalizeComments(day.comments || []).find((item) => item.id === commentId && !item.parentId);
     if (!comment || !requireEdit(comment.resolved ? "重新打开当天批注" : "标记当天批注已解决")) return;
-    const nextPatch = comment.resolved
-      ? { resolved: false }
-      : { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: getCollabName() };
+    const nextPatch = resolvedCommentPatch(comment.resolved);
     const updated = await updateCollaborativeDayComment(commentId, nextPatch);
     if (updated) {
       day.comments = commentsWithUpdatedComment(day.comments || [], commentId, nextPatch);
@@ -9539,9 +9656,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!block || !comment || !requireEdit("更新块级评论")) return;
     activeBlockPresenceId = block.id;
     schedulePresenceTrack(0);
-    const patch = comment.resolved
-      ? { resolved: false }
-      : { resolved: true, resolvedAt: new Date().toISOString(), resolvedBy: getCollabName() };
+    const patch = resolvedCommentPatch(comment.resolved);
     if (await updateDayBlockCommentInDoc(day.id, block.id, commentId, patch, "local-day-block-comment-resolve")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
@@ -10343,9 +10458,24 @@ dom.commentIndexFilters?.addEventListener("click", (event) => {
 });
 
 dom.commentIndexList?.addEventListener("click", (event) => {
+  const resolveButton = event.target.closest("[data-comment-index-resolve]");
+  if (resolveButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleCommentIndexResolved(resolveButton.dataset.commentIndexResolve || "");
+    return;
+  }
   const button = event.target.closest("[data-comment-index-id]");
   if (!button) return;
   focusCommentIndexItem(button.dataset.commentIndexId || "");
+});
+
+dom.commentIndexList?.addEventListener("keydown", (event) => {
+  if (!["Enter", " "].includes(event.key)) return;
+  const item = event.target.closest("[data-comment-index-id]");
+  if (!item || event.target.closest("[data-comment-index-resolve]")) return;
+  event.preventDefault();
+  focusCommentIndexItem(item.dataset.commentIndexId || "");
 });
 
 dom.memberForm.addEventListener("submit", (event) => {
