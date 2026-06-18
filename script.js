@@ -10427,6 +10427,7 @@ dom.dayBlockList?.addEventListener("input", (event) => {
       const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
       const metaElement = blockElement?.querySelector(".day-block-meta");
       if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;
+      await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
       await saveCollaborativePlanChange("协作块已更新");
       return;
     }
@@ -10434,6 +10435,7 @@ dom.dayBlockList?.addEventListener("input", (event) => {
     if (!block) return;
     day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text } : item)));
     await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback");
+    await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
     await saveState("协作块已更新");
   }, 650);
 });
