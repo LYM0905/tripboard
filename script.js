@@ -1177,8 +1177,7 @@ function elementSelectionPayload(element, meta = {}) {
   };
 }
 
-function textSelectionExcerpt(fieldMeta, selection = {}) {
-  const element = fieldMeta ? dom[fieldMeta.domKey] : null;
+function selectionExcerptFromElement(element, selection = {}) {
   const value = String(element?.value || "");
   const start = Math.max(0, Math.min(Number(selection.start || 0), value.length));
   const end = Math.max(start, Math.min(Number(selection.end || start), value.length));
@@ -1190,23 +1189,32 @@ function textSelectionExcerpt(fieldMeta, selection = {}) {
   return context.length > 48 ? `${context.slice(0, 48)}...` : context;
 }
 
+function textSelectionExcerpt(fieldMeta, selection = {}) {
+  const element = fieldMeta ? dom[fieldMeta.domKey] : null;
+  return selectionExcerptFromElement(element, selection);
+}
+
 function normalizeCommentAnchor(anchor = null) {
   if (!anchor?.field) return null;
   const meta = collabTextFieldMeta(anchor.field);
-  if (!meta) return null;
-  const scope = meta.scope || "stop";
+  const blockScope = anchor.scope === "block" && anchor.blockId;
+  if (!meta && !blockScope) return null;
+  const scope = meta?.scope || "stop";
   const start = Math.max(0, Number(anchor.start || 0));
   const end = Math.max(start, Number(anchor.end || start));
   const normalized = {
-    field: meta.field,
-    label: meta.label,
-    scope,
+    field: meta?.field || String(anchor.field || ""),
+    label: anchor.label || meta?.label || (blockScope ? "协作块" : "字段"),
+    scope: blockScope ? "block" : scope,
     start,
     end,
     length: Math.max(0, Number(anchor.length || 0)),
     excerpt: String(anchor.excerpt || "").trim(),
   };
-  if (scope === "day") normalized.dayId = anchor.dayId || currentDay()?.id || "";
+  if (blockScope) {
+    normalized.dayId = anchor.dayId || currentDay()?.id || "";
+    normalized.blockId = anchor.blockId || "";
+  } else if (scope === "day") normalized.dayId = anchor.dayId || currentDay()?.id || "";
   else normalized.stopId = anchor.stopId || currentStop()?.id || "";
   return normalized;
 }
@@ -1223,6 +1231,24 @@ function buildCommentAnchorFromField(fieldMeta = currentFocusedTextField()) {
   if (scope === "day") anchor.dayId = currentDay()?.id || "";
   else anchor.stopId = currentStop()?.id || "";
   return normalizeCommentAnchor(anchor);
+}
+
+function buildBlockCommentAnchor(blockId = activeBlockPresenceId) {
+  if (!blockId || !dom.dayBlockList) return null;
+  const input = dom.dayBlockList.querySelector(`[data-edit-day-block="${CSS.escape(blockId)}"]`);
+  const selection = elementSelectionPayload(input, {
+    field: `block:${blockId}`,
+    scope: "block",
+    label: "协作块",
+  });
+  if (!selection) return null;
+  const day = currentDay();
+  return normalizeCommentAnchor({
+    ...selection,
+    dayId: day?.id || "",
+    blockId,
+    excerpt: selectionExcerptFromElement(input, selection),
+  });
 }
 
 function captureCommentAnchor(fieldMeta = currentFocusedTextField()) {
@@ -1249,6 +1275,16 @@ function currentCommentAnchor(scope = "") {
   const fresh = Date.now() - Number(lastCommentAnchor.capturedAt || 0) < 10 * 60 * 1000;
   const normalized = sameScope && fresh ? normalizeCommentAnchor(lastCommentAnchor) : null;
   if (!normalized || (scope && normalized.scope !== scope)) return null;
+  return normalized;
+}
+
+function currentBlockCommentAnchor(blockId = activeBlockPresenceId) {
+  const focused = buildBlockCommentAnchor(blockId);
+  if (focused) return focused;
+  if (!lastCommentAnchor) return null;
+  const fresh = Date.now() - Number(lastCommentAnchor.capturedAt || 0) < 10 * 60 * 1000;
+  const normalized = fresh ? normalizeCommentAnchor(lastCommentAnchor) : null;
+  if (!normalized || normalized.scope !== "block" || normalized.blockId !== blockId || normalized.dayId !== currentDay()?.id) return null;
   return normalized;
 }
 
@@ -1443,6 +1479,16 @@ function renderDayBlockTextPresence(block) {
       }).join("")}
     </span>
   `;
+}
+
+function renderDayBlockCommentHighlights(block) {
+  const input = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(block.id)}"]`);
+  if (!input) return "";
+  return commentRootsAndReplies(block.comments || []).roots
+    .filter((comment) => normalizeCommentAnchor(comment.anchor)?.scope === "block" && comment.anchor?.blockId === block.id)
+    .slice(0, 8)
+    .map((comment, index) => renderCommentHighlight(comment, input, index))
+    .join("");
 }
 
 function commentsForScope(scope = "stop") {
@@ -2960,7 +3006,7 @@ function commentFilterCounts(comments = []) {
 function commentAnchorLabel(anchor = null) {
   if (!anchor?.field) return "";
   const meta = collabTextFieldMeta(anchor.field);
-  const label = anchor.label || meta?.label || "字段";
+  const label = anchor.label || meta?.label || (anchor.scope === "block" ? "协作块" : "字段");
   const start = Number(anchor.start || 0);
   const end = Number(anchor.end || start);
   if (end > start) return `${label} · 选中 ${end - start} 字`;
@@ -3002,6 +3048,28 @@ function renderDayCommentAnchorHint() {
 
 function focusCommentAnchor(anchor = null) {
   const normalized = normalizeCommentAnchor(anchor);
+  if (normalized?.scope === "block") {
+    if (normalized.dayId && normalized.dayId !== currentDay()?.id) {
+      const dayIndex = state.days.findIndex((day) => day.id === normalized.dayId);
+      if (dayIndex >= 0) {
+        activeDay = dayIndex;
+        activeStop = 0;
+        render();
+      }
+    }
+    const input = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(normalized.blockId || "")}"]`);
+    if (!input) return false;
+    input.focus();
+    const valueLength = String(input.value || "").length;
+    const start = Math.max(0, Math.min(Number(normalized.start || 0), valueLength));
+    const end = Math.max(start, Math.min(Number(normalized.end || start), valueLength));
+    if (typeof input.setSelectionRange === "function") input.setSelectionRange(start, end);
+    activeBlockPresenceId = normalized.blockId || activeBlockPresenceId;
+    lastCommentAnchor = { ...normalized, capturedAt: Date.now() };
+    schedulePresenceTrack(0);
+    refreshDayBlockTextPresence();
+    return true;
+  }
   const meta = normalized ? collabTextFieldMeta(normalized.field) : null;
   const element = meta ? dom[meta.domKey] : null;
   if (!element) return false;
@@ -3263,6 +3331,7 @@ function renderDayBlockComments(block) {
   const rendered = renderCommentThreads(block.comments || [], {
     filter: blockCommentFilters[block.id] || "all",
     filterAttr: "data-block-comment-filter",
+    anchorAttr: "data-block-comment-anchor",
     replyAttr: "data-reply-block-comment",
     resolveAttr: "data-toggle-block-comment-resolved",
     deleteAttr: "data-delete-block-comment",
@@ -3289,6 +3358,8 @@ function refreshDayBlockTextPresence() {
     const wrap = blockElement.querySelector(".day-block-text-wrap");
     if (!block || !wrap) return;
     wrap.querySelector(".day-block-text-presence")?.remove();
+    wrap.querySelectorAll(".comment-highlight").forEach((item) => item.remove());
+    wrap.insertAdjacentHTML("beforeend", renderDayBlockCommentHighlights(block));
     wrap.insertAdjacentHTML("beforeend", renderDayBlockTextPresence(block));
   });
 }
@@ -4335,7 +4406,7 @@ async function updateDayBlockCommentsInDoc(dayId, blockId, comments = [], origin
   return next;
 }
 
-async function addDayBlockCommentToDoc(dayId, blockId, text, parentId = "", origin = "local-day-block-comment") {
+async function addDayBlockCommentToDoc(dayId, blockId, text, parentId = "", origin = "local-day-block-comment", anchor = null) {
   if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
@@ -4346,12 +4417,14 @@ async function addDayBlockCommentToDoc(dayId, blockId, text, parentId = "", orig
   if (!block) return false;
   const parent = parentId ? normalizeComments(block.comments || []).find((comment) => comment.id === parentId && !comment.parentId) : null;
   if (parentId && !parent) return false;
+  const normalizedAnchor = parentId ? null : normalizeCommentAnchor(anchor);
   const comment = normalizeCommentEntry({
     id: uid(),
     parentId: parent?.id || "",
     author: getCollabName(),
     text: String(text || "").trim(),
     at: new Date().toISOString(),
+    ...(normalizedAnchor ? { anchor: normalizedAnchor } : {}),
   });
   if (!comment) return true;
   let didInsert = false;
@@ -9193,6 +9266,18 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     renderDayBlocks(day);
     return;
   }
+  const blockAnchorButton = event.target.closest("[data-block-comment-anchor]");
+  if (blockAnchorButton) {
+    event.preventDefault();
+    const blockElement = blockAnchorButton.closest("[data-day-block]");
+    const blockId = blockElement?.dataset.dayBlock || "";
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    const comment = normalizeComments(block?.comments || []).find((item) => item.id === blockAnchorButton.dataset.blockCommentAnchor);
+    if (comment?.anchor && focusCommentAnchor(comment.anchor)) {
+      dom.saveState.textContent = "已定位到块级批注锚点";
+    }
+    return;
+  }
   const focusBlockCommentButton = event.target.closest("[data-toggle-block-comments]");
   if (focusBlockCommentButton) {
     event.preventDefault();
@@ -9360,7 +9445,8 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
   const parentId = blockReplyingCommentId && normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId)
     ? blockReplyingCommentId
     : "";
-  const collaborativeComment = await addDayBlockCommentToDoc(day.id, block.id, text, parentId, parentId ? "local-day-block-comment-reply" : "local-day-block-comment-add");
+  const anchor = parentId ? null : currentBlockCommentAnchor(block.id);
+  const collaborativeComment = await addDayBlockCommentToDoc(day.id, block.id, text, parentId, parentId ? "local-day-block-comment-reply" : "local-day-block-comment-add", anchor);
   if (collaborativeComment) {
     day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
       item.id === block.id
@@ -9374,12 +9460,14 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
     return;
   }
+  const fallbackAnchor = parentId ? null : normalizeCommentAnchor(anchor);
   const fallbackComment = normalizeCommentEntry({
     id: uid(),
     parentId,
     author: getCollabName(),
     text,
     at: new Date().toISOString(),
+    ...(fallbackAnchor ? { anchor: fallbackAnchor } : {}),
   });
   if (!fallbackComment) return;
   if (!mutate(parentId ? "回复块级评论" : "添加块级评论", () => {
@@ -9535,6 +9623,8 @@ dom.dayBlockList?.addEventListener("input", (event) => {
     const input = event.target.closest?.("[data-edit-day-block]");
     if (!input || isReadonlyMode) return;
     activeBlockPresenceId = input.closest("[data-day-block]")?.dataset.dayBlock || activeBlockPresenceId;
+    const anchor = buildBlockCommentAnchor(activeBlockPresenceId);
+    if (anchor) lastCommentAnchor = { ...anchor, capturedAt: Date.now() };
     schedulePresenceTrack(eventName === "focusin" ? 0 : 90);
   });
 });
@@ -9544,10 +9634,22 @@ document.addEventListener("click", (event) => {
   if (highlight) {
     event.preventDefault();
     const scope = highlight.dataset.commentScope || "stop";
-    const source = scope === "day" ? currentDay()?.comments || [] : currentStop()?.comments || [];
+    const blockId = highlight.closest("[data-day-block]")?.dataset.dayBlock || "";
+    const block = blockId ? normalizeDayBlocks(currentDay()?.blocks || []).find((item) => item.id === blockId) : null;
+    const source = scope === "block" ? block?.comments || [] : scope === "day" ? currentDay()?.comments || [] : currentStop()?.comments || [];
     const comment = commentRootsAndReplies(source).roots.find((item) => item.id === highlight.dataset.commentHighlight);
     if (!comment) return;
-    if (scope === "day") {
+    if (scope === "block") {
+      blockCommentFilters[blockId] = comment.resolved ? "resolved" : "open";
+      renderDayBlocks(currentDay());
+      const thread = Array.from(dom.dayBlockList?.querySelectorAll(`[data-block-comments="${CSS.escape(blockId)}"] [data-comment]`) || []).find((item) => item.dataset.comment === comment.id);
+      if (thread) {
+        thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        thread.classList.add("is-focused");
+        setTimeout(() => thread.classList.remove("is-focused"), 1300);
+        dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的块级批注`;
+      }
+    } else if (scope === "day") {
       dayCommentFilter = comment.resolved ? "resolved" : "open";
       renderDayComments(currentDay());
       if (focusDayCommentThread(comment.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的当天批注`;
