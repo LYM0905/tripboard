@@ -98,7 +98,7 @@ const PLAN_SETTING_FIELDS = [
   { field: "editKeyHash", type: "string" },
   { field: "editKeyHint", type: "string" },
 ];
-const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "cover", "editKeyHint"];
+const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "dateRange", "startDate", "endDate", "cover", "editKeyHint"];
 
 const images = {
   kyoto:
@@ -11297,7 +11297,10 @@ async function syncPlanMetaPatchInput(patch = {}, label, targetField = "") {
     .map(([field, value]) => [field, normalizePlanSettingValue(field, value)]);
   if (!entries.length) return;
   const changed = collabSettingsMap
-    ? entries.some(([field, value]) => !sameSerialized(collabSettingsMap.get(field), value))
+    ? entries.some(([field, value]) => {
+      const settingTextValue = PLAN_TEXT_SETTING_FIELDS.includes(field) ? collabSettingTextsMap?.get(field)?.toString() : undefined;
+      return !sameSerialized(collabSettingsMap.get(field), value) || (settingTextValue !== undefined && settingTextValue !== String(value || ""));
+    })
     : entries.some(([field, value]) => !sameSerialized(state[field], value));
   if (!changed) return;
   if (collabPlanDoc && collabSettingsMap && !isApplyingCollabPlanRemote) {
