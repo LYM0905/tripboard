@@ -2412,6 +2412,30 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.comment-index-reply-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 6px;
+  align-items: center;
+}
+
+.comment-index-reply-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 9px;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.comment-index-reply-form .icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
 .comment-thread {
   display: grid;
   gap: 7px;
