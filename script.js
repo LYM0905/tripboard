@@ -2444,10 +2444,12 @@ function normalizeDayBlock(block = {}) {
   const type = ["todo", "note", "decision"].includes(block.type) ? block.type : "todo";
   const text = String(block.text || block.title || "").trim();
   const comments = normalizeComments(block.comments || []);
+  const level = Math.max(0, Math.min(Number(block.level) || 0, 3));
   if (!text && !block.id && !comments.length) return null;
   return {
     id: block.id || uid(),
     type,
+    level,
     text,
     textYjs: block.textYjs || "",
     done: Boolean(block.done),
@@ -4093,7 +4095,7 @@ function renderDayBlocks(day = currentDay()) {
           const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
           const presenceHtml = renderDayBlockPresence(block);
           return `
-            <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}">
+            <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
               <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <span class="day-block-text-wrap">
@@ -11089,6 +11091,33 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   const blockIndex = blocks.findIndex((block) => block.id === blockId);
   const block = blockIndex >= 0 ? blocks[blockIndex] : null;
   if (!day || !block) return;
+  if (event.key === "Tab") {
+    event.preventDefault();
+    if (!requireEdit(event.shiftKey ? "减少协作块缩进" : "增加协作块缩进")) return;
+    const nextLevel = Math.max(0, Math.min((Number(block.level) || 0) + (event.shiftKey ? -1 : 1), 3));
+    if (nextLevel === (Number(block.level) || 0)) return;
+    activeBlockPresenceId = blockId;
+    const patch = { level: nextLevel };
+    if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-indent")) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      renderDayBlocks(day);
+      focusDayBlockInput(blockId);
+      await logActivity(`${event.shiftKey ? "减少" : "增加"}协作块缩进`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
+      await saveCollaborativePlanChange("已调整协作块缩进");
+      focusDayBlockInput(blockId);
+      return;
+    }
+    if (!mutate(event.shiftKey ? "减少协作块缩进" : "增加协作块缩进", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(day.id, "local-day-block-indent-fallback");
+    renderDayBlocks(currentDay());
+    focusDayBlockInput(blockId);
+    await logActivity(`${event.shiftKey ? "减少" : "增加"}协作块缩进`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
+    await saveCollaborativePlanChange("已调整协作块缩进");
+    focusDayBlockInput(blockId);
+    return;
+  }
   const slashType = dayBlockSlashCommand(input.value);
   if (slashType && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();

@@ -2298,6 +2298,7 @@ button:disabled {
   gap: 8px;
   align-items: center;
   padding: 8px;
+  margin-left: calc(var(--block-level, 0) * 22px);
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -2442,6 +2443,7 @@ button:disabled {
 @media (max-width: 620px) {
   .day-block {
     grid-template-columns: 24px 34px minmax(0, 1fr) 34px;
+    margin-left: calc(var(--block-level, 0) * 12px);
   }
 
   .day-block-drag {
