@@ -99,6 +99,7 @@ const PLAN_SETTING_FIELDS = [
   { field: "editKeyHint", type: "string" },
 ];
 const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "dateRange", "startDate", "endDate", "cover", "editKeyHint"];
+const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading"];
 
 const images = {
   kyoto:
@@ -2441,7 +2442,7 @@ function normalizeActivities(activities = []) {
 
 function normalizeDayBlock(block = {}) {
   if (!block) return null;
-  const type = ["todo", "note", "decision", "heading"].includes(block.type) ? block.type : "todo";
+  const type = DAY_BLOCK_TYPES.includes(block.type) ? block.type : "todo";
   const text = String(block.text || block.title || "").trim();
   const comments = normalizeComments(block.comments || []);
   const level = Math.max(0, Math.min(Number(block.level) || 0, 3));
@@ -4015,6 +4016,10 @@ function dayBlockIcon(type = "todo") {
   return "check-square";
 }
 
+function dayBlockTypeOptions(currentType = "todo") {
+  return DAY_BLOCK_TYPES.map((type) => `<option value="${escapeHtml(type)}"${type === currentType ? " selected" : ""}>${escapeHtml(dayBlockTypeLabel(type))}</option>`).join("");
+}
+
 function dayBlockSlashCommand(value = "") {
   const command = String(value || "").trim().toLowerCase();
   const commands = {
@@ -4110,6 +4115,10 @@ function renderDayBlocks(day = currentDay()) {
                 <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
                 ${renderDayBlockTextPresence(block)}
               </span>
+              <label class="day-block-type-control" title="切换块类型">
+                <span>类型</span>
+                <select data-day-block-type="${escapeHtml(block.id)}" aria-label="切换协作块类型"${disabledAttr}>${dayBlockTypeOptions(block.type)}</select>
+              </label>
               <span class="day-block-meta">${escapeHtml(meta)}</span>
               ${presenceHtml}
               <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
@@ -10777,6 +10786,43 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
   await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(currentDay().id, block.id) });
   await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
   render();
+});
+
+dom.dayBlockList?.addEventListener("change", async (event) => {
+  const typeSelect = event.target.closest("[data-day-block-type]");
+  if (!typeSelect || !canEdit() || isReadonlyMode) return;
+  const day = currentDay();
+  const blockId = typeSelect.dataset.dayBlockType || "";
+  const block = normalizeDayBlocks(day?.blocks || []).find((item) => item.id === blockId);
+  const nextType = DAY_BLOCK_TYPES.includes(typeSelect.value) ? typeSelect.value : "todo";
+  if (!day || !block) return;
+  if (nextType === block.type) return;
+  if (!requireEdit("切换协作块类型")) {
+    typeSelect.value = block.type || "todo";
+    return;
+  }
+  activeBlockPresenceId = blockId;
+  schedulePresenceTrack(0);
+  const patch = { type: nextType };
+  if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-type-change")) {
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+    renderDayBlocks(day);
+    await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
+    await saveCollaborativePlanChange("已切换协作块类型");
+    focusDayBlockInput(blockId);
+    return;
+  }
+  if (!mutate("切换协作块类型", () => {
+    currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
+  }, { requireUnlocked: false, save: false, render: false })) {
+    typeSelect.value = block.type || "todo";
+    return;
+  }
+  await syncDayBlocksToDoc(day.id, "local-day-block-type-change-fallback");
+  renderDayBlocks(currentDay());
+  await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
+  await saveCollaborativePlanChange("已切换协作块类型");
+  focusDayBlockInput(blockId);
 });
 
 dom.dayBlockList?.addEventListener("click", async (event) => {
