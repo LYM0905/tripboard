@@ -7,6 +7,7 @@ const EDIT_ACCESS_PREFIX = "tripboard-edit-access:";
 const EDIT_KEY_VALUE_PREFIX = "tripboard-edit-key-value:";
 const VERSION_PREFIX = "tripboard-version-history:";
 const PENDING_PLAN_UPDATES_PREFIX = "tripboard-pending-plan-yjs:";
+const COLLAPSED_BLOCKS_PREFIX = "tripboard-collapsed-day-blocks:";
 const MAX_VERSION_HISTORY = 12;
 const MAX_PENDING_PLAN_UPDATES = 160;
 const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
@@ -4124,6 +4125,8 @@ function renderDayBlocks(day = currentDay()) {
         .map((block, index) => {
           const doneClass = block.done ? " is-done" : "";
           const typeClass = ` is-${block.type || "todo"}`;
+          const collapsed = collapsedDayBlockIds.has(block.id);
+          const collapsedClass = collapsed ? " is-collapsed" : "";
           const comments = normalizeComments(block.comments || []);
           const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
           const commentPanelId = `block-comments-${block.id}`;
@@ -4136,14 +4139,16 @@ function renderDayBlocks(day = currentDay()) {
           const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
           const presenceHtml = renderDayBlockPresence(block);
           const rows = block.type === "heading" ? 1 : 2;
+          const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
           return `
-            <article class="day-block${doneClass}${typeClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
+            <article class="day-block${doneClass}${typeClass}${collapsedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
               <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <span class="day-block-text-wrap">
                 <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
                 ${renderDayBlockTextPresence(block)}
               </span>
+              <button type="button" class="day-block-collapsed-text" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="展开协作块">${escapeHtml(collapsedPreview)}</button>
               <label class="day-block-type-control" title="切换块类型">
                 <span>类型</span>
                 <select data-day-block-type="${escapeHtml(block.id)}" aria-label="切换协作块类型"${disabledAttr}>${dayBlockTypeOptions(block.type)}</select>
@@ -4155,6 +4160,7 @@ function renderDayBlocks(day = currentDay()) {
                 <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
                 <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
                 <button type="button" class="icon-btn subtle" data-duplicate-day-block="${escapeHtml(block.id)}" aria-label="复制协作块"${disabledAttr}>${icon("copy")}</button>
+                <button type="button" class="icon-btn subtle" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="${collapsed ? "展开协作块" : "折叠协作块"}">${icon(collapsed ? "chevrons-down-up" : "chevrons-up-down")}</button>
               </span>
               <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
               <div class="day-block-comment-panel" id="${escapeHtml(commentPanelId)}">
@@ -6754,6 +6760,7 @@ let blockReplyingCommentId = "";
 let blockCommentFilters = {};
 let activeBlockPresenceId = "";
 let draggingDayBlockId = "";
+let collapsedDayBlockIds = loadCollapsedDayBlocks();
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
@@ -6795,6 +6802,19 @@ function loadState() {
 
 function historyKey() {
   return `${VERSION_PREFIX}${tripId || "local"}`;
+}
+
+function collapsedDayBlocksKey() {
+  return `${COLLAPSED_BLOCKS_PREFIX}${tripId || "local"}`;
+}
+
+function loadCollapsedDayBlocks() {
+  const stored = safeJsonParse(localStorage.getItem(collapsedDayBlocksKey()), []);
+  return new Set(Array.isArray(stored) ? stored.filter(Boolean) : []);
+}
+
+function saveCollapsedDayBlocks() {
+  localStorage.setItem(collapsedDayBlocksKey(), JSON.stringify([...collapsedDayBlockIds]));
 }
 
 function editAccessKey() {
@@ -7793,6 +7813,7 @@ async function connectSharedTrip(id) {
   tripId = id;
   lastRemoteUpdatedAt = "";
   lastSyncedState = null;
+  collapsedDayBlockIds = loadCollapsedDayBlocks();
   destroyCollabPlanDoc();
   hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
@@ -7818,6 +7839,7 @@ async function createSharedTrip() {
   tripId = id;
   lastRemoteUpdatedAt = "";
   lastSyncedState = null;
+  collapsedDayBlockIds = loadCollapsedDayBlocks();
   destroyCollabPlanDoc();
   hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
@@ -10892,6 +10914,23 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     input?.focus();
+    return;
+  }
+  const collapseButton = event.target.closest("[data-toggle-day-block-collapse]");
+  if (collapseButton) {
+    event.preventDefault();
+    const blockId = collapseButton.dataset.toggleDayBlockCollapse || "";
+    if (!blockId) return;
+    if (collapsedDayBlockIds.has(blockId)) {
+      collapsedDayBlockIds.delete(blockId);
+      dom.saveState.textContent = "已展开协作块";
+    } else {
+      collapsedDayBlockIds.add(blockId);
+      dom.saveState.textContent = "已折叠协作块";
+    }
+    saveCollapsedDayBlocks();
+    renderDayBlocks(day);
+    if (!collapsedDayBlockIds.has(blockId)) focusDayBlockInput(blockId);
     return;
   }
   const toggleButton = event.target.closest("[data-toggle-day-block]");
