@@ -146,6 +146,16 @@ function planContentSnapshot(plan) {
   return snapshot;
 }
 
+function planVersionSnapshot(plan) {
+  const snapshot = clone(plan || {});
+  if (!snapshot.planYjs && plan === state) snapshot.planYjs = currentPlanYjsState();
+  return snapshot;
+}
+
+function planVersionSerialized(plan) {
+  return serializePlan(planContentSnapshot(plan));
+}
+
 function samePlanContent(a, b) {
   return sameSerialized(planContentSnapshot(a), planContentSnapshot(b));
 }
@@ -6706,8 +6716,8 @@ function savePlanSnapshot(plan, reason = "保存前版本", by = getCollabName()
   if (!plan?.days?.length) return;
   const history = versionHistory();
   const last = history[0];
-  const snapshot = planContentSnapshot(plan);
-  const serialized = serializePlan(snapshot);
+  const snapshot = planVersionSnapshot(plan);
+  const serialized = planVersionSerialized(snapshot);
   if (last?.serialized === serialized) return;
   const entry = {
     id: uid(),
@@ -6759,7 +6769,7 @@ async function loadRemoteVersionHistory() {
       reason: entry.reason || "云端历史版本",
       at: entry.created_at,
       by: entry.created_by || "未知成员",
-      serialized: JSON.stringify(entry.data),
+      serialized: planVersionSerialized(entry.data),
       data: entry.data,
     }));
   const merged = [...remoteEntries, ...versionHistory()];
@@ -6821,7 +6831,11 @@ async function restoreVersion(versionId) {
   state = ensurePlanDates(clone(entry.data));
   activeDay = 0;
   activeStop = 0;
-  await replacePlanCollabDoc("local-version-restore");
+  const restoredPlanYjs = state.planYjs || "";
+  const restoredFromYjs = restoredPlanYjs
+    ? await replaceLivePlanDocWithYjsState(restoredPlanYjs, "已从历史版本恢复协作快照")
+    : false;
+  if (!restoredFromYjs) await replacePlanCollabDoc("local-version-restore");
   const versionLabel = restoredVersionLabel(entry.reason || "历史版本", entry.at || "");
   await logActivity(`恢复历史版本：${versionLabel}`);
   await saveCollaborativePlanChange("已恢复历史版本");
