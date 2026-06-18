@@ -5069,12 +5069,25 @@ async function updateDayBlockInDoc(dayId, blockId, patch = {}, origin = "local-d
   if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
+  const patchHasText = Object.prototype.hasOwnProperty.call(patch, "text");
+  let Y = null;
+  if (patchHasText) {
+    if (!collabDayBlockTextStatesMap || !collabDayBlockTextsMap) return false;
+    try {
+      Y = await ensureYjs();
+    } catch {
+      return false;
+    }
+  }
   const items = blockArray.toArray();
   const index = items.findIndex((block) => block?.id === blockId);
   if (index < 0) return false;
+  const nextText = patchHasText ? String(patch.text || "").trim() : "";
+  const nextTextState = patchHasText ? bytesToBase64(buildInitialDayBlockTextUpdate(Y, { ...items[index], ...patch, id: blockId, text: nextText }, dayId)) : "";
+  const normalizedPatch = patchHasText ? { ...patch, text: nextText, textYjs: nextTextState } : patch;
   const next = normalizeDayBlock({
     ...items[index],
-    ...patch,
+    ...normalizedPatch,
     id: blockId,
     updatedBy: getCollabName(),
     updatedAt: new Date().toISOString(),
@@ -5087,16 +5100,26 @@ async function updateDayBlockInDoc(dayId, blockId, patch = {}, origin = "local-d
     if (latestIndex < 0) return;
     const latest = normalizeDayBlock({
       ...latestItems[latestIndex],
-      ...patch,
+      ...normalizedPatch,
       id: blockId,
       updatedBy: getCollabName(),
       updatedAt: new Date().toISOString(),
     });
     if (!latest || sameSerialized(normalizeDayBlock(latestItems[latestIndex]), latest)) return;
+    if (patchHasText) {
+      const key = dayBlockTextKey(dayId, blockId);
+      let yText = collabDayBlockTextsMap.get(key);
+      if (!yText) {
+        yText = new Y.Text();
+        collabDayBlockTextsMap.set(key, yText);
+      }
+      applyTextDiff(yText, nextText);
+      collabDayBlockTextStatesMap.set(key, nextTextState);
+    }
     blockArray.delete(latestIndex, 1);
     blockArray.insert(latestIndex, [latest]);
   }, origin);
-  return true;
+  return patchHasText ? { text: nextText, textYjs: nextTextState } : true;
 }
 
 async function deleteDayBlockFromDoc(dayId, blockId, origin = "local-day-block-delete") {
@@ -11125,8 +11148,10 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (!requireEdit("切换协作块类型")) return;
     activeBlockPresenceId = blockId;
     const patch = { type: slashType, text: "", textYjs: "" };
-    if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-slash-command")) {
-      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+    const updatedSlashBlock = await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-slash-command");
+    if (updatedSlashBlock) {
+      const visiblePatch = typeof updatedSlashBlock === "object" ? { ...patch, ...updatedSlashBlock } : patch;
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...visiblePatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
       focusDayBlockInput(blockId);
       await logActivity(`切换协作块为${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
@@ -11233,8 +11258,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     const previousUpdated = await updateDayBlockInDoc(day.id, previousBlock.id, previousPatch, "local-day-block-keyboard-merge-previous");
     const deleted = previousUpdated ? await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-merge-delete") : false;
     if (deleted) {
+      const visiblePreviousPatch = typeof previousUpdated === "object" ? { ...previousPatch, ...previousUpdated } : previousPatch;
       day.blocks = normalizeDayBlocks((day.blocks || [])
-        .map((item) => (item.id === previousBlock.id ? { ...item, ...previousPatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item))
+        .map((item) => (item.id === previousBlock.id ? { ...item, ...visiblePreviousPatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item))
         .filter((item) => item.id !== blockId));
       activeBlockPresenceId = previousBlock.id;
       renderDayBlocks(day);
