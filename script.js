@@ -91,6 +91,7 @@ const PLAN_SETTING_FIELDS = [
   { field: "editKeyHash", type: "string" },
   { field: "editKeyHint", type: "string" },
 ];
+const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "cover", "editKeyHint"];
 
 const images = {
   kyoto:
@@ -656,6 +657,58 @@ function planSettingValue(plan, { field, type }) {
   if (type === "integer") return Math.max(1, Number.parseInt(plan?.[field] || 1, 10) || 1);
   if (type === "number") return numberValue(plan?.[field]);
   return String(plan?.[field] || "").trim();
+}
+
+function planTextSettingValue(plan, field) {
+  return String(plan?.[field] || "").trim();
+}
+
+function settingTextStateSnapshotFromPlan(plan = state, Y = null) {
+  if (!Y) return {};
+  return Object.fromEntries(
+    PLAN_TEXT_SETTING_FIELDS.map((field) => {
+      const existing = String(plan?.[`${field}Yjs`] || "");
+      if (existing) return [field, existing];
+      const doc = new Y.Doc();
+      doc.clientID = stableTextClientId(`${tripId}:setting:${field}`);
+      const text = doc.getText("text");
+      const value = planTextSettingValue(plan, field);
+      if (value) text.insert(0, value);
+      const encoded = bytesToBase64(Y.encodeStateAsUpdate(doc));
+      doc.destroy();
+      return [field, encoded];
+    }),
+  );
+}
+
+function settingTextValueSnapshotFromPlan(plan = state) {
+  return Object.fromEntries(PLAN_TEXT_SETTING_FIELDS.map((field) => [field, planTextSettingValue(plan, field)]));
+}
+
+function settingTextValueFromState(textState = "", fallback = "") {
+  if (!textState || !yjsModule) return String(fallback || "");
+  const doc = new yjsModule.Doc();
+  try {
+    yjsModule.applyUpdate(doc, base64ToBytes(textState), "read");
+    return doc.getText("text").toString() || String(fallback || "");
+  } catch (error) {
+    console.warn("Plan setting text state could not be read", error);
+    return String(fallback || "");
+  } finally {
+    doc.destroy();
+  }
+}
+
+function settingTextStateFromYText(field, yText) {
+  if (!yjsModule || !field || !yText) return "";
+  const doc = new yjsModule.Doc();
+  doc.clientID = stableTextClientId(`${tripId}:setting:${field}`);
+  const text = doc.getText("text");
+  const value = yText.toString();
+  if (value) text.insert(0, value);
+  const encoded = bytesToBase64(yjsModule.encodeStateAsUpdate(doc));
+  doc.destroy();
+  return encoded;
 }
 
 function normalizePlanSettingValue(field, value) {
@@ -2493,6 +2546,16 @@ function buildInitialPlanUpdate(Y, plan) {
   PLAN_SETTING_FIELDS.forEach((meta) => {
     settingsMap.set(meta.field, planSettingValue(plan, meta));
   });
+  const settingTextStatesMap = seedDoc.getMap("settingTextStates");
+  Object.entries(settingTextStateSnapshotFromPlan(plan, Y)).forEach(([field, textState]) => {
+    settingTextStatesMap.set(field, textState);
+  });
+  const settingTextsMap = seedDoc.getMap("settingTexts");
+  Object.entries(settingTextValueSnapshotFromPlan(plan)).forEach(([field, textValue]) => {
+    const yText = new Y.Text();
+    if (textValue) yText.insert(0, textValue);
+    settingTextsMap.set(field, yText);
+  });
   const update = Y.encodeStateAsUpdate(seedDoc);
   seedDoc.destroy();
   return update;
@@ -2750,13 +2813,24 @@ function readActivitiesFromDoc() {
 function readSettingsFromDoc() {
   const values = {};
   PLAN_SETTING_FIELDS.forEach((meta) => {
-    const value = collabSettingsMap?.has(meta.field) ? collabSettingsMap.get(meta.field) : state[meta.field];
+    const textValue = PLAN_TEXT_SETTING_FIELDS.includes(meta.field) ? collabSettingTextsMap?.get(meta.field)?.toString() : null;
+    const value = textValue !== null && textValue !== undefined ? textValue : collabSettingsMap?.has(meta.field) ? collabSettingsMap.get(meta.field) : state[meta.field];
     values[meta.field] = normalizePlanSettingValue(meta.field, value);
   });
   values.partySize = Math.max(1, Number.parseInt(values.partySize || state.partySize || 1, 10) || 1);
   values.budgetLimit = numberValue(values.budgetLimit || state.budgetLimit || 10000);
   if (!values.dateRange && values.startDate && values.endDate) values.dateRange = dateRangeText(values.startDate, values.endDate);
   return values;
+}
+
+function readSettingTextStatesFromDoc() {
+  if (!collabSettingTextStatesMap) return settingTextStateSnapshotFromPlan(state, yjsModule);
+  return Object.fromEntries(PLAN_TEXT_SETTING_FIELDS.map((field) => [field, collabSettingTextStatesMap.get(field) || ""]));
+}
+
+function readSettingTextValuesFromDoc() {
+  if (!collabSettingTextsMap) return settingTextValueSnapshotFromPlan(state);
+  return Object.fromEntries(PLAN_TEXT_SETTING_FIELDS.map((field) => [field, collabSettingTextsMap.get(field)?.toString() || ""]));
 }
 
 function applyDayMetasToState(dayMetas = []) {
@@ -2951,11 +3025,13 @@ function refreshRealtimePlanViews() {
 
 function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步", options = {}) {
   const { refreshViews = true, scheduleSave = true, updateStatus = true } = options;
-  if (!collabPlanDoc || !collabDayMetasArray || !collabDayTextStatesMap || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || !collabStopListsMap || !collabStopTextStatesMap || !collabDayBlocksMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap) return;
+  if (!collabPlanDoc || !collabDayMetasArray || !collabDayTextStatesMap || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || !collabStopListsMap || !collabStopTextStatesMap || !collabDayBlocksMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap || !collabSettingTextStatesMap || !collabSettingTextsMap) return;
   const nextDayMetas = readDayMetasFromDoc();
   const nextDayTextStates = readDayTextStatesFromDoc();
   const nextDayBlockTextStates = readDayBlockTextStatesFromDoc();
   const nextDayBlockTextValues = readDayBlockTextValuesFromDoc();
+  const nextSettingTextStates = readSettingTextStatesFromDoc();
+  const nextSettingTextValues = readSettingTextValuesFromDoc();
   const nextStopLists = readStopListsFromDoc();
   const nextStopTextStates = readStopTextStatesFromDoc();
   const nextDayBlocks = readDayBlocksFromDoc();
@@ -2967,6 +3043,8 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const dayTextStatesChanged = !sameSerialized(dayTextStateSnapshotFromDays(state.days || [], yjsModule), nextDayTextStates);
   const dayBlockTextStatesChanged = !sameSerialized(dayBlockTextStateSnapshotFromDays(state.days || [], yjsModule), nextDayBlockTextStates);
   const dayBlockTextValuesChanged = !sameSerialized(dayBlockTextValueSnapshotFromDays(state.days || []), nextDayBlockTextValues);
+  const settingTextStatesChanged = !sameSerialized(settingTextStateSnapshotFromPlan(state, yjsModule), nextSettingTextStates);
+  const settingTextValuesChanged = !sameSerialized(settingTextValueSnapshotFromPlan(state), nextSettingTextValues);
   const stopListsChanged = !sameSerialized(normalizeStopListsFromDays(state.days || []), nextStopLists);
   const stopTextStatesChanged = !sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), nextStopTextStates);
   const dayBlocksChanged = !sameSerialized(normalizeDayBlocksFromDays(state.days || []), nextDayBlocks);
@@ -2976,9 +3054,9 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const settingsChanged = PLAN_SETTING_FIELDS.some((meta) => !sameSerialized(planSettingValue(state, meta), nextSettings[meta.field]));
   const nextPlanYjs = currentPlanYjsState();
   const planYjsChanged = Boolean(nextPlanYjs && state.planYjs !== nextPlanYjs);
-  const changed = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || stopListsChanged || stopTextStatesChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
+  const changed = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || settingTextStatesChanged || settingTextValuesChanged || stopListsChanged || stopTextStatesChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
   if (!changed) return;
-  const visibleChanged = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || stopListsChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
+  const visibleChanged = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || settingTextValuesChanged || stopListsChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   if (dayTextStatesChanged) applyDayTextStatesToState(nextDayTextStates);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
@@ -2992,6 +3070,9 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   if (nextPlanYjs) state.planYjs = nextPlanYjs;
   PLAN_SETTING_FIELDS.forEach((meta) => {
     state[meta.field] = clone(nextSettings[meta.field]);
+  });
+  PLAN_TEXT_SETTING_FIELDS.forEach((field) => {
+    state[`${field}Yjs`] = nextSettingTextStates[field] || "";
   });
   if (!state.dateRange && state.startDate && state.endDate) state.dateRange = dateRangeText(state.startDate, state.endDate);
   syncGuideStateFromPlan();
@@ -3073,6 +3154,8 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
     candidates: collabCandidatesArray,
     activities: collabActivitiesArray,
     settings: collabSettingsMap,
+    settingTextStates: collabSettingTextStatesMap,
+    settingTexts: collabSettingTextsMap,
   };
   const nextDoc = new Y.Doc();
   try {
@@ -3098,6 +3181,8 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
     collabCandidatesArray = previousRefs.candidates;
     collabActivitiesArray = previousRefs.activities;
     collabSettingsMap = previousRefs.settings;
+    collabSettingTextStatesMap = previousRefs.settingTextStates;
+    collabSettingTextsMap = previousRefs.settingTexts;
     nextDoc.destroy();
   }
 }
@@ -3119,12 +3204,25 @@ function attachCollabPlanRefs() {
   collabCandidatesArray = collabPlanDoc.getArray("candidates");
   collabActivitiesArray = collabPlanDoc.getArray("activities");
   collabSettingsMap = collabPlanDoc.getMap("settings");
+  collabSettingTextStatesMap = collabPlanDoc.getMap("settingTextStates");
+  collabSettingTextsMap = collabPlanDoc.getMap("settingTexts");
 }
 
 function seedMissingPlanDocContent(Y) {
   collabPlanDoc.transact(() => {
     PLAN_SETTING_FIELDS.forEach((meta) => {
       if (!collabSettingsMap.has(meta.field)) collabSettingsMap.set(meta.field, planSettingValue(state, meta));
+    });
+    Object.entries(settingTextStateSnapshotFromPlan(state, Y)).forEach(([field, textState]) => {
+      if (!collabSettingTextStatesMap.has(field)) collabSettingTextStatesMap.set(field, textState);
+    });
+    Object.entries(settingTextValueSnapshotFromPlan(state)).forEach(([field, textValue]) => {
+      if (collabSettingTextsMap.has(field)) return;
+      const yText = new Y.Text();
+      const storedTextState = collabSettingTextStatesMap.get(field) || state[`${field}Yjs`] || "";
+      const restoredText = settingTextValueFromState(storedTextState, textValue);
+      if (restoredText) yText.insert(0, restoredText);
+      collabSettingTextsMap.set(field, yText);
     });
     (state.days || []).forEach((day) => {
       if (!day?.id || collabStopListsMap.has(day.id)) return;
@@ -3178,6 +3276,8 @@ function planDocMatchesCurrentState() {
     sameSerialized(dayTextStateSnapshotFromDays(state.days || [], yjsModule), readDayTextStatesFromDoc()) &&
     sameSerialized(dayBlockTextStateSnapshotFromDays(state.days || [], yjsModule), readDayBlockTextStatesFromDoc()) &&
     sameSerialized(dayBlockTextValueSnapshotFromDays(state.days || []), readDayBlockTextValuesFromDoc()) &&
+    sameSerialized(settingTextStateSnapshotFromPlan(state, yjsModule), readSettingTextStatesFromDoc()) &&
+    sameSerialized(settingTextValueSnapshotFromPlan(state), readSettingTextValuesFromDoc()) &&
     sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(readStopListsFromDoc())) &&
     sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), readStopTextStatesFromDoc()) &&
     sameSerialized(normalizeDayBlocksFromDays(state.days || []), readDayBlocksFromDoc()) &&
@@ -4178,6 +4278,8 @@ function destroyCollabPlanDoc() {
   collabCandidatesArray = null;
   collabActivitiesArray = null;
   collabSettingsMap = null;
+  collabSettingTextStatesMap = null;
+  collabSettingTextsMap = null;
   if (collabPlanDoc) {
     collabPlanDoc.destroy();
     collabPlanDoc = null;
@@ -4402,8 +4504,15 @@ async function syncPlanSettingToDoc(field, value) {
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabSettingsMap || isApplyingCollabPlanRemote) return false;
   const nextValue = normalizePlanSettingValue(field, value);
-  if (sameSerialized(collabSettingsMap.get(field), nextValue)) return true;
+  const settingText = PLAN_TEXT_SETTING_FIELDS.includes(field) ? collabSettingTextsMap?.get(field) : null;
+  if (settingText && sameSerialized(collabSettingsMap.get(field), nextValue) && settingText.toString() === nextValue) return true;
+  if (!settingText && sameSerialized(collabSettingsMap.get(field), nextValue)) return true;
   collabPlanDoc.transact(() => {
+    if (settingText) {
+      applyTextDiff(settingText, nextValue);
+      const textState = settingTextStateFromYText(field, settingText);
+      if (collabSettingTextStatesMap && textState) collabSettingTextStatesMap.set(field, textState);
+    }
     collabSettingsMap.set(field, nextValue);
   }, "local-setting");
   return true;
@@ -4414,10 +4523,19 @@ async function syncPlanMetaToDoc(origin = "local-plan-meta") {
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabSettingsMap || isApplyingCollabPlanRemote) return false;
   const entries = PLAN_SETTING_FIELDS.map((meta) => [meta.field, planSettingValue(state, meta)]);
-  const changed = entries.some(([field, value]) => !sameSerialized(collabSettingsMap.get(field), value));
+  const changed = entries.some(([field, value]) => {
+    const textValue = PLAN_TEXT_SETTING_FIELDS.includes(field) ? collabSettingTextsMap?.get(field)?.toString() : undefined;
+    return !sameSerialized(collabSettingsMap.get(field), value) || (textValue !== undefined && textValue !== value);
+  });
   if (!changed) return true;
   collabPlanDoc.transact(() => {
     entries.forEach(([field, value]) => {
+      const settingText = PLAN_TEXT_SETTING_FIELDS.includes(field) ? collabSettingTextsMap?.get(field) : null;
+      if (settingText) {
+        applyTextDiff(settingText, String(value || ""));
+        const textState = settingTextStateFromYText(field, settingText);
+        if (collabSettingTextStatesMap && textState) collabSettingTextStatesMap.set(field, textState);
+      }
       collabSettingsMap.set(field, clone(value));
     });
   }, origin);
@@ -6396,6 +6514,8 @@ let collabTransportQuotesArray = null;
 let collabCandidatesArray = null;
 let collabActivitiesArray = null;
 let collabSettingsMap = null;
+let collabSettingTextStatesMap = null;
+let collabSettingTextsMap = null;
 let collabPlanTripId = "";
 let collabPlanSaveTimer = null;
 let isApplyingCollabPlanRemote = false;
@@ -11164,6 +11284,12 @@ async function syncPlanMetaPatchInput(patch = {}, label, targetField = "") {
   if (collabPlanDoc && collabSettingsMap && !isApplyingCollabPlanRemote) {
     collabPlanDoc.transact(() => {
       entries.forEach(([field, value]) => {
+        const settingText = PLAN_TEXT_SETTING_FIELDS.includes(field) ? collabSettingTextsMap?.get(field) : null;
+        if (settingText) {
+          applyTextDiff(settingText, String(value || ""));
+          const textState = settingTextStateFromYText(field, settingText);
+          if (collabSettingTextStatesMap && textState) collabSettingTextStatesMap.set(field, textState);
+        }
         collabSettingsMap.set(field, clone(value));
       });
     }, "local-plan-meta-patch");
