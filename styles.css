@@ -2937,6 +2937,42 @@ button:disabled {
   gap: 11px;
 }
 
+.activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.activity-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 8px;
+  color: #52666f;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.activity-filter span {
+  color: var(--muted);
+}
+
+.activity-filter.is-active {
+  color: #fff;
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.activity-filter.is-active span {
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .activity-item {
   display: grid;
   grid-template-columns: 30px 1fr;
@@ -2949,6 +2985,19 @@ button:disabled {
   color: #34464f;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.activity-type {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  margin-right: 6px;
+  padding: 0 6px;
+  color: var(--green);
+  background: var(--green-2);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 svg {
