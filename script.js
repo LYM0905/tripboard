@@ -363,6 +363,13 @@ function versionPreviewSummary(versionPlan = {}, currentPlan = state) {
   };
 }
 
+function restoredVersionLabel(reason = "历史版本", at = "") {
+  const restoredAt = at
+    ? new Date(at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "";
+  return [reason || "历史版本", restoredAt].filter(Boolean).join(" · ");
+}
+
 function memberActivityLabel(member = {}) {
   const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
   if (textEditing) return textEditing;
@@ -5668,15 +5675,13 @@ async function applyRemotePlanReplaced(payload = {}) {
   destroyCollabPlanDoc();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   bindCollabPlanDoc();
-  logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`, { broadcast: false });
   if (payload.replacementType === "version-restore") {
-    const restoredAt = payload.restoredVersionAt
-      ? new Date(payload.restoredVersionAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
-      : "";
-    const versionLabel = [payload.restoredVersionReason || "历史版本", restoredAt].filter(Boolean).join(" · ");
+    const versionLabel = restoredVersionLabel(payload.restoredVersionReason || "历史版本", payload.restoredVersionAt || "");
+    logActivity(`${payload.name || "协作者"} 恢复历史版本：${versionLabel}`, { broadcast: false });
     dom.saveState.textContent = "计划已被恢复到历史版本";
     dom.collabStatus.textContent = `${payload.name || "协作者"} 恢复了历史版本：${versionLabel}`;
   } else {
+    logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`, { broadcast: false });
     dom.collabStatus.textContent = appliedYjs ? `${payload.name || "协作者"} 通过协作快照更新了整份计划` : `${payload.name || "协作者"} 更新了整份计划`;
   }
   render();
@@ -6521,7 +6526,8 @@ async function restoreVersion(versionId) {
   activeDay = 0;
   activeStop = 0;
   await replacePlanCollabDoc("local-version-restore");
-  logActivity(`恢复历史版本：${entry.reason || "旧版本"}`);
+  const versionLabel = restoredVersionLabel(entry.reason || "历史版本", entry.at || "");
+  await logActivity(`恢复历史版本：${versionLabel}`);
   await saveState("已恢复历史版本");
   await broadcastPlanReplaced("恢复历史版本", {
     replacementType: "version-restore",
