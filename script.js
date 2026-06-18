@@ -24,6 +24,11 @@ const COMMENT_FILTERS = [
   { value: "open", label: "未解决" },
   { value: "resolved", label: "已解决" },
 ];
+const COMMENT_INDEX_FILTERS = [
+  { value: "open", label: "未解决" },
+  { value: "all", label: "全部" },
+  { value: "resolved", label: "已解决" },
+];
 const COLLAB_DAY_TEXT_FIELDS = [
   { field: "day:title", docField: "title", domKey: "fieldDayTitle", label: "当天标题", presenceId: "fieldDayTitlePresence", scope: "day" },
   { field: "day:route", docField: "route", domKey: "fieldDayRoute", label: "当天路线", presenceId: "fieldDayRoutePresence", scope: "day" },
@@ -3050,6 +3055,84 @@ function commentFilterCounts(comments = []) {
   );
 }
 
+function commentIndexItems(plan = state) {
+  const items = [];
+  (plan.days || []).forEach((day, dayIndex) => {
+    const dayLabel = day.title || day.label || `D${dayIndex + 1}`;
+    const appendComment = (comment, context) => {
+      const replies = context.repliesByParent.get(comment.id) || [];
+      const anchor = comment.anchor
+        ? normalizeCommentAnchor({
+            ...comment.anchor,
+            dayId: comment.anchor.dayId || context.dayId || day.id || "",
+            stopId: comment.anchor.stopId || context.stopId || "",
+            blockId: comment.anchor.blockId || context.blockId || "",
+          })
+        : null;
+      items.push({
+        id: comment.id,
+        text: comment.text,
+        author: comment.author || "我",
+        at: comment.at || "",
+        resolved: Boolean(comment.resolved),
+        replies: replies.length,
+        anchor,
+        dayIndex,
+        dayId: day.id || "",
+        dayLabel,
+        ...context,
+      });
+    };
+    const dayThreads = commentRootsAndReplies(day.comments || []);
+    dayThreads.roots.forEach((comment) => appendComment(comment, {
+      scope: "day",
+      scopeLabel: "当天",
+      targetLabel: dayLabel,
+      repliesByParent: dayThreads.repliesByParent,
+    }));
+    (day.stops || []).forEach((stop, stopIndex) => {
+      const stopThreads = commentRootsAndReplies(stop.comments || []);
+      stopThreads.roots.forEach((comment) => appendComment(comment, {
+        scope: "stop",
+        scopeLabel: "地点",
+        targetLabel: stop.title || `地点 ${stopIndex + 1}`,
+        stopIndex,
+        stopId: stop.id || "",
+        repliesByParent: stopThreads.repliesByParent,
+      }));
+    });
+    normalizeDayBlocks(day.blocks || []).forEach((block) => {
+      const blockThreads = commentRootsAndReplies(block.comments || []);
+      blockThreads.roots.forEach((comment) => appendComment(comment, {
+        scope: "block",
+        scopeLabel: "协作块",
+        targetLabel: block.text || dayBlockTypeLabel(block.type),
+        blockId: block.id || "",
+        blockType: block.type || "todo",
+        repliesByParent: blockThreads.repliesByParent,
+      }));
+    });
+  });
+  return items.sort((a, b) => Number(a.resolved) - Number(b.resolved) || commentIndexTimeValue(b) - commentIndexTimeValue(a));
+}
+
+function commentIndexCounts(items = []) {
+  return items.reduce(
+    (counts, item) => {
+      counts.all += 1;
+      if (item.resolved) counts.resolved += 1;
+      else counts.open += 1;
+      return counts;
+    },
+    { all: 0, open: 0, resolved: 0 },
+  );
+}
+
+function commentIndexTimeValue(item = {}) {
+  const time = new Date(item.at || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
 function commentAnchorLabel(anchor = null) {
   if (!anchor?.field) return "";
   const meta = collabTextFieldMeta(anchor.field);
@@ -5641,6 +5724,9 @@ const dom = {
   budgetSettlement: document.querySelector("#budgetSettlement"),
   versionCount: document.querySelector("#versionCount"),
   versionList: document.querySelector("#versionList"),
+  commentIndexCount: document.querySelector("#commentIndexCount"),
+  commentIndexFilters: document.querySelector("#commentIndexFilters"),
+  commentIndexList: document.querySelector("#commentIndexList"),
   dayList: document.querySelector("#dayList"),
   routeLabel: document.querySelector("#routeLabel"),
   dayTitle: document.querySelector("#dayTitle"),
@@ -5898,6 +5984,7 @@ let replyingCommentId = "";
 let commentFilter = "all";
 let dayReplyingCommentId = "";
 let dayCommentFilter = "all";
+let commentIndexFilter = "open";
 let yjsModule = null;
 let yjsReadyPromise = null;
 let collabTextBindRequestId = 0;
@@ -6360,6 +6447,73 @@ function renderVersionHistory() {
         `;
       })
       .join("") || `<div class="member-empty">开始编辑后会自动保存最近 ${MAX_VERSION_HISTORY} 个版本。</div>`;
+}
+
+function renderCommentIndex() {
+  if (!dom.commentIndexList || !dom.commentIndexCount || !dom.commentIndexFilters) return;
+  const items = commentIndexItems();
+  const counts = commentIndexCounts(items);
+  if (!counts[commentIndexFilter] && commentIndexFilter !== "open") commentIndexFilter = "open";
+  const visibleItems = items.filter((item) => commentIndexFilter === "all" || (commentIndexFilter === "open" ? !item.resolved : item.resolved));
+  dom.commentIndexCount.textContent = `${counts.open} 未解决 / ${counts.all} 总计`;
+  dom.commentIndexFilters.innerHTML = COMMENT_INDEX_FILTERS.map((filter) => `
+    <button type="button" class="comment-filter${commentIndexFilter === filter.value ? " is-active" : ""}" data-comment-index-filter="${filter.value}">
+      ${filter.label}<span>${counts[filter.value] || 0}</span>
+    </button>
+  `).join("");
+  dom.commentIndexList.innerHTML = visibleItems
+    .slice(0, 24)
+    .map((item) => {
+      const status = item.resolved ? "已解决" : "未解决";
+      const anchorLabel = item.anchor ? commentAnchorLabel(item.anchor) : "";
+      const replyText = item.replies ? ` · ${item.replies} 回复` : "";
+      const meta = `${item.dayLabel} · ${item.scopeLabel}${anchorLabel ? ` · ${anchorLabel}` : ""}${replyText}`;
+      return `
+        <button type="button" class="comment-index-item${item.resolved ? " is-resolved" : ""}" data-comment-index-id="${escapeHtml(item.id)}" data-comment-index-scope="${escapeHtml(item.scope)}">
+          <span class="comment-index-status">${icon(item.resolved ? "check-circle-2" : "message-square-more")}${status}</span>
+          <strong>${escapeHtml(item.targetLabel)}</strong>
+          <p>${escapeHtml(item.text)}</p>
+          <small>${escapeHtml(meta)}</small>
+        </button>
+      `;
+    })
+    .join("") || `<div class="member-empty">${commentIndexFilter === "open" ? "当前没有未解决批注。" : "还没有批注记录。"}</div>`;
+}
+
+function focusCommentIndexItem(commentId = "") {
+  const item = commentIndexItems().find((entry) => entry.id === commentId);
+  if (!item) return false;
+  const dayIndex = state.days.findIndex((day, index) => (item.dayId && day.id === item.dayId) || index === item.dayIndex);
+  if (dayIndex >= 0) activeDay = dayIndex;
+  if (item.scope === "stop") {
+    const day = currentDay();
+    const stopIndex = (day?.stops || []).findIndex((stop, index) => (item.stopId && stop.id === item.stopId) || index === item.stopIndex);
+    activeStop = stopIndex >= 0 ? stopIndex : 0;
+    commentFilter = item.resolved ? "resolved" : "open";
+  } else if (item.scope === "day") {
+    activeStop = 0;
+    dayCommentFilter = item.resolved ? "resolved" : "open";
+  } else if (item.scope === "block") {
+    activeStop = 0;
+    if (item.blockId) blockCommentFilters[item.blockId] = item.resolved ? "resolved" : "open";
+    activeBlockPresenceId = item.blockId || activeBlockPresenceId;
+  }
+  render();
+  let focused = false;
+  if (item.anchor) focused = focusCommentAnchor(item.anchor);
+  if (item.scope === "stop") focused = focusCommentThread(item.id) || focused;
+  if (item.scope === "day") focused = focusDayCommentThread(item.id) || focused;
+  if (item.scope === "block") {
+    const thread = Array.from(dom.dayBlockList?.querySelectorAll(`[data-block-comments="${CSS.escape(item.blockId || "")}"] [data-comment]`) || []).find((element) => element.dataset.comment === item.id);
+    if (thread) {
+      thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      thread.classList.add("is-focused");
+      setTimeout(() => thread.classList.remove("is-focused"), 1300);
+      focused = true;
+    }
+  }
+  dom.saveState.textContent = focused ? "已定位到批注" : "已切换到批注所在位置";
+  return true;
 }
 
 function renderEditorLockState() {
@@ -8052,6 +8206,7 @@ function render() {
   renderAmapRouteReport(currentDay()?.amapRoute || null);
   renderMembers();
   renderVersionHistory();
+  renderCommentIndex();
   applyReadonlyUi();
   renderDayEditor();
   renderDayComments(currentDay());
@@ -10177,6 +10332,20 @@ dom.versionList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-version]");
   if (!button) return;
   restoreVersion(button.dataset.version);
+});
+
+dom.commentIndexFilters?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-comment-index-filter]");
+  if (!button) return;
+  commentIndexFilter = button.dataset.commentIndexFilter || "open";
+  renderCommentIndex();
+  refreshIcons();
+});
+
+dom.commentIndexList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-comment-index-id]");
+  if (!button) return;
+  focusCommentIndexItem(button.dataset.commentIndexId || "");
 });
 
 dom.memberForm.addEventListener("submit", (event) => {
