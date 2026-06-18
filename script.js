@@ -2441,7 +2441,7 @@ function normalizeActivities(activities = []) {
 
 function normalizeDayBlock(block = {}) {
   if (!block) return null;
-  const type = ["todo", "note", "decision"].includes(block.type) ? block.type : "todo";
+  const type = ["todo", "note", "decision", "heading"].includes(block.type) ? block.type : "todo";
   const text = String(block.text || block.title || "").trim();
   const comments = normalizeComments(block.comments || []);
   const level = Math.max(0, Math.min(Number(block.level) || 0, 3));
@@ -4002,12 +4002,14 @@ function renderDayComments(day = currentDay()) {
 }
 
 function dayBlockTypeLabel(type = "todo") {
+  if (type === "heading") return "标题";
   if (type === "note") return "备注";
   if (type === "decision") return "决定";
   return "待办";
 }
 
 function dayBlockIcon(type = "todo") {
+  if (type === "heading") return "heading-2";
   if (type === "note") return "notebook-text";
   if (type === "decision") return "badge-check";
   return "check-square";
@@ -4022,6 +4024,10 @@ function dayBlockSlashCommand(value = "") {
     "/备注": "note",
     "/decision": "decision",
     "/决定": "decision",
+    "/heading": "heading",
+    "/h": "heading",
+    "/h2": "heading",
+    "/标题": "heading",
   };
   return commands[command] || "";
 }
@@ -4083,6 +4089,7 @@ function renderDayBlocks(day = currentDay()) {
     ? blocks
         .map((block, index) => {
           const doneClass = block.done ? " is-done" : "";
+          const typeClass = ` is-${block.type || "todo"}`;
           const comments = normalizeComments(block.comments || []);
           const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
           const commentPanelId = `block-comments-${block.id}`;
@@ -4095,7 +4102,7 @@ function renderDayBlocks(day = currentDay()) {
           const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
           const presenceHtml = renderDayBlockPresence(block);
           return `
-            <article class="day-block${doneClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
+            <article class="day-block${doneClass}${typeClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
               <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <span class="day-block-text-wrap">
