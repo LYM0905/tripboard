@@ -4101,12 +4101,13 @@ function renderDayBlocks(day = currentDay()) {
           const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
           const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
           const presenceHtml = renderDayBlockPresence(block);
+          const rows = block.type === "heading" ? 1 : 2;
           return `
             <article class="day-block${doneClass}${typeClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
               <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <span class="day-block-text-wrap">
-                <input class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" value="${escapeHtml(block.text)}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr} />
+                <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
                 ${renderDayBlockTextPresence(block)}
               </span>
               <span class="day-block-meta">${escapeHtml(meta)}</span>
