@@ -2329,6 +2329,7 @@ function normalizeActivities(activities = []) {
       id: activity.id || uid(),
       text: String(activity.text || "").trim(),
       type: activity.type || inferActivityType(activity.text || ""),
+      target: activity.target && typeof activity.target === "object" ? clone(activity.target) : null,
       at: activity.at || new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
       createdAt: activity.createdAt || new Date().toISOString(),
       createdBy: activity.createdBy || "",
@@ -6596,6 +6597,7 @@ function logActivity(text, options = {}) {
     id: uid(),
     text,
     type: options.type || inferActivityType(text),
+    target: options.target || null,
     at: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
     createdAt: new Date().toISOString(),
     createdBy: getCollabName(),
@@ -6920,7 +6922,7 @@ async function toggleCommentIndexResolved(commentId = "") {
     let updated = false;
     if (wasCurrentStop) updated = await updateCollaborativeComment(commentId, patch);
     stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, patch);
-    await logActivity(`${actionText}批注「${stop.title || "地点"}」`);
+    await logActivity(`${actionText}批注「${stop.title || "地点"}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
     await syncStopSnapshotToPlanDoc(stop.id, updated ? "comment-index-stop-resolve-snapshot" : "comment-index-stop-resolve-fallback-snapshot");
     if (wasCurrentStop) await saveCollaborativeTextChange(`${actionText}批注「${stop.title || "地点"}」`);
     else await saveCollaborativePlanChange(`${actionText}批注「${stop.title || "地点"}」`);
@@ -6929,7 +6931,7 @@ async function toggleCommentIndexResolved(commentId = "") {
     let updated = false;
     if (wasCurrentDay) updated = await updateCollaborativeDayComment(commentId, patch);
     day.comments = commentsWithUpdatedComment(day.comments || [], commentId, patch);
-    await logActivity(`${actionText}当天批注「${day.title || day.label}」`);
+    await logActivity(`${actionText}当天批注「${day.title || day.label}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, updated ? "comment-index-day-resolve-snapshot" : "comment-index-day-resolve-fallback-snapshot");
     if (wasCurrentDay) await saveCollaborativeTextChange(`${actionText}当天批注「${day.title || day.label}」`);
     else await saveCollaborativePlanChange(`${actionText}当天批注「${day.title || day.label}」`);
@@ -6943,7 +6945,7 @@ async function toggleCommentIndexResolved(commentId = "") {
         ? { ...entry, comments: commentsWithUpdatedComment(entry.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() }
         : entry
     )));
-    await logActivity(`${actionText}块级批注「${block.text.slice(0, 18)}」`);
+    await logActivity(`${actionText}块级批注「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
     if (!updated) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-resolve-fallback");
     await saveCollaborativePlanChange(`${actionText}块级批注`);
   }
@@ -6966,7 +6968,7 @@ async function replyFromCommentIndex(commentId = "", text = "") {
     if (wasCurrentStop) reply = await addCollaborativeCommentReply(item.id, replyText);
     const nextReply = reply || createCommentReply(item.id, replyText);
     stop.comments = normalizeComments([...(stop.comments || []), nextReply]);
-    await logActivity(`回复批注「${stop.title || "地点"}」`);
+    await logActivity(`回复批注「${stop.title || "地点"}」`, { target: { type: "comment", commentId: item.id, scope: "stop", stopId: stop.id || "" } });
     await syncStopSnapshotToPlanDoc(stop.id, reply ? "comment-index-stop-reply-snapshot" : "comment-index-stop-reply-fallback-snapshot");
     if (wasCurrentStop) await saveCollaborativeTextChange(`回复批注「${stop.title || "地点"}」`);
     else await saveCollaborativePlanChange(`回复批注「${stop.title || "地点"}」`);
@@ -6976,7 +6978,7 @@ async function replyFromCommentIndex(commentId = "", text = "") {
     if (wasCurrentDay) reply = await addCollaborativeDayCommentReply(item.id, replyText);
     const nextReply = reply || createCommentReply(item.id, replyText);
     day.comments = normalizeComments([...(day.comments || []), nextReply]);
-    await logActivity(`回复当天批注「${day.title || day.label}」`);
+    await logActivity(`回复当天批注「${day.title || day.label}」`, { target: { type: "comment", commentId: item.id, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, reply ? "comment-index-day-reply-snapshot" : "comment-index-day-reply-fallback-snapshot");
     if (wasCurrentDay) await saveCollaborativeTextChange(`回复当天批注「${day.title || day.label}」`);
     else await saveCollaborativePlanChange(`回复当天批注「${day.title || day.label}」`);
@@ -6991,7 +6993,7 @@ async function replyFromCommentIndex(commentId = "", text = "") {
         ? { ...entry, comments: normalizeComments([...(entry.comments || []), nextReply]), updatedBy: getCollabName(), updatedAt: new Date().toISOString() }
         : entry
     )));
-    await logActivity(`回复块级批注「${block.text.slice(0, 18)}」`);
+    await logActivity(`回复块级批注「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: item.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
     if (!reply) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-reply-fallback");
     await saveCollaborativePlanChange("已回复块级批注");
   }
@@ -8711,7 +8713,8 @@ function renderActivities() {
       const entry = typeof item === "string" ? { text: item, at: "刚刚" } : item;
       const type = entry.type || inferActivityType(entry.text || "");
       const target = activityTargetForType(type);
-      return `<button type="button" class="activity-item" data-activity-type="${escapeHtml(type)}" data-activity-target="${escapeHtml(target)}"><span class="avatar a1">${escapeHtml((ACTIVITY_TYPE_LABELS[type] || "记").slice(0, 1))}</span><p><span class="activity-type">${escapeHtml(ACTIVITY_TYPE_LABELS[type] || "记录")}</span>${escapeHtml(entry.text)}<br><small>${escapeHtml(entry.at || "")}${entry.createdBy ? ` · ${escapeHtml(entry.createdBy)}` : ""}</small></p></button>`;
+      const detailTarget = entry.target ? encodeURIComponent(JSON.stringify(entry.target)) : "";
+      return `<button type="button" class="activity-item" data-activity-type="${escapeHtml(type)}" data-activity-target="${escapeHtml(target)}" data-activity-detail="${escapeHtml(detailTarget)}"><span class="avatar a1">${escapeHtml((ACTIVITY_TYPE_LABELS[type] || "记").slice(0, 1))}</span><p><span class="activity-type">${escapeHtml(ACTIVITY_TYPE_LABELS[type] || "记录")}</span>${escapeHtml(entry.text)}<br><small>${escapeHtml(entry.at || "")}${entry.createdBy ? ` · ${escapeHtml(entry.createdBy)}` : ""}</small></p></button>`;
     })
     .join("") || `<div class="member-empty">${activityFilter === "all" ? "还没有操作记录。" : "当前类型暂无记录。"}</div>`;
 }
@@ -8727,6 +8730,24 @@ function focusActivityTarget(targetSelector = "") {
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
   dom.saveState.textContent = "已定位到相关区域";
   return true;
+}
+
+function parseActivityDetail(value = "") {
+  if (!value) return null;
+  try {
+    return JSON.parse(decodeURIComponent(value));
+  } catch {
+    return null;
+  }
+}
+
+function focusActivityDetail(detail = null) {
+  if (!detail || typeof detail !== "object") return false;
+  if (detail.commentId && focusCommentIndexItem(detail.commentId)) {
+    dom.saveState.textContent = "已定位到活动对应批注";
+    return true;
+  }
+  return false;
 }
 
 function renderGuideResult() {
@@ -9697,20 +9718,22 @@ dom.commentForm.addEventListener("submit", async (event) => {
       dom.commentInput.placeholder = "添加同行意见或提醒";
       renderStopComments(stop);
       dom.commentCount.textContent = stop.comments.length;
-      await logActivity(`回复评论「${stop.title}」`);
+      await logActivity(`回复评论「${stop.title}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: stop.id || "" } });
       await syncStopSnapshotToPlanDoc(stop.id, "local-comment-reply-snapshot");
       await saveCollaborativeTextChange(`回复评论「${stop.title}」`);
       dom.saveState.textContent = `已回复「${stop.title}」的评论`;
       return;
     }
     const fallbackTitle = currentStop().title;
+    const fallbackReply = createCommentReply(parentId, text);
     if (!mutate(`回复评论「${fallbackTitle}」`, () => {
-      currentStop().comments = normalizeComments([...(currentStop().comments || []), createCommentReply(parentId, text)]);
+      currentStop().comments = normalizeComments([...(currentStop().comments || []), fallbackReply]);
       replyingCommentId = "";
       dom.commentInput.value = "";
       dom.commentInput.placeholder = "添加同行意见或提醒";
     }, { save: false, render: false })) return;
     await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-reply-fallback-snapshot");
+    await logActivity(`回复评论「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: currentStop().id || "" } });
     await saveState(`回复评论「${fallbackTitle}」`);
     render();
     return;
@@ -9723,18 +9746,20 @@ dom.commentForm.addEventListener("submit", async (event) => {
     dom.commentInput.value = "";
     renderStopComments(stop);
     dom.commentCount.textContent = stop.comments.length;
-    await logActivity(`评论「${stop.title}」`);
+    await logActivity(`评论「${stop.title}」`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "stop", stopId: stop.id || "" } });
     await syncStopSnapshotToPlanDoc(stop.id, "local-comment-snapshot");
     await saveCollaborativeTextChange(`评论「${stop.title}」`);
     dom.saveState.textContent = `已评论「${stop.title}」`;
     return;
   }
   const fallbackTitle = currentStop().title;
+  const fallbackComment = { id: uid(), author: getCollabName(), text, at: new Date().toISOString(), ...(anchor ? { anchor } : {}) };
   if (!mutate(`评论「${fallbackTitle}」`, () => {
-    currentStop().comments = [...(currentStop().comments || []), { id: uid(), author: getCollabName(), text, at: new Date().toISOString(), ...(anchor ? { anchor } : {}) }];
+    currentStop().comments = [...(currentStop().comments || []), fallbackComment];
     dom.commentInput.value = "";
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-fallback-snapshot");
+  await logActivity(`评论「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "stop", stopId: currentStop().id || "" } });
   await saveState(`评论「${fallbackTitle}」`);
   render();
 });
@@ -9779,7 +9804,7 @@ dom.commentList.addEventListener("click", async (event) => {
     if (updated) {
       stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, nextPatch);
       renderStopComments(stop);
-      await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
+      await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
       await syncStopSnapshotToPlanDoc(stop.id, "local-comment-resolve-snapshot");
       await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
       dom.saveState.textContent = comment.resolved ? "已重新打开评论" : "已标记评论解决";
@@ -9789,6 +9814,7 @@ dom.commentList.addEventListener("click", async (event) => {
       currentStop().comments = commentsWithUpdatedComment(currentStop().comments || [], commentId, nextPatch);
     }, { save: false, render: false })) return;
     await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-resolve-fallback-snapshot");
+    await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "" } });
     await saveState(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
     render();
     return;
@@ -9840,20 +9866,22 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
       dom.dayCommentInput.value = "";
       dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
       renderDayComments(day);
-      await logActivity(`回复当天批注「${day.title}」`);
+      await logActivity(`回复当天批注「${day.title}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: day.id || "" } });
       await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-reply-snapshot");
       await saveCollaborativeTextChange(`回复当天批注「${day.title}」`);
       dom.saveState.textContent = `已回复「${day.title}」的当天批注`;
       return;
     }
     const fallbackTitle = currentDay().title;
+    const fallbackReply = createCommentReply(parentId, text);
     if (!mutate(`回复当天批注「${fallbackTitle}」`, () => {
-      currentDay().comments = normalizeComments([...(currentDay().comments || []), createCommentReply(parentId, text)]);
+      currentDay().comments = normalizeComments([...(currentDay().comments || []), fallbackReply]);
       dayReplyingCommentId = "";
       dom.dayCommentInput.value = "";
       dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
     }, { requireUnlocked: false, save: false, render: false })) return;
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-reply-fallback-snapshot");
+    await logActivity(`回复当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: currentDay().id || "" } });
     await saveState(`回复当天批注「${fallbackTitle}」`);
     render();
     return;
@@ -9865,18 +9893,20 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
     day.comments = normalizeComments([...(day.comments || []), collaborativeComment]);
     dom.dayCommentInput.value = "";
     renderDayComments(day);
-    await logActivity(`当天批注「${day.title}」`);
+    await logActivity(`当天批注「${day.title}」`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-snapshot");
     await saveCollaborativeTextChange(`当天批注「${day.title}」`);
     dom.saveState.textContent = `已批注「${day.title}」`;
     return;
   }
   const fallbackTitle = currentDay().title;
+  const fallbackComment = { id: uid(), author: getCollabName(), text, at: new Date().toISOString(), ...(anchor ? { anchor } : {}) };
   if (!mutate(`当天批注「${fallbackTitle}」`, () => {
-    currentDay().comments = normalizeComments([...(currentDay().comments || []), { id: uid(), author: getCollabName(), text, at: new Date().toISOString(), ...(anchor ? { anchor } : {}) }]);
+    currentDay().comments = normalizeComments([...(currentDay().comments || []), fallbackComment]);
     dom.dayCommentInput.value = "";
   }, { requireUnlocked: false, save: false, render: false })) return;
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-fallback-snapshot");
+  await logActivity(`当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "day", dayId: currentDay().id || "" } });
   await saveState(`当天批注「${fallbackTitle}」`);
   render();
 });
@@ -9921,7 +9951,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     if (updated) {
       day.comments = commentsWithUpdatedComment(day.comments || [], commentId, nextPatch);
       renderDayComments(day);
-      await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
+      await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
       await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-resolve-snapshot");
       await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
       dom.saveState.textContent = comment.resolved ? "已重新打开当天批注" : "已标记当天批注解决";
@@ -9931,6 +9961,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
       currentDay().comments = commentsWithUpdatedComment(currentDay().comments || [], commentId, nextPatch);
     }, { requireUnlocked: false, save: false, render: false })) return;
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-resolve-fallback-snapshot");
+    await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "" } });
     await saveState(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
     render();
     return;
@@ -10088,7 +10119,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (await updateDayBlockCommentInDoc(day.id, block.id, commentId, patch, "local-day-block-comment-resolve")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
-      await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`);
+      await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
       await saveCollaborativePlanChange("已更新块级评论");
       return;
     }
@@ -10096,6 +10127,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch) } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-resolve-fallback");
+    await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
     await saveState("已更新块级评论");
     render();
     return;
@@ -10202,7 +10234,7 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     if (input) input.value = "";
     blockReplyingCommentId = "";
     renderDayBlocks(day);
-    await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`);
+    await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || collaborativeComment.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
     await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
     return;
   }
@@ -10226,6 +10258,7 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     blockReplyingCommentId = "";
   }, { requireUnlocked: false, save: false, render: false })) return;
   await syncDayBlocksToDoc(currentDay().id, parentId ? "local-day-block-comment-reply-fallback" : "local-day-block-comment-add-fallback");
+  await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || fallbackComment.id, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
   await saveState(parentId ? "已回复块级评论" : "已添加块级评论");
   render();
 });
@@ -10910,6 +10943,8 @@ dom.activityFilters?.addEventListener("click", (event) => {
 dom.activityList?.addEventListener("click", (event) => {
   const item = event.target.closest("[data-activity-target]");
   if (!item) return;
+  const detail = parseActivityDetail(item.dataset.activityDetail || "");
+  if (focusActivityDetail(detail)) return;
   focusActivityTarget(item.dataset.activityTarget || "");
 });
 
