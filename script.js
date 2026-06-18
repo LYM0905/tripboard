@@ -397,6 +397,17 @@ function inferActivityType(text = "") {
   return "edit";
 }
 
+function activityTargetForType(type = "edit") {
+  return {
+    restore: ".version-panel",
+    conflict: ".collab-panel",
+    comment: ".comment-index-panel",
+    transport: ".transport-panel",
+    map: ".map-panel",
+    edit: ".editor-panel",
+  }[type] || ".activity-panel";
+}
+
 function memberActivityLabel(member = {}) {
   const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
   if (textEditing) return textEditing;
@@ -8699,9 +8710,23 @@ function renderActivities() {
     .map((item) => {
       const entry = typeof item === "string" ? { text: item, at: "刚刚" } : item;
       const type = entry.type || inferActivityType(entry.text || "");
-      return `<div class="activity-item" data-activity-type="${escapeHtml(type)}"><span class="avatar a1">${escapeHtml((ACTIVITY_TYPE_LABELS[type] || "记").slice(0, 1))}</span><p><span class="activity-type">${escapeHtml(ACTIVITY_TYPE_LABELS[type] || "记录")}</span>${escapeHtml(entry.text)}<br><small>${escapeHtml(entry.at || "")}${entry.createdBy ? ` · ${escapeHtml(entry.createdBy)}` : ""}</small></p></div>`;
+      const target = activityTargetForType(type);
+      return `<button type="button" class="activity-item" data-activity-type="${escapeHtml(type)}" data-activity-target="${escapeHtml(target)}"><span class="avatar a1">${escapeHtml((ACTIVITY_TYPE_LABELS[type] || "记").slice(0, 1))}</span><p><span class="activity-type">${escapeHtml(ACTIVITY_TYPE_LABELS[type] || "记录")}</span>${escapeHtml(entry.text)}<br><small>${escapeHtml(entry.at || "")}${entry.createdBy ? ` · ${escapeHtml(entry.createdBy)}` : ""}</small></p></button>`;
     })
     .join("") || `<div class="member-empty">${activityFilter === "all" ? "还没有操作记录。" : "当前类型暂无记录。"}</div>`;
+}
+
+function focusActivityTarget(targetSelector = "") {
+  const target = targetSelector ? document.querySelector(targetSelector) : null;
+  if (!target) {
+    dom.saveState.textContent = "暂时无法定位这条记录";
+    return false;
+  }
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  dom.saveState.textContent = "已定位到相关区域";
+  return true;
 }
 
 function renderGuideResult() {
@@ -10880,6 +10905,12 @@ dom.activityFilters?.addEventListener("click", (event) => {
   if (!button) return;
   activityFilter = button.dataset.activityFilter || "all";
   renderActivities();
+});
+
+dom.activityList?.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-activity-target]");
+  if (!item) return;
+  focusActivityTarget(item.dataset.activityTarget || "");
 });
 
 dom.commentIndexList?.addEventListener("click", (event) => {
