@@ -4059,7 +4059,7 @@ function broadcastDaysReordered() {
   });
 }
 
-async function broadcastPlanReplaced(reason = "更新整份计划") {
+async function broadcastPlanReplaced(reason = "更新整份计划", meta = {}) {
   if (!realtimeChannel || !tripId || !state?.days?.length) return;
   await bindCollabPlanDoc();
   const planYjs = currentPlanYjsState();
@@ -4071,6 +4071,7 @@ async function broadcastPlanReplaced(reason = "更新整份计划") {
       state: clone(state),
       planYjs,
       reason,
+      ...clone(meta),
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -5668,7 +5669,16 @@ async function applyRemotePlanReplaced(payload = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   bindCollabPlanDoc();
   logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`, { broadcast: false });
-  dom.collabStatus.textContent = appliedYjs ? `${payload.name || "协作者"} 通过协作快照更新了整份计划` : `${payload.name || "协作者"} 更新了整份计划`;
+  if (payload.replacementType === "version-restore") {
+    const restoredAt = payload.restoredVersionAt
+      ? new Date(payload.restoredVersionAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : "";
+    const versionLabel = [payload.restoredVersionReason || "历史版本", restoredAt].filter(Boolean).join(" · ");
+    dom.saveState.textContent = "计划已被恢复到历史版本";
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 恢复了历史版本：${versionLabel}`;
+  } else {
+    dom.collabStatus.textContent = appliedYjs ? `${payload.name || "协作者"} 通过协作快照更新了整份计划` : `${payload.name || "协作者"} 更新了整份计划`;
+  }
   render();
 }
 
@@ -6513,7 +6523,12 @@ async function restoreVersion(versionId) {
   await replacePlanCollabDoc("local-version-restore");
   logActivity(`恢复历史版本：${entry.reason || "旧版本"}`);
   await saveState("已恢复历史版本");
-  await broadcastPlanReplaced("恢复历史版本");
+  await broadcastPlanReplaced("恢复历史版本", {
+    replacementType: "version-restore",
+    restoredVersionReason: entry.reason || "历史版本",
+    restoredVersionAt: entry.at || "",
+    restoredVersionBy: entry.by || "",
+  });
   render();
 }
 
