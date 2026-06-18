@@ -6163,9 +6163,13 @@ async function applyRemotePlan(remotePlan, meta = {}) {
     partySize: Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1),
     budgetLimit: numberValue(state.budgetLimit || 10000),
   };
-  state = ensurePlanDates(clone(remotePlan));
-  if (state.planYjs) {
-    await applyPlanYjsStateToCurrentPlan(state.planYjs, meta.label || "已应用云端计划结构协作快照");
+  const nextRemotePlan = ensurePlanDates(clone(remotePlan));
+  state = nextRemotePlan;
+  const appliedLivePlanYjs = state.planYjs
+    ? await replaceLivePlanDocWithYjsState(state.planYjs, meta.label || "已应用云端计划结构协作快照")
+    : false;
+  if (!appliedLivePlanYjs && state.planYjs) {
+    await applyPlanYjsStateToCurrentPlan(state.planYjs, meta.label || "已应用云端计划结构协作快照", { scheduleSave: false });
   }
   lastSyncedState = clone(state);
   lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
@@ -6174,7 +6178,7 @@ async function applyRemotePlan(remotePlan, meta = {}) {
     destroyCollabTextDoc();
   }
   destroyCollabDayTextDoc();
-  if (
+  if (!appliedLivePlanYjs && (
     !sameSerialized(currentDayMetas, normalizeDayMetas(state.days || [])) ||
     !sameSerialized(currentDayBlocks, normalizeDayBlocksFromDays(state.days || [])) ||
     !sameSerialized(currentTransportQuotes, normalizeTransportQuotes(state.transportQuotes || [])) ||
@@ -6185,9 +6189,10 @@ async function applyRemotePlan(remotePlan, meta = {}) {
       partySize: Math.max(1, Number.parseInt(state.partySize || 1, 10) || 1),
       budgetLimit: numberValue(state.budgetLimit || 10000),
     })
-  ) {
+  )) {
     destroyCollabPlanDoc();
   }
+  if (appliedLivePlanYjs) state.planYjs = currentPlanYjsState();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   await refreshEditAccessFromUrl();
   isApplyingRemote = false;
