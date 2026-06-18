@@ -363,6 +363,27 @@ function versionPreviewSummary(versionPlan = {}, currentPlan = state) {
   };
 }
 
+function memberActivityLabel(member = {}) {
+  const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
+  if (textEditing) return textEditing;
+  if (member.blockEditing) return `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}`;
+  return `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || member.activeDay || "计划"}`;
+}
+
+function versionRestoreImpactSummary() {
+  const ownMemberId = memberProfile?.id || sessionId;
+  const members = (onlineMembers.length ? onlineMembers : (memberProfile ? [presencePayload()] : []))
+    .filter((member) => member && member.memberId !== sessionId && member.memberId !== ownMemberId && freshMember(member));
+  return {
+    members: members.slice(0, 4).map((member) => ({
+      name: member.name || "匿名成员",
+      activity: memberActivityLabel(member),
+      day: member.activeDay || "在线",
+    })),
+    extra: Math.max(0, members.length - 4),
+  };
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   bytes.forEach((byte) => {
@@ -6454,6 +6475,7 @@ function renderVersionPreview() {
     return;
   }
   const summary = versionPreviewSummary(entry.data, state);
+  const impact = versionRestoreImpactSummary();
   const when = entry.at ? new Date(entry.at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "刚刚";
   dom.versionPreview.hidden = false;
   dom.versionPreview.innerHTML = `
@@ -6464,6 +6486,14 @@ function renderVersionPreview() {
       ${summary.items.length ? summary.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "<li>与当前版本一致</li>"}
       ${summary.extra ? `<li>还有 ${summary.extra} 项变化</li>` : ""}
     </ul>
+    <div class="version-impact">
+      <strong>${impact.members.length ? "将影响当前在线协作者" : "当前没有其他成员在线编辑"}</strong>
+      <ul>
+        ${impact.members.map((member) => `<li>${escapeHtml(member.name)} · ${escapeHtml(member.day)} · ${escapeHtml(member.activity)}</li>`).join("")}
+        ${impact.extra ? `<li>还有 ${impact.extra} 位成员在线</li>` : ""}
+        ${impact.members.length ? "" : "<li>恢复仍会写入共享计划，并同步给之后打开链接的成员。</li>"}
+      </ul>
+    </div>
     <div class="version-preview-actions">
       <button type="button" class="primary-btn" data-confirm-version-restore="${escapeHtml(entry.id)}">${icon("rotate-ccw")}确认恢复</button>
       <button type="button" class="text-btn" data-cancel-version-restore>${icon("x")}取消</button>
