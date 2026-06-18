@@ -99,7 +99,7 @@ const PLAN_SETTING_FIELDS = [
   { field: "editKeyHint", type: "string" },
 ];
 const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "dateRange", "startDate", "endDate", "cover", "editKeyHint"];
-const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading"];
+const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading", "callout"];
 
 const images = {
   kyoto:
@@ -4023,6 +4023,7 @@ function renderDayComments(day = currentDay()) {
 }
 
 function dayBlockTypeLabel(type = "todo") {
+  if (type === "callout") return "提醒";
   if (type === "heading") return "标题";
   if (type === "note") return "备注";
   if (type === "decision") return "决定";
@@ -4030,6 +4031,7 @@ function dayBlockTypeLabel(type = "todo") {
 }
 
 function dayBlockIcon(type = "todo") {
+  if (type === "callout") return "info";
   if (type === "heading") return "heading-2";
   if (type === "note") return "notebook-text";
   if (type === "decision") return "badge-check";
@@ -4053,6 +4055,11 @@ function dayBlockSlashCommand(value = "") {
     "/h": "heading",
     "/h2": "heading",
     "/标题": "heading",
+    "/callout": "callout",
+    "/tip": "callout",
+    "/提醒": "callout",
+    "/提示": "callout",
+    "/注意": "callout",
   };
   return commands[command] || "";
 }
@@ -4161,7 +4168,7 @@ function renderDayBlocks(day = currentDay()) {
           `;
         })
         .join("")
-    : `<div class="empty-state">还没有协作块，可以添加待办、备注或决定。</div>`;
+    : `<div class="empty-state">还没有协作块，可以添加待办、备注、决定、标题或提醒。</div>`;
   refreshIcons();
   requestAnimationFrame(() => refreshDayBlockTextPresence());
 }

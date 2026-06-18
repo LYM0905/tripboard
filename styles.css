@@ -2366,6 +2366,20 @@ button:disabled {
   background: transparent;
 }
 
+.day-block.is-callout {
+  background: #fff7df;
+  border-color: #f2d48c;
+}
+
+.day-block.is-callout .day-block-toggle {
+  color: #8a4a18;
+  background: #ffeab4;
+}
+
+.day-block.is-callout .day-block-text {
+  border-color: #f2d48c;
+}
+
 .day-block-text-wrap {
   position: relative;
   display: block;
