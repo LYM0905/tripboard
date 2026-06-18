@@ -8912,7 +8912,13 @@ function focusBudgetSettingActivityTarget(detail = null) {
 function focusPlanMetaActivityTarget(detail = null) {
   syncGuideStateFromPlan();
   renderGuideResult();
-  const fieldTarget = detail?.field === "destination" ? dom.destinationInput : detail?.field === "origin" ? dom.originInput : null;
+  const fieldTarget = {
+    destination: dom.destinationInput,
+    origin: dom.originInput,
+    startDate: dom.startDateInput,
+    endDate: dom.endDateInput,
+    dateRange: dom.startDateInput,
+  }[detail?.field] || null;
   const target = fieldTarget || document.querySelector(".guide-controls");
   if (!target) return false;
   target.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -10819,11 +10825,14 @@ function syncGuideDatesFromInputs() {
   }
   guideState.startDate = start;
   guideState.endDate = end;
+  if (dom.endDateInput.value !== end) dom.endDateInput.value = end;
   renderGuideResult();
+  return {
+    startDate: start,
+    endDate: end,
+    dateRange: dateRangeText(start, end),
+  };
 }
-
-dom.startDateInput.addEventListener("input", syncGuideDatesFromInputs);
-dom.endDateInput.addEventListener("input", syncGuideDatesFromInputs);
 
 dom.transportFilterForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -10970,12 +10979,51 @@ async function syncPlanMetaFieldInput(field, value, label) {
   await saveCollaborativePlanChange(label);
 }
 
+async function syncPlanMetaPatchInput(patch = {}, label, targetField = "") {
+  if (!canEdit() || isReadonlyMode) return;
+  await bindCollabPlanDoc();
+  const entries = Object.entries(patch)
+    .filter(([field]) => PLAN_SETTING_FIELDS.some((meta) => meta.field === field))
+    .map(([field, value]) => [field, normalizePlanSettingValue(field, value)]);
+  if (!entries.length) return;
+  const changed = collabSettingsMap
+    ? entries.some(([field, value]) => !sameSerialized(collabSettingsMap.get(field), value))
+    : entries.some(([field, value]) => !sameSerialized(state[field], value));
+  if (!changed) return;
+  if (collabPlanDoc && collabSettingsMap && !isApplyingCollabPlanRemote) {
+    collabPlanDoc.transact(() => {
+      entries.forEach(([field, value]) => {
+        collabSettingsMap.set(field, clone(value));
+      });
+    }, "local-plan-meta-patch");
+    persistCurrentPlanFromDoc("计划基础信息协作内容已实时同步");
+  } else {
+    entries.forEach(([field, value]) => {
+      state[field] = clone(value);
+    });
+    await syncPlanMetaToDoc("local-plan-meta-patch-fallback");
+  }
+  await logActivity(label, { target: planMetaActivityTarget(targetField || entries[0][0], { action: "update", fields: entries.map(([field]) => field) }) });
+  await saveCollaborativePlanChange(label);
+}
+
 function schedulePlanMetaInputSync(field, value, label) {
   clearTimeout(planMetaInputSyncTimers[field]);
   planMetaInputSyncTimers[field] = setTimeout(() => {
     delete planMetaInputSyncTimers[field];
     syncPlanMetaFieldInput(field, value, label).catch((error) => {
       console.warn("Plan meta field sync failed", error);
+      dom.saveState.textContent = `${label}同步失败：${error.message}`;
+    });
+  }, 650);
+}
+
+function schedulePlanMetaPatchInputSync(timerKey, patch, label, targetField = "") {
+  clearTimeout(planMetaInputSyncTimers[timerKey]);
+  planMetaInputSyncTimers[timerKey] = setTimeout(() => {
+    delete planMetaInputSyncTimers[timerKey];
+    syncPlanMetaPatchInput(patch, label, targetField).catch((error) => {
+      console.warn("Plan meta patch sync failed", error);
       dom.saveState.textContent = `${label}同步失败：${error.message}`;
     });
   }, 650);
@@ -10998,6 +11046,18 @@ dom.originInput.addEventListener("input", () => {
   renderGuideResult();
   schedulePlanMetaInputSync("origin", origin, "更新出发地");
 });
+
+function handleGuideDateInput(event) {
+  const patch = syncGuideDatesFromInputs();
+  state.startDate = patch.startDate;
+  state.endDate = patch.endDate;
+  state.dateRange = patch.dateRange;
+  renderShell();
+  schedulePlanMetaPatchInputSync("dateRange", patch, "更新日期范围", event?.target === dom.endDateInput ? "endDate" : "startDate");
+}
+
+dom.startDateInput.addEventListener("input", handleGuideDateInput);
+dom.endDateInput.addEventListener("input", handleGuideDateInput);
 
 function closeCreateChoice() {
   dom.createChoiceModal.classList.remove("is-open");
