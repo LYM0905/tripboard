@@ -11561,8 +11561,10 @@ document.querySelectorAll("[data-close-create]").forEach((button) => {
   button.addEventListener("click", closeCreateChoice);
 });
 
-dom.exportBtn.addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+dom.exportBtn.addEventListener("click", async () => {
+  await refreshLiveCollabStateBeforeRemoteSave("导出前已刷新协作快照");
+  const exportState = planVersionSnapshot(state);
+  const blob = new Blob([JSON.stringify(exportState, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
