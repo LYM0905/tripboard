@@ -156,6 +156,16 @@ function planVersionSerialized(plan) {
   return serializePlan(planContentSnapshot(plan));
 }
 
+function planYjsSnapshotFromPlan(plan) {
+  if (!plan?.days?.length || !yjsModule) return plan?.planYjs || "";
+  try {
+    return bytesToBase64(buildInitialPlanUpdate(yjsModule, plan));
+  } catch (error) {
+    console.warn("Plan Yjs snapshot could not be generated", error);
+    return plan?.planYjs || "";
+  }
+}
+
 function samePlanContent(a, b) {
   return sameSerialized(planContentSnapshot(a), planContentSnapshot(b));
 }
@@ -1555,8 +1565,11 @@ function mergePlans(localPlan, remotePlan, basePlan = lastSyncedState) {
     activities: mergeUniqueList(localPlan?.activities || [], remotePlan?.activities || [], "activity").slice(0, 10),
     transportQuotes: mergeUniqueList(localPlan?.transportQuotes || [], remotePlan?.transportQuotes || [], "quote").slice(0, 60),
   };
-  clearPlanYjsState(merged);
-  return ensurePlanDates(merged);
+  const normalizedMerged = ensurePlanDates(merged);
+  const mergedPlanYjs = planYjsSnapshotFromPlan(normalizedMerged);
+  if (mergedPlanYjs) normalizedMerged.planYjs = mergedPlanYjs;
+  else clearPlanYjsState(normalizedMerged);
+  return normalizedMerged;
 }
 
 function conflictSummary(conflict) {
