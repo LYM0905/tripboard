@@ -3133,6 +3133,15 @@ async function refreshLiveCollabStateBeforeRemoteSave(label = "保存前已刷�
   }
 }
 
+async function ensureRemotePlanYjsSnapshot(label = "已补齐计划结构协作快照") {
+  if (!tripId || !supabaseClient || isReadonlyMode || !canEdit() || pendingConflict || state.planYjs) return false;
+  await bindCollabPlanDoc();
+  if (!collabPlanDoc) return false;
+  persistCurrentPlanFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
+  if (!state.planYjs) return false;
+  return pushRemoteState(label);
+}
+
 function currentPlanYjsState() {
   if (!collabPlanDoc || !yjsModule) return state.planYjs || "";
   try {
@@ -7478,8 +7487,14 @@ async function loadRemoteState() {
   if (!supabaseClient || !tripId) return;
   const data = await fetchRemotePlan();
   if (data?.data?.days?.length) {
+    const remoteHadPlanYjs = Boolean(data.data.planYjs);
     saveVersionSnapshot("载入云端前版本");
     await applyRemotePlan(data.data, { updatedAt: data.updated_at || "" });
+    if (!remoteHadPlanYjs && !isReadonlyMode) {
+      ensureRemotePlanYjsSnapshot("已为旧共享计划补齐协作快照").catch((error) => {
+        dom.collabStatus.textContent = `补齐旧计划协作快照失败：${error.message}`;
+      });
+    }
     dom.saveState.textContent = `已载入共享计划`;
     dom.collabStatus.textContent = isReadonlyMode
       ? data.updated_by
