@@ -1942,6 +1942,26 @@ function remoteEditorsForBlock(blockId = "") {
   });
 }
 
+function remoteActiveEditorsForBlock(blockId = "") {
+  return remoteEditorsForBlock(blockId).filter((member) => (
+    member.blockSelection ||
+    /编辑|评论/.test(member.blockEditing || "")
+  ));
+}
+
+function remoteBlockEditorNames(blockId = "") {
+  const names = [...new Set(remoteActiveEditorsForBlock(blockId).map((member) => member.name || "协作者"))];
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return visible ? `${visible}${extra}` : "";
+}
+
+function noteRemoteBlockEditors(blockId = "", action = "操作协作块") {
+  const names = remoteBlockEditorNames(blockId);
+  if (!names || !dom.saveState) return;
+  dom.saveState.textContent = `${names} 正在同一协作块中，${action}前留意对方修改`;
+}
+
 function renderDayBlockTextPresence(block) {
   const editors = remoteEditorsForBlock(block.id)
     .filter((member) => member.blockSelection && member.activeBlockId === block.id)
@@ -4052,10 +4072,12 @@ function renderDayBlockComments(block) {
 }
 
 function renderDayBlockPresence(block) {
-  const editors = remoteEditorsForBlock(block.id).slice(0, 3);
+  const editors = remoteActiveEditorsForBlock(block.id).slice(0, 3);
   if (!editors.length) return "";
+  const names = remoteBlockEditorNames(block.id);
   return `
     <span class="day-block-presence" title="${escapeHtml(editors.map((member) => `${member.name || "协作者"} ${member.blockEditing || "正在编辑协作块"}`).join("、"))}">
+      <span class="day-block-presence-warning">${escapeHtml(names)} 同块编辑中</span>
       ${editors.map((member, index) => `<span class="text-presence-chip ${memberPresenceClass(member, index)}">${escapeHtml(memberInitial(member.name))}<span>${escapeHtml(member.blockEditing || "正在编辑")}</span></span>`).join("")}
     </span>
   `;
@@ -10806,6 +10828,7 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
   schedulePresenceTrack(0);
   const patch = { type: nextType };
   if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-type-change")) {
+    noteRemoteBlockEditors(blockId, "切换类型");
     day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
     renderDayBlocks(day);
     await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
@@ -10820,6 +10843,7 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
     return;
   }
   await syncDayBlocksToDoc(day.id, "local-day-block-type-change-fallback");
+  noteRemoteBlockEditors(blockId, "切换类型");
   renderDayBlocks(currentDay());
   await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
   await saveCollaborativePlanChange("已切换协作块类型");
@@ -10872,6 +10896,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     const nextDone = !block.done;
+    noteRemoteBlockEditors(blockId, nextDone ? "标记完成" : "重新打开");
     if (await updateDayBlockInDoc(day.id, blockId, { done: nextDone }, "local-day-block-toggle")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
@@ -10964,6 +10989,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!block || !requireEdit("排序协作块")) return;
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
+    noteRemoteBlockEditors(blockId, "排序");
     if (await moveDayBlockInDoc(day.id, blockId, direction, "local-day-block-reorder")) {
       day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
         updatedBy: getCollabName(),
@@ -10991,6 +11017,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const sourceIndex = blocks.findIndex((item) => item.id === sourceBlockId);
     const sourceBlock = sourceIndex >= 0 ? blocks[sourceIndex] : null;
     if (!sourceBlock || !requireEdit("复制协作块")) return;
+    noteRemoteBlockEditors(sourceBlockId, "复制");
     const duplicateBlock = normalizeDayBlock({
       ...sourceBlock,
       id: uid(),
@@ -11037,6 +11064,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!block || !requireEdit("删除协作块")) return;
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
+    noteRemoteBlockEditors(blockId, "删除");
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       renderDayBlocks(day);
@@ -11187,6 +11215,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
   }
   const draggedId = draggingDayBlockId;
   activeBlockPresenceId = draggedId;
+  noteRemoteBlockEditors(draggedId, "拖拽排序");
   if (await reorderDayBlockInDoc(day.id, draggedId, targetIndex, "local-day-block-drag-reorder")) {
     day.blocks = reorderDayBlockList(day.blocks || [], draggedId, targetIndex, {
       updatedBy: getCollabName(),
@@ -11258,6 +11287,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     clearTimeout(dayBlockEditTimer);
     if (!requireEdit("切换协作块类型")) return;
     activeBlockPresenceId = blockId;
+    noteRemoteBlockEditors(blockId, "使用斜杠命令");
     const patch = { type: slashType, text: "", textYjs: "" };
     const updatedSlashBlock = await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-slash-command");
     if (updatedSlashBlock) {
@@ -11297,6 +11327,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     });
     if (!newBlock || !requireEdit(afterText ? "拆分协作块" : "新增协作块")) return;
     activeBlockPresenceId = newBlock.id;
+    noteRemoteBlockEditors(blockId, afterText ? "拆分" : "新增下方块");
     const insertIndex = blockIndex + 1;
     const splitPatch = { text: beforeText, textYjs: "" };
     let textUpdateResult = true;
@@ -11363,6 +11394,8 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     event.preventDefault();
     const previousBlock = blocks[blockIndex - 1];
     if (!previousBlock || !requireEdit("合并协作块")) return;
+    noteRemoteBlockEditors(blockId, "合并");
+    noteRemoteBlockEditors(previousBlock.id, "合并");
     const mergedText = `${previousBlock.text || ""}${previousBlock.text ? " " : ""}${input.value.trim()}`.trim();
     const mergedComments = normalizeComments([...(previousBlock.comments || []), ...(block.comments || [])]);
     const previousPatch = { text: mergedText, textYjs: "", comments: mergedComments, level: previousBlock.level || 0 };
