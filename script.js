@@ -6483,6 +6483,8 @@ const dom = {
   fieldAmapLink: document.querySelector("#fieldAmapLink"),
   fieldAmapCandidates: document.querySelector("#fieldAmapCandidates"),
   exportBtn: document.querySelector("#exportBtn"),
+  importJsonBtn: document.querySelector("#importJsonBtn"),
+  importJsonInput: document.querySelector("#importJsonInput"),
   resetBtn: document.querySelector("#resetBtn"),
   shareBtn: document.querySelector("#shareBtn"),
   importModal: document.querySelector("#importModal"),
@@ -11578,6 +11580,48 @@ dom.exportBtn.addEventListener("click", async () => {
   } else {
     dom.saveState.textContent = "已导出 JSON";
   }
+});
+
+async function importPlanJsonFile(file) {
+  if (!file || !requireEdit("导入 JSON")) return;
+  let importedPlan = null;
+  try {
+    importedPlan = JSON.parse(await file.text());
+  } catch {
+    dom.saveState.textContent = "JSON 文件无法解析";
+    return;
+  }
+  if (!importedPlan?.days?.length) {
+    dom.saveState.textContent = "JSON 文件不是有效计划";
+    return;
+  }
+  saveVersionSnapshot("导入 JSON 前版本");
+  state = ensurePlanDates(clone(importedPlan));
+  activeDay = 0;
+  activeStop = 0;
+  transportFilterApplied = false;
+  const importedPlanYjs = state.planYjs || "";
+  const restoredFromYjs = importedPlanYjs
+    ? await replaceLivePlanDocWithYjsState(importedPlanYjs, "已从 JSON 导入协作快照")
+    : false;
+  if (!restoredFromYjs) await replacePlanCollabDoc("local-json-import");
+  await logActivity(`导入 JSON「${file.name || "计划"}」`);
+  await saveCollaborativePlanChange("已导入 JSON");
+  await broadcastPlanReplaced("导入 JSON", { replacementType: "json-import", importedFileName: file.name || "" });
+  render();
+}
+
+dom.importJsonBtn?.addEventListener("click", () => {
+  if (!requireEdit("导入 JSON")) return;
+  dom.importJsonInput.value = "";
+  dom.importJsonInput.click();
+});
+
+dom.importJsonInput?.addEventListener("change", () => {
+  const file = dom.importJsonInput.files?.[0];
+  importPlanJsonFile(file).catch((error) => {
+    dom.saveState.textContent = `导入 JSON 失败：${error.message}`;
+  });
 });
 
 dom.shareBtn.addEventListener("click", async () => {
