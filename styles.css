@@ -2301,7 +2301,7 @@ button:disabled {
 
 .day-block {
   display: grid;
-  grid-template-columns: 24px 34px minmax(0, 1fr) 86px auto auto 66px 34px;
+  grid-template-columns: 24px 34px minmax(0, 1fr) 86px auto auto 132px 34px;
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -2309,6 +2309,35 @@ button:disabled {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.day-block-collapsed-text {
+  display: none;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  font-weight: 800;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.day-block.is-collapsed .day-block-text-wrap,
+.day-block.is-collapsed .day-block-type-control,
+.day-block.is-collapsed .day-block-comment-toggle,
+.day-block.is-collapsed .day-block-presence,
+.day-block.is-collapsed .day-block-comment-panel {
+  display: none;
+}
+
+.day-block.is-collapsed .day-block-collapsed-text {
+  display: block;
 }
 
 .day-block-type-control {
@@ -2478,7 +2507,7 @@ button:disabled {
 
 .day-block-order {
   display: grid;
-  grid-template-columns: repeat(3, 30px);
+  grid-template-columns: repeat(4, 30px);
   gap: 4px;
 }
 
@@ -2530,6 +2559,11 @@ button:disabled {
   }
 
   .day-block-text-wrap {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .day-block-collapsed-text {
     grid-column: 3;
     grid-row: 1;
   }
