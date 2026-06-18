@@ -6581,7 +6581,7 @@ async function restoreVersion(versionId) {
   await replacePlanCollabDoc("local-version-restore");
   const versionLabel = restoredVersionLabel(entry.reason || "历史版本", entry.at || "");
   await logActivity(`恢复历史版本：${versionLabel}`);
-  await saveState("已恢复历史版本");
+  await saveCollaborativePlanChange("已恢复历史版本");
   await broadcastPlanReplaced("恢复历史版本", {
     replacementType: "version-restore",
     restoredVersionReason: entry.reason || "历史版本",
@@ -11097,7 +11097,7 @@ async function createRecommendedPlan() {
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
   await replacePlanCollabDoc("local-recommended-plan");
-  await saveState("已生成推荐计划");
+  await saveCollaborativePlanChange("已生成推荐计划");
   await broadcastPlanReplaced("生成推荐计划");
   render();
   closeCreateChoice();
@@ -11123,7 +11123,7 @@ async function createBlankTemplate() {
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
   await replacePlanCollabDoc("local-blank-plan");
-  await saveState("已生成空白模板");
+  await saveCollaborativePlanChange("已生成空白模板");
   await broadcastPlanReplaced("生成空白模板");
   render();
   closeCreateChoice();
@@ -11414,7 +11414,7 @@ dom.resetBtn.addEventListener("click", async () => {
   activeStop = 0;
   transportFilterApplied = false;
   await replacePlanCollabDoc("local-reset-plan");
-  await saveState("已重置示例");
+  await saveCollaborativePlanChange("已重置示例");
   await broadcastPlanReplaced("重置示例计划");
   render();
 });
