@@ -2322,6 +2322,7 @@ button:disabled {
   min-height: 30px;
   padding: 0 8px;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .day-block-bulk-bar .danger-text {

@@ -13,61 +13,61 @@ const MAX_PENDING_PLAN_UPDATES = 160;
 const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
 const YJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/yjs@13.6.27/+esm";
 const COLLAB_TEXT_FIELDS = [
-  { field: "title", domKey: "fieldTitle", label: "名称", presenceId: "fieldTitlePresence" },
-  { field: "type", domKey: "fieldType", label: "类型", presenceId: "fieldTypePresence" },
-  { field: "address", domKey: "fieldAddress", label: "地址", presenceId: "fieldAddressPresence" },
-  { field: "amapKeyword", domKey: "fieldAmapKeyword", label: "高德关键词", presenceId: "fieldAmapKeywordPresence" },
-  { field: "note", domKey: "fieldNote", label: "备注", presenceId: "fieldNotePresence" },
+  { field: "title", domKey: "fieldTitle", label: "??", presenceId: "fieldTitlePresence" },
+  { field: "type", domKey: "fieldType", label: "??", presenceId: "fieldTypePresence" },
+  { field: "address", domKey: "fieldAddress", label: "??", presenceId: "fieldAddressPresence" },
+  { field: "amapKeyword", domKey: "fieldAmapKeyword", label: "?????", presenceId: "fieldAmapKeywordPresence" },
+  { field: "note", domKey: "fieldNote", label: "??", presenceId: "fieldNotePresence" },
 ];
 const COLLAB_TEXT_FIELD_BY_FIELD = new Map(COLLAB_TEXT_FIELDS.map((item) => [item.field, item]));
 const COMMENT_FILTERS = [
-  { value: "all", label: "全部" },
-  { value: "open", label: "未解决" },
-  { value: "resolved", label: "已解决" },
+  { value: "all", label: "??" },
+  { value: "open", label: "???" },
+  { value: "resolved", label: "???" },
 ];
 const COMMENT_INDEX_FILTERS = [
-  { value: "open", label: "未解决" },
-  { value: "all", label: "全部" },
-  { value: "resolved", label: "已解决" },
+  { value: "open", label: "???" },
+  { value: "all", label: "??" },
+  { value: "resolved", label: "???" },
 ];
 const ACTIVITY_FILTERS = [
-  { value: "all", label: "全部" },
-  { value: "restore", label: "恢复" },
-  { value: "conflict", label: "冲突" },
-  { value: "comment", label: "批注" },
-  { value: "transport", label: "交通" },
-  { value: "map", label: "路线" },
-  { value: "edit", label: "编辑" },
+  { value: "all", label: "??" },
+  { value: "restore", label: "??" },
+  { value: "conflict", label: "??" },
+  { value: "comment", label: "??" },
+  { value: "transport", label: "??" },
+  { value: "map", label: "??" },
+  { value: "edit", label: "??" },
 ];
 const ACTIVITY_TYPE_LABELS = {
-  restore: "恢复",
-  conflict: "冲突",
-  comment: "批注",
-  transport: "交通",
-  map: "路线",
-  edit: "编辑",
+  restore: "??",
+  conflict: "??",
+  comment: "??",
+  transport: "??",
+  map: "??",
+  edit: "??",
 };
 const COLLAB_DAY_TEXT_FIELDS = [
-  { field: "day:title", docField: "title", domKey: "fieldDayTitle", label: "当天标题", presenceId: "fieldDayTitlePresence", scope: "day" },
-  { field: "day:route", docField: "route", domKey: "fieldDayRoute", label: "当天路线", presenceId: "fieldDayRoutePresence", scope: "day" },
-  { field: "day:weather", docField: "weather", domKey: "fieldDayWeather", label: "天气", presenceId: "fieldDayWeatherPresence", scope: "day" },
-  { field: "day:transport", docField: "transport", domKey: "fieldDayTransport", label: "交通", presenceId: "fieldDayTransportPresence", scope: "day" },
+  { field: "day:title", docField: "title", domKey: "fieldDayTitle", label: "????", presenceId: "fieldDayTitlePresence", scope: "day" },
+  { field: "day:route", docField: "route", domKey: "fieldDayRoute", label: "????", presenceId: "fieldDayRoutePresence", scope: "day" },
+  { field: "day:weather", docField: "weather", domKey: "fieldDayWeather", label: "??", presenceId: "fieldDayWeatherPresence", scope: "day" },
+  { field: "day:transport", docField: "transport", domKey: "fieldDayTransport", label: "??", presenceId: "fieldDayTransportPresence", scope: "day" },
 ];
 const COLLAB_PLAN_TEXT_PRESENCE_FIELDS = [
-  { field: "plan:destination", planField: "destination", domKey: "destinationInput", label: "目的地", presenceId: "destinationInputPresence", scope: "plan" },
-  { field: "plan:origin", planField: "origin", domKey: "originInput", label: "出发城市", presenceId: "originInputPresence", scope: "plan" },
-  { field: "plan:startDate", planField: "startDate", domKey: "startDateInput", label: "出发日期", presenceId: "startDateInputPresence", scope: "plan" },
-  { field: "plan:endDate", planField: "endDate", domKey: "endDateInput", label: "返程日期", presenceId: "endDateInputPresence", scope: "plan" },
+  { field: "plan:destination", planField: "destination", domKey: "destinationInput", label: "???", presenceId: "destinationInputPresence", scope: "plan" },
+  { field: "plan:origin", planField: "origin", domKey: "originInput", label: "????", presenceId: "originInputPresence", scope: "plan" },
+  { field: "plan:startDate", planField: "startDate", domKey: "startDateInput", label: "????", presenceId: "startDateInputPresence", scope: "plan" },
+  { field: "plan:endDate", planField: "endDate", domKey: "endDateInput", label: "????", presenceId: "endDateInputPresence", scope: "plan" },
 ];
 const COLLAB_STRUCT_FIELDS = [
-  { field: "time", domKey: "fieldTime", type: "string", label: "时间", presenceId: "fieldTimePresence" },
-  { field: "budget", domKey: "fieldBudget", type: "number", label: "预算", presenceId: "fieldBudgetPresence" },
-  { field: "paid", domKey: "fieldPaid", type: "number", label: "已付", presenceId: "fieldPaidPresence" },
-  { field: "payer", domKey: "fieldPayer", type: "string", label: "付款人", presenceId: "fieldPayerPresence" },
-  { field: "lng", domKey: "fieldLng", type: "string", label: "经度", presenceId: "fieldLngPresence" },
-  { field: "lat", domKey: "fieldLat", type: "string", label: "纬度", presenceId: "fieldLatPresence" },
-  { field: "image", domKey: "fieldImage", type: "string", label: "图片 URL", presenceId: "fieldImagePresence" },
-  { field: "tags", domKey: "fieldTags", type: "tags", label: "标签", presenceId: "fieldTagsPresence" },
+  { field: "time", domKey: "fieldTime", type: "string", label: "??", presenceId: "fieldTimePresence" },
+  { field: "budget", domKey: "fieldBudget", type: "number", label: "??", presenceId: "fieldBudgetPresence" },
+  { field: "paid", domKey: "fieldPaid", type: "number", label: "??", presenceId: "fieldPaidPresence" },
+  { field: "payer", domKey: "fieldPayer", type: "string", label: "???", presenceId: "fieldPayerPresence" },
+  { field: "lng", domKey: "fieldLng", type: "string", label: "??", presenceId: "fieldLngPresence" },
+  { field: "lat", domKey: "fieldLat", type: "string", label: "??", presenceId: "fieldLatPresence" },
+  { field: "image", domKey: "fieldImage", type: "string", label: "?? URL", presenceId: "fieldImagePresence" },
+  { field: "tags", domKey: "fieldTags", type: "tags", label: "??", presenceId: "fieldTagsPresence" },
   { field: "voters", type: "list" },
   { field: "votes", type: "number" },
   { field: "userVoted", type: "boolean" },
@@ -207,57 +207,57 @@ function versionDiffSummary(versionPlan = {}, currentPlan = state) {
   const currentStats = planVersionStats(currentPlan);
   const versionStats = planVersionStats(versionPlan);
   const labels = [
-    versionStatDiffLabel("天数", currentStats.days, versionStats.days),
-    versionStatDiffLabel("地点", currentStats.stops, versionStats.stops),
-    versionStatDiffLabel("协作块", currentStats.blocks, versionStats.blocks),
-    versionStatDiffLabel("批注", currentStats.comments, versionStats.comments),
-    versionStatDiffLabel("交通报价", currentStats.quotes, versionStats.quotes),
-    versionStatDiffLabel("备选", currentStats.candidates, versionStats.candidates),
-    versionStatDiffLabel("预算", currentStats.budget, versionStats.budget, moneyDiff),
+    versionStatDiffLabel("??", currentStats.days, versionStats.days),
+    versionStatDiffLabel("??", currentStats.stops, versionStats.stops),
+    versionStatDiffLabel("???", currentStats.blocks, versionStats.blocks),
+    versionStatDiffLabel("??", currentStats.comments, versionStats.comments),
+    versionStatDiffLabel("????", currentStats.quotes, versionStats.quotes),
+    versionStatDiffLabel("??", currentStats.candidates, versionStats.candidates),
+    versionStatDiffLabel("??", currentStats.budget, versionStats.budget, moneyDiff),
   ].filter(Boolean);
-  if (sameSerialized(planContentSnapshot(versionPlan), planContentSnapshot(currentPlan))) return "与当前版本一致";
-  return labels.length ? labels.slice(0, 4).join(" · ") : "内容有调整";
+  if (sameSerialized(planContentSnapshot(versionPlan), planContentSnapshot(currentPlan))) return "???????";
+  return labels.length ? labels.slice(0, 4).join(" ? ") : "?????";
 }
 
 const PLAN_DIFF_FIELDS = [
-  ["name", "行程名"],
-  ["destination", "目的地"],
-  ["origin", "出发地"],
-  ["dateRange", "日期范围"],
-  ["startDate", "开始日期"],
-  ["endDate", "结束日期"],
-  ["partySize", "同行人数"],
-  ["budgetLimit", "预算上限"],
-  ["cover", "封面"],
+  ["name", "???"],
+  ["destination", "???"],
+  ["origin", "???"],
+  ["dateRange", "????"],
+  ["startDate", "????"],
+  ["endDate", "????"],
+  ["partySize", "????"],
+  ["budgetLimit", "????"],
+  ["cover", "??"],
 ];
 
 const DAY_DIFF_FIELDS = [
-  ["date", "日期"],
-  ["title", "标题"],
-  ["route", "路线"],
-  ["weather", "天气"],
-  ["transport", "交通"],
-  ["amapRoute", "高德路线"],
+  ["date", "??"],
+  ["title", "??"],
+  ["route", "??"],
+  ["weather", "??"],
+  ["transport", "??"],
+  ["amapRoute", "????"],
 ];
 
 const STOP_DIFF_FIELDS = [
-  ["time", "时间"],
-  ["title", "名称"],
-  ["type", "类型"],
-  ["address", "地址"],
-  ["note", "备注"],
-  ["budget", "预算"],
-  ["paid", "已付"],
-  ["payer", "付款人"],
-  ["lng", "经度"],
-  ["lat", "纬度"],
-  ["amapKeyword", "高德关键词"],
-  ["image", "图片"],
-  ["tags", "标签"],
-  ["comments", "批注"],
-  ["favorite", "收藏"],
-  ["voters", "必去投票"],
-  ["votes", "投票数"],
+  ["time", "??"],
+  ["title", "??"],
+  ["type", "??"],
+  ["address", "??"],
+  ["note", "??"],
+  ["budget", "??"],
+  ["paid", "??"],
+  ["payer", "???"],
+  ["lng", "??"],
+  ["lat", "??"],
+  ["amapKeyword", "?????"],
+  ["image", "??"],
+  ["tags", "??"],
+  ["comments", "??"],
+  ["favorite", "??"],
+  ["voters", "????"],
+  ["votes", "???"],
 ];
 
 function diffItemKey(item = {}, prefix = "item", index = 0) {
@@ -266,7 +266,7 @@ function diffItemKey(item = {}, prefix = "item", index = 0) {
 
 function shortDiffLabel(value = "", fallback = "") {
   const text = String(value || fallback || "").trim();
-  if (!text) return fallback || "未命名";
+  if (!text) return fallback || "???";
   return text.length > 16 ? `${text.slice(0, 16)}...` : text;
 }
 
@@ -283,7 +283,7 @@ function addDiffFieldChange(changes, key, label, value) {
 function collectListDiffChanges(changes, baseItems = [], nextItems = [], options = {}) {
   const {
     path = "list",
-    label = "列表",
+    label = "??",
     prefix = "item",
     fields = [],
     itemLabel = (item, index) => shortDiffLabel(item?.title || item?.name || item?.text, `${label}${index + 1}`),
@@ -313,7 +313,7 @@ function collectListDiffChanges(changes, baseItems = [], nextItems = [], options
     if (!nextByKey.has(key)) addDiffChange(changes, `${path}.${key}.removed`, `${label} - ${itemLabel(item, index)}`);
   });
   if (!sameSerialized(baseList.map((item, index) => diffItemKey(item, prefix, index)), nextList.map((item, index) => diffItemKey(item, prefix, index)))) {
-    addDiffChange(changes, `${path}.order`, `${label}顺序`);
+    addDiffChange(changes, `${path}.order`, `${label}??`);
   }
 }
 
@@ -331,7 +331,7 @@ function collectPlanChangeMap(basePlan = {}, nextPlan = {}) {
   nextDayByKey.forEach(({ day, index }, dayKey) => {
     const dayLabel = shortDiffLabel(day?.title || day?.label || day?.date, `D${index + 1}`);
     if (!baseDayByKey.has(dayKey)) {
-      addDiffChange(changes, `days.${dayKey}.added`, `日期 + ${dayLabel}`);
+      addDiffChange(changes, `days.${dayKey}.added`, `?? + ${dayLabel}`);
       return;
     }
     const baseDay = baseDayByKey.get(dayKey).day;
@@ -339,47 +339,47 @@ function collectPlanChangeMap(basePlan = {}, nextPlan = {}) {
       if (!sameSerialized(baseDay?.[field], day?.[field])) addDiffFieldChange(changes, `days.${dayKey}.${field}`, `${dayLabel} ${label}`, day?.[field]);
     });
     if (!sameSerialized(normalizeComments(baseDay?.comments || []), normalizeComments(day?.comments || []))) {
-      addDiffFieldChange(changes, `days.${dayKey}.comments`, `${dayLabel} 当天批注`, normalizeComments(day?.comments || []));
+      addDiffFieldChange(changes, `days.${dayKey}.comments`, `${dayLabel} ????`, normalizeComments(day?.comments || []));
     }
     collectListDiffChanges(changes, baseDay?.stops || [], day?.stops || [], {
       path: `days.${dayKey}.stops`,
-      label: `${dayLabel} 地点`,
+      label: `${dayLabel} ??`,
       prefix: "stop",
       fields: STOP_DIFF_FIELDS,
-      itemLabel: (stop, stopIndex) => shortDiffLabel(stop?.title || stop?.address, `地点${stopIndex + 1}`),
+      itemLabel: (stop, stopIndex) => shortDiffLabel(stop?.title || stop?.address, `??${stopIndex + 1}`),
     });
     collectListDiffChanges(changes, normalizeDayBlocks(baseDay?.blocks || []), normalizeDayBlocks(day?.blocks || []), {
       path: `days.${dayKey}.blocks`,
-      label: `${dayLabel} 协作块`,
+      label: `${dayLabel} ???`,
       prefix: "block",
-      fields: [["type", "类型"], ["text", "文字"], ["done", "状态"], ["comments", "批注"]],
-      itemLabel: (block, blockIndex) => shortDiffLabel(block?.text, `协作块${blockIndex + 1}`),
+      fields: [["type", "??"], ["text", "??"], ["done", "??"], ["comments", "??"]],
+      itemLabel: (block, blockIndex) => shortDiffLabel(block?.text, `???${blockIndex + 1}`),
     });
   });
   baseDayByKey.forEach(({ day, index }, dayKey) => {
-    if (!nextDayByKey.has(dayKey)) addDiffChange(changes, `days.${dayKey}.removed`, `日期 - ${shortDiffLabel(day?.title || day?.label || day?.date, `D${index + 1}`)}`);
+    if (!nextDayByKey.has(dayKey)) addDiffChange(changes, `days.${dayKey}.removed`, `?? - ${shortDiffLabel(day?.title || day?.label || day?.date, `D${index + 1}`)}`);
   });
   if (!sameSerialized(baseDays.map((day, index) => diffItemKey(day, "day", index)), nextDays.map((day, index) => diffItemKey(day, "day", index)))) {
-    addDiffChange(changes, "days.order", "日期顺序");
+    addDiffChange(changes, "days.order", "????");
   }
 
   collectListDiffChanges(changes, normalizeTransportQuotes(basePlan?.transportQuotes || []), normalizeTransportQuotes(nextPlan?.transportQuotes || []), {
     path: "transportQuotes",
-    label: "交通报价",
+    label: "????",
     prefix: "quote",
-    itemLabel: (quote, index) => shortDiffLabel(`${quote?.from || ""}-${quote?.to || ""} ${quote?.price || ""}`.trim(), `报价${index + 1}`),
+    itemLabel: (quote, index) => shortDiffLabel(`${quote?.from || ""}-${quote?.to || ""} ${quote?.price || ""}`.trim(), `??${index + 1}`),
   });
   collectListDiffChanges(changes, normalizeCandidateStops(basePlan?.candidates || []), normalizeCandidateStops(nextPlan?.candidates || []), {
     path: "candidates",
-    label: "备选地点",
+    label: "????",
     prefix: "candidate",
-    itemLabel: (candidate, index) => shortDiffLabel(candidate?.title || candidate?.address, `备选${index + 1}`),
+    itemLabel: (candidate, index) => shortDiffLabel(candidate?.title || candidate?.address, `??${index + 1}`),
   });
   collectListDiffChanges(changes, normalizeActivities(basePlan?.activities || []), normalizeActivities(nextPlan?.activities || []), {
     path: "activities",
-    label: "活动记录",
+    label: "????",
     prefix: "activity",
-    itemLabel: (activity, index) => shortDiffLabel(activity?.text || activity?.label, `活动${index + 1}`),
+    itemLabel: (activity, index) => shortDiffLabel(activity?.text || activity?.label, `??${index + 1}`),
   });
   return changes;
 }
@@ -410,20 +410,20 @@ function versionPreviewSummary(versionPlan = {}, currentPlan = state) {
   };
 }
 
-function restoredVersionLabel(reason = "历史版本", at = "") {
+function restoredVersionLabel(reason = "????", at = "") {
   const restoredAt = at
     ? new Date(at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
     : "";
-  return [reason || "历史版本", restoredAt].filter(Boolean).join(" · ");
+  return [reason || "????", restoredAt].filter(Boolean).join(" ? ");
 }
 
 function inferActivityType(text = "") {
   const value = String(text || "");
-  if (/恢复历史版本|历史版本|恢复前版本/.test(value)) return "restore";
-  if (/冲突|合并|保留我的版本|云端版本/.test(value)) return "conflict";
-  if (/批注|评论|回复|解决|重新打开/.test(value)) return "comment";
-  if (/航班|动车|报价|交通|Google Flights|出发地/.test(value)) return "transport";
-  if (/高德|路线|路径|地图|定位|AI 优化|优化当天/.test(value)) return "map";
+  if (/??????|????|?????/.test(value)) return "restore";
+  if (/??|??|??????|????/.test(value)) return "conflict";
+  if (/??|??|??|??|????/.test(value)) return "comment";
+  if (/??|??|??|??|Google Flights|???/.test(value)) return "transport";
+  if (/??|??|??|??|??|AI ??|????/.test(value)) return "map";
   return "edit";
 }
 
@@ -441,8 +441,8 @@ function activityTargetForType(type = "edit") {
 function memberActivityLabel(member = {}) {
   const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
   if (textEditing) return textEditing;
-  if (member.blockEditing) return `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}`;
-  return `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || member.activeDay || "计划"}`;
+  if (member.blockEditing) return `${member.blockEditing}?${member.activeBlockText || member.editing || "???"}`;
+  return `${member.lockMode === "editing" ? "????" : "??"}?${member.editing || member.activeDay || "??"}`;
 }
 
 function versionRestoreImpactSummary() {
@@ -451,9 +451,9 @@ function versionRestoreImpactSummary() {
     .filter((member) => member && member.memberId !== sessionId && member.memberId !== ownMemberId && freshMember(member));
   return {
     members: members.slice(0, 4).map((member) => ({
-      name: member.name || "匿名成员",
+      name: member.name || "????",
       activity: memberActivityLabel(member),
-      day: member.activeDay || "在线",
+      day: member.activeDay || "??",
     })),
     extra: Math.max(0, members.length - 4),
   };
@@ -491,7 +491,7 @@ async function sha256Text(value) {
 }
 
 function money(value) {
-  return `¥${Number(value || 0).toLocaleString("zh-CN")}`;
+  return `?${Number(value || 0).toLocaleString("zh-CN")}`;
 }
 
 function escapeHtml(value) {
@@ -512,7 +512,7 @@ function numberValue(value) {
 function normalizeList(value) {
   if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
   return String(value || "")
-    .split(/[,，]/)
+    .split(/[,?]/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -524,7 +524,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw new Error("请求超时，已切换本地解析。");
+      throw new Error("?????????????");
     }
     throw error;
   } finally {
@@ -535,7 +535,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 function normalizeTags(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   return String(value || "")
-    .split(/[,，]/)
+    .split(/[,?]/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -603,22 +603,22 @@ function formatIsoDate(date) {
 }
 
 function weekdayName(date) {
-  return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
+  return ["??", "??", "??", "??", "??", "??", "??"][date.getDay()];
 }
 
 function formatDisplayDate(value) {
   const date = typeof value === "string" ? parseIsoDate(value) : value;
   if (!date) return "";
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
+  return `${date.getMonth() + 1}?${date.getDate()}?`;
 }
 
 function formatDatedTitle(dateValue, originalTitle, index) {
   const date = parseIsoDate(dateValue);
   const suffix = String(originalTitle || "")
-    .replace(/^第\d+天\s*/, "")
-    .replace(/^\d+月\d+日\s*周[一二三四五六日]\s*[·-]?\s*/, "")
+    .replace(/^?\d+?\s*/, "")
+    .replace(/^\d+?\d+?\s*?[???????]\s*[?-]?\s*/, "")
     .trim();
-  return `${formatDisplayDate(date)} ${weekdayName(date)}${suffix ? ` · ${suffix}` : ` · 第${index + 1}天`}`;
+  return `${formatDisplayDate(date)} ${weekdayName(date)}${suffix ? ` ? ${suffix}` : ` ? ?${index + 1}?`}`;
 }
 
 function daysBetweenInclusive(startValue, endValue) {
@@ -632,7 +632,7 @@ function daysBetweenInclusive(startValue, endValue) {
 function dateRangeText(startValue, endValue) {
   const start = parseIsoDate(startValue);
   const end = parseIsoDate(endValue);
-  if (!start || !end) return "自定义日期";
+  if (!start || !end) return "?????";
   return `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
 }
 
@@ -795,7 +795,7 @@ function normalizeAmapPlace(place, keyword = "") {
     adcode: place.adcode || "",
     city: place.city || "",
     type: place.type || "",
-    source: place.source || "高德 Web服务",
+    source: place.source || "?? Web??",
   };
 }
 
@@ -850,7 +850,7 @@ function legPathCoordinates(day, leg) {
 }
 
 function loadAmapSdk() {
-  if (!hasAmapJsConfig()) return Promise.reject(new Error("未配置高德 JS Key"));
+  if (!hasAmapJsConfig()) return Promise.reject(new Error("????? JS Key"));
   const key = serviceConfig.amapJsKey.trim();
   if (window.AMap && amapLoadedKey === key) return Promise.resolve(window.AMap);
   if (amapLoaderPromise && amapLoadedKey === key) return amapLoaderPromise;
@@ -869,9 +869,9 @@ function loadAmapSdk() {
     script.async = true;
     script.onload = () => {
       if (window.AMap) resolve(window.AMap);
-      else reject(new Error("高德 JS SDK 加载后未找到 AMap。"));
+      else reject(new Error("?? JS SDK ?????? AMap?"));
     };
-    script.onerror = () => reject(new Error("高德 JS SDK 加载失败，请检查 Web 端 JS Key 和安全密钥。"));
+    script.onerror = () => reject(new Error("?? JS SDK ???????? Web ? JS Key ??????"));
     document.head.appendChild(script);
   });
   return amapLoaderPromise;
@@ -881,7 +881,7 @@ function renderFallbackMap(day) {
   if (!dom.mapCanvas) return;
   dom.mapCanvas.classList.remove("is-amap");
   dom.mapCanvas.innerHTML = `<div class="route-line"></div>`;
-  if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = hasAmapJsConfig() ? "SDK 待加载" : "坐标预览";
+  if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = hasAmapJsConfig() ? "SDK ???" : "????";
   day.stops.forEach((stop, index) => {
     const pin = document.createElement("button");
     pin.className = `map-pin ${index === activeStop ? "is-active" : ""}`;
@@ -899,7 +899,7 @@ async function renderAmapSdkMap(day) {
   const points = day.stops.map(coordinateForAmap);
   const validPoints = points.filter(Boolean);
   if (!validPoints.length) {
-    if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = "高德地图 · 待定位";
+    if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = "???? ? ???";
     return;
   }
   dom.mapCanvas.classList.add("is-amap");
@@ -960,7 +960,7 @@ async function renderAmapSdkMap(day) {
   }
   amapMap.setFitView([...amapMapMarkers, ...amapMapPolylines], false, [32, 32, 32, 32]);
   if (dom.mapProviderStatus) {
-    dom.mapProviderStatus.textContent = day.amapRoute?.legs?.length ? "高德地图 · 路线" : "高德地图 · 标记";
+    dom.mapProviderStatus.textContent = day.amapRoute?.legs?.length ? "???? ? ??" : "???? ? ??";
   }
 }
 
@@ -970,7 +970,7 @@ function scheduleAmapRender(day) {
   window.requestAnimationFrame(() => {
     amapRenderQueued = false;
     renderAmapSdkMap(day).catch((error) => {
-      if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = `地图未启用`;
+      if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = `?????`;
       console.warn("Amap SDK render failed", error);
     });
   });
@@ -978,7 +978,7 @@ function scheduleAmapRender(day) {
 
 async function requestAmapRoute(day, mode = "walking", strategy = "default") {
   if (!serviceConfig.amapRouteEndpoint) {
-    throw new Error("请先配置高德路线代理。");
+    throw new Error("???????????");
   }
   const stops = day.stops
     .map((stop, index) => ({
@@ -991,7 +991,7 @@ async function requestAmapRoute(day, mode = "walking", strategy = "default") {
     }))
     .filter((stop) => stop.title);
   if (stops.length < 2) {
-    throw new Error("至少需要 2 个地点才能规划路线。");
+    throw new Error("???? 2 ??????????");
   }
   const response = await fetch(serviceConfig.amapRouteEndpoint, {
     method: "POST",
@@ -1028,13 +1028,13 @@ function distanceBetween(a, b) {
 
 function makeStop({
   time = "09:00",
-  title = "新地点",
+  title = "???",
   type = "Place",
-  address = "待确认",
-  note = "补充交通、预订和同行意见。",
+  address = "???",
+  note = "?????????????",
   noteYjs = "",
   textYjs = "",
-  tags = ["草稿"],
+  tags = ["??"],
   budget = 0,
   paid = 0,
   payer = "",
@@ -1078,41 +1078,41 @@ function makeStop({
 
 function buildKyotoPlan() {
   return {
-    name: "京都 6 日同行计划",
-    destination: "京都",
-    dateRange: "6月4日 - 6月9日",
+    name: "?? 6 ?????",
+    destination: "??",
+    dateRange: "6?4? - 6?9?",
     budgetLimit: 10000,
     cover: images.kyoto,
-    activities: ["打开京都示例计划"],
+    activities: ["????????"],
     candidates: [
-      makeStop({ title: "% Arabica", type: "Cafe", note: "适合加入下午休息。", tags: ["咖啡", "备选"], budget: 90, image: images.food, x: 62, y: 32 }),
-      makeStop({ title: "京都国立博物馆", type: "Museum", note: "雨天替代方案。", tags: ["文化", "雨天"], budget: 80, image: images.museum, x: 42, y: 50 }),
-      makeStop({ title: "锦市场", type: "Market", note: "适合小吃和伴手礼。", tags: ["美食", "购物"], budget: 180, image: images.food, x: 35, y: 42 }),
+      makeStop({ title: "% Arabica", type: "Cafe", note: "?????????", tags: ["??", "??"], budget: 90, image: images.food, x: 62, y: 32 }),
+      makeStop({ title: "???????", type: "Museum", note: "???????", tags: ["??", "??"], budget: 80, image: images.museum, x: 42, y: 50 }),
+      makeStop({ title: "???", type: "Market", note: "?????????", tags: ["??", "??"], budget: 180, image: images.food, x: 35, y: 42 }),
     ],
     days: [
       {
         id: uid(),
         label: "D1",
-        title: "6月4日 周四",
-        route: "抵达大阪 · 前往京都",
-        weather: "24°C 多云",
-        transport: "机场快线 + 步行",
+        title: "6?4? ??",
+        route: "???? ? ????",
+        weather: "24?C ??",
+        transport: "???? + ??",
         stops: [
-          makeStop({ time: "13:20", title: "关西机场集合", type: "Transit", address: "Kansai International Airport T1", note: "航班落地后在 T1 到达层集合，确认机场快线班次。", tags: ["交通", "已确认"], budget: 420, image: images.train, x: 18, y: 68 }),
-          makeStop({ time: "19:00", title: "先斗町晚餐", type: "Dinner", address: "京都市中京区柏屋町", note: "靠河一侧座位优先，预算控制在人均 ¥380 内。", tags: ["需预订", "美食"], budget: 1520, image: images.food, x: 68, y: 38 }),
+          makeStop({ time: "13:20", title: "??????", type: "Transit", address: "Kansai International Airport T1", note: "?????? T1 ???????????????", tags: ["??", "???"], budget: 420, image: images.train, x: 18, y: 68 }),
+          makeStop({ time: "19:00", title: "?????", type: "Dinner", address: "?????????", note: "???????????????? ?380 ??", tags: ["???", "??"], budget: 1520, image: images.food, x: 68, y: 38 }),
         ],
       },
       {
         id: uid(),
         label: "D2",
-        title: "6月5日 周五",
-        route: "东山 · 清水寺 · 祇园",
-        weather: "22°C 少云",
-        transport: "步行 + 地铁",
+        title: "6?5? ??",
+        route: "?? ? ??? ? ??",
+        weather: "22?C ??",
+        transport: "?? + ??",
         stops: [
-          makeStop({ time: "08:30", title: "清水寺", type: "Temple", address: "京都市东山区清水1丁目294", note: "早到避开人流，从二年坂上行。雨天缩短到 70 分钟。", tags: ["必去", "门票"], budget: 96, image: "https://images.unsplash.com/photo-1528164344705-47542687000d?auto=format&fit=crop&w=900&q=80", comments: [{ author: "林", text: "门票预算已加上。" }], x: 64, y: 42 }),
-          makeStop({ time: "10:30", title: "二年坂与三年坂", type: "Walk", address: "京都市东山区清水2丁目", note: "沿坡道慢走，预留甜品和手信时间。", tags: ["散步", "购物"], budget: 260, image: images.city, x: 58, y: 50 }),
-          makeStop({ time: "12:20", title: "祇园午餐", type: "Lunch", address: "京都市东山区祇园町南侧", note: "两家候选店都支持预约，先用投票定。", tags: ["待投票", "美食"], budget: 720, votes: 2, userVoted: false, image: images.food, x: 46, y: 43 }),
+          makeStop({ time: "08:30", title: "???", type: "Temple", address: "????????1??294", note: "??????????????????? 70 ???", tags: ["??", "??"], budget: 96, image: "https://images.unsplash.com/photo-1528164344705-47542687000d?auto=format&fit=crop&w=900&q=80", comments: [{ author: "?", text: "????????" }], x: 64, y: 42 }),
+          makeStop({ time: "10:30", title: "???????", type: "Walk", address: "????????2??", note: "????????????????", tags: ["??", "??"], budget: 260, image: images.city, x: 58, y: 50 }),
+          makeStop({ time: "12:20", title: "????", type: "Lunch", address: "???????????", note: "?????????????????", tags: ["???", "??"], budget: 720, votes: 2, userVoted: false, image: images.food, x: 46, y: 43 }),
         ],
       },
     ],
@@ -1121,111 +1121,111 @@ function buildKyotoPlan() {
 
 function buildGansuPlan(dayCount = 6, options = {}) {
   const plan = {
-    name: `甘肃 ${dayCount} 日丝路计划`,
-    destination: "甘肃",
-    dateRange: "自定义日期",
-    budgetLimit: options.budget === "品质" ? 14000 : options.budget === "节省" ? 8000 : 10000,
+    name: `?? ${dayCount} ?????`,
+    destination: "??",
+    dateRange: "?????",
+    budgetLimit: options.budget === "??" ? 14000 : options.budget === "??" ? 8000 : 10000,
     cover: images.gansu,
-    activities: [`生成甘肃 ${dayCount} 日计划`],
+    activities: [`???? ${dayCount} ???`],
     candidates: [
-      makeStop({ title: "沙洲夜市", type: "Market", note: "适合敦煌晚上自由活动。", tags: ["美食", "夜市"], budget: 160, image: images.food, x: 72, y: 36 }),
-      makeStop({ title: "敦煌书局", type: "Bookstore", note: "文化主题轻量备选。", tags: ["文化", "室内"], budget: 80, image: images.museum, x: 46, y: 48 }),
-      makeStop({ title: "雅丹地质公园", type: "Geopark", note: "车程长，适合 8 天版本。", tags: ["自然", "长车程"], budget: 420, image: images.gansu, x: 58, y: 52 }),
+      makeStop({ title: "????", type: "Market", note: "???????????", tags: ["??", "??"], budget: 160, image: images.food, x: 72, y: 36 }),
+      makeStop({ title: "????", type: "Bookstore", note: "?????????", tags: ["??", "??"], budget: 80, image: images.museum, x: 46, y: 48 }),
+      makeStop({ title: "??????", type: "Geopark", note: "?????? 8 ????", tags: ["??", "???"], budget: 420, image: images.gansu, x: 58, y: 52 }),
     ],
     days: [
       {
         id: uid(),
         label: "D1",
-        title: "第1天 兰州",
-        route: "抵达兰州 · 黄河风情线",
-        weather: "25°C 晴",
-        transport: "打车 + 步行",
+        title: "?1? ??",
+        route: "???? ? ?????",
+        weather: "25?C ?",
+        transport: "?? + ??",
         stops: [
-          makeStop({ time: "14:30", title: "甘肃省博物馆", type: "Museum", address: "兰州市七里河区西津西路3号", note: "先建立丝路背景，重点看铜奔马、彩陶和佛教艺术展区。", tags: ["文化", "室内"], budget: 0, image: images.museum, x: 32, y: 44, lng: "103.774028", lat: "36.066431", amapKeyword: "甘肃省博物馆" }),
-          makeStop({ time: "17:20", title: "黄河铁桥", type: "River", address: "兰州市城关区滨河路中段", note: "傍晚沿黄河风情线散步，适合第一天轻松收尾。", tags: ["散步", "日落"], budget: 0, image: images.city, x: 48, y: 38, lng: "103.825462", lat: "36.067584", amapKeyword: "兰州 黄河铁桥" }),
-          makeStop({ time: "19:30", title: "兰州牛肉面与夜市", type: "Dinner", address: "兰州市城关区张掖路周边", note: "第一晚不排重行程，重点解决口味偏好和第二天交通。", tags: ["美食"], budget: 320, image: images.food, x: 56, y: 46, lng: "103.827113", lat: "36.061225", amapKeyword: "兰州 张掖路 夜市" }),
+          makeStop({ time: "14:30", title: "??????", type: "Museum", address: "???????????3?", note: "?????????????????????????", tags: ["??", "??"], budget: 0, image: images.museum, x: 32, y: 44, lng: "103.774028", lat: "36.066431", amapKeyword: "??????" }),
+          makeStop({ time: "17:20", title: "????", type: "River", address: "???????????", note: "?????????????????????", tags: ["??", "??"], budget: 0, image: images.city, x: 48, y: 38, lng: "103.825462", lat: "36.067584", amapKeyword: "?? ????" }),
+          makeStop({ time: "19:30", title: "????????", type: "Dinner", address: "???????????", note: "????????????????????????", tags: ["??"], budget: 320, image: images.food, x: 56, y: 46, lng: "103.827113", lat: "36.061225", amapKeyword: "?? ??? ??" }),
         ],
       },
       {
         id: uid(),
         label: "D2",
-        title: "第2天 张掖",
-        route: "兰州 · 张掖 · 七彩丹霞",
-        weather: "26°C 晴",
-        transport: "高铁 + 包车",
+        title: "?2? ??",
+        route: "?? ? ?? ? ????",
+        weather: "26?C ?",
+        transport: "?? + ??",
         stops: [
-          makeStop({ time: "08:20", title: "高铁前往张掖", type: "Transit", address: "兰州西站 → 张掖西站", note: "预留车站早餐和取票时间，抵达后先寄存行李。", tags: ["交通", "高铁"], budget: 760, image: images.train, x: 22, y: 56 }),
-          makeStop({ time: "15:50", title: "张掖七彩丹霞", type: "Geopark", address: "张掖市临泽县倪家营镇", note: "把主观景台放在傍晚，颜色层次更容易出片。", tags: ["必去", "日落"], budget: 360, image: images.gansu, x: 62, y: 42, lng: "100.060650", lat: "38.906839", amapKeyword: "张掖七彩丹霞旅游景区" }),
+          makeStop({ time: "08:20", title: "??????", type: "Transit", address: "???? ? ????", note: "?????????????????????", tags: ["??", "??"], budget: 760, image: images.train, x: 22, y: 56 }),
+          makeStop({ time: "15:50", title: "??????", type: "Geopark", address: "??????????", note: "????????????????????", tags: ["??", "??"], budget: 360, image: images.gansu, x: 62, y: 42, lng: "100.060650", lat: "38.906839", amapKeyword: "??????????" }),
         ],
       },
       {
         id: uid(),
         label: "D3",
-        title: "第3天 张掖",
-        route: "马蹄寺 · 平山湖大峡谷",
-        weather: "24°C 多云",
-        transport: "包车",
+        title: "?3? ??",
+        route: "??? ? ??????",
+        weather: "24?C ??",
+        transport: "??",
         stops: [
-          makeStop({ time: "09:00", title: "马蹄寺石窟", type: "Grottoes", address: "张掖市肃南裕固族自治县", note: "文化线和自然线结合的一天，早上看石窟。", tags: ["文化", "轻徒步"], budget: 260, image: images.museum, x: 40, y: 36 }),
-          makeStop({ time: "14:30", title: "平山湖大峡谷", type: "Canyon", address: "张掖市甘州区平山湖乡", note: "轻松节奏只走核心观景线，高强度可加深度徒步。", tags: ["自然", "备水"], budget: 360, image: images.gansu, x: 58, y: 60 }),
+          makeStop({ time: "09:00", title: "?????", type: "Grottoes", address: "???????????", note: "???????????????????", tags: ["??", "???"], budget: 260, image: images.museum, x: 40, y: 36 }),
+          makeStop({ time: "14:30", title: "??????", type: "Canyon", address: "??????????", note: "??????????????????????", tags: ["??", "??"], budget: 360, image: images.gansu, x: 58, y: 60 }),
         ],
       },
       {
         id: uid(),
         label: "D4",
-        title: "第4天 嘉峪关",
-        route: "张掖 · 嘉峪关 · 天下雄关",
-        weather: "23°C 晴",
-        transport: "动车 + 打车",
+        title: "?4? ???",
+        route: "?? ? ??? ? ????",
+        weather: "23?C ?",
+        transport: "?? + ??",
         stops: [
-          makeStop({ time: "10:30", title: "嘉峪关关城", type: "Fortress", address: "嘉峪关市峪泉镇", note: "河西走廊历史感很强的一站，适合安排讲解。", tags: ["历史", "门票"], budget: 440, image: images.city, x: 45, y: 44 }),
-          makeStop({ time: "15:00", title: "悬壁长城", type: "Great Wall", address: "嘉峪关市石关峡口北侧", note: "体力允许再去，风大时注意保暖和防晒。", tags: ["可选", "风大"], budget: 200, votes: 2, userVoted: false, image: "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?auto=format&fit=crop&w=900&q=80", x: 62, y: 38 }),
+          makeStop({ time: "10:30", title: "?????", type: "Fortress", address: "???????", note: "????????????????????", tags: ["??", "??"], budget: 440, image: images.city, x: 45, y: 44 }),
+          makeStop({ time: "15:00", title: "????", type: "Great Wall", address: "??????????", note: "??????????????????", tags: ["??", "??"], budget: 200, votes: 2, userVoted: false, image: "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?auto=format&fit=crop&w=900&q=80", x: 62, y: 38 }),
         ],
       },
       {
         id: uid(),
         label: "D5",
-        title: "第5天 敦煌",
-        route: "莫高窟 · 鸣沙山月牙泉",
-        weather: "28°C 晴",
-        transport: "包车",
+        title: "?5? ??",
+        route: "??? ? ??????",
+        weather: "28?C ?",
+        transport: "??",
         stops: [
-          makeStop({ time: "09:00", title: "莫高窟", type: "Grottoes", address: "敦煌市东南25公里", note: "需要提前预约，出行前确认官方公告和场次。", tags: ["必去", "需预约"], budget: 952, image: images.museum, comments: [{ author: "周", text: "需要提前抢票，放到待办里。" }], x: 42, y: 48, lng: "94.809255", lat: "40.047261", amapKeyword: "敦煌 莫高窟" }),
-          makeStop({ time: "17:40", title: "鸣沙山月牙泉", type: "Desert", address: "敦煌市鸣山路", note: "傍晚进景区，避开正午暴晒。沙漠项目现场决定。", tags: ["日落", "防晒"], budget: 440, image: images.gansu, x: 62, y: 62, lng: "94.663879", lat: "40.088540", amapKeyword: "鸣沙山月牙泉" }),
+          makeStop({ time: "09:00", title: "???", type: "Grottoes", address: "?????25??", note: "????????????????????", tags: ["??", "???"], budget: 952, image: images.museum, comments: [{ author: "?", text: "?????????????" }], x: 42, y: 48, lng: "94.809255", lat: "40.047261", amapKeyword: "?? ???" }),
+          makeStop({ time: "17:40", title: "??????", type: "Desert", address: "??????", note: "??????????????????????", tags: ["??", "??"], budget: 440, image: images.gansu, x: 62, y: 62, lng: "94.663879", lat: "40.088540", amapKeyword: "??????" }),
         ],
       },
       {
         id: uid(),
         label: "D6",
-        title: "第6天 敦煌",
-        route: "阳关 · 玉门关 · 返程",
-        weather: "27°C 晴",
-        transport: "包车 + 飞机",
+        title: "?6? ??",
+        route: "?? ? ??? ? ??",
+        weather: "27?C ?",
+        transport: "?? + ??",
         stops: [
-          makeStop({ time: "09:30", title: "阳关遗址", type: "Heritage", address: "敦煌市阳关镇", note: "最后一天安排西线，节奏比东线更舒展。", tags: ["丝路", "包车"], budget: 240, image: images.gansu, x: 36, y: 44 }),
-          makeStop({ time: "13:20", title: "玉门关", type: "Heritage", address: "敦煌市西北方向戈壁荒漠", note: "距离较远，关注返程交通时间。", tags: ["可选", "车程长"], budget: 240, votes: 2, userVoted: false, image: images.gansu, x: 58, y: 50 }),
+          makeStop({ time: "09:30", title: "????", type: "Heritage", address: "??????", note: "??????????????????", tags: ["??", "??"], budget: 240, image: images.gansu, x: 36, y: 44 }),
+          makeStop({ time: "13:20", title: "???", type: "Heritage", address: "???????????", note: "??????????????", tags: ["??", "???"], budget: 240, votes: 2, userVoted: false, image: images.gansu, x: 58, y: 50 }),
         ],
       },
       {
         id: uid(),
         label: "D7",
-        title: "第7天 敦煌",
-        route: "雅丹地貌 · 沙洲夜市",
-        weather: "26°C 晴",
-        transport: "包车",
+        title: "?7? ??",
+        route: "???? ? ????",
+        weather: "26?C ?",
+        transport: "??",
         stops: [
-          makeStop({ time: "10:00", title: "敦煌雅丹地质公园", type: "Geopark", address: "敦煌市西北约180公里", note: "8天版本可加入这一站；5到6天版本建议作为备选。", tags: ["自然", "长车程"], budget: 520, image: images.gansu, x: 52, y: 44 }),
+          makeStop({ time: "10:00", title: "????????", type: "Geopark", address: "??????180??", note: "8??????????5?6??????????", tags: ["??", "???"], budget: 520, image: images.gansu, x: 52, y: 44 }),
         ],
       },
       {
         id: uid(),
         label: "D8",
-        title: "第8天 返程",
-        route: "敦煌 · 兰州/西安",
-        weather: "25°C 晴",
-        transport: "飞机/火车",
+        title: "?8? ??",
+        route: "?? ? ??/??",
+        weather: "25?C ?",
+        transport: "??/??",
         stops: [
-          makeStop({ time: "10:30", title: "返程缓冲", type: "Transit", address: "敦煌机场 / 敦煌站", note: "最后一天留给伴手礼、补拍和交通延误缓冲。", tags: ["返程", "缓冲"], budget: 880, image: images.train, x: 48, y: 50 }),
+          makeStop({ time: "10:30", title: "????", type: "Transit", address: "???? / ???", note: "????????????????????", tags: ["??", "??"], budget: 880, image: images.train, x: 48, y: 50 }),
         ],
       },
     ],
@@ -1236,19 +1236,19 @@ function buildGansuPlan(dayCount = 6, options = {}) {
     plan.days.push({
       id: uid(),
       label: `D${dayNumber}`,
-      title: `第${dayNumber}天 自由探索`,
-      route: dayNumber % 2 === 0 ? "当地深度体验 · 备选景点" : "交通缓冲 · 美食补完",
-      weather: "天气待确认",
-      transport: "待规划",
+      title: `?${dayNumber}? ????`,
+      route: dayNumber % 2 === 0 ? "?????? ? ????" : "???? ? ????",
+      weather: "?????",
+      transport: "???",
       stops: [
         makeStop({
           time: "10:00",
-          title: "自由探索时段",
+          title: "??????",
           type: "Flexible",
-          address: "根据前几天体力和天气决定",
-          note: "这是自动补齐的弹性日，可直接替换成你想去的景点。",
-          tags: ["弹性", "待定"],
-          budget: options.budget === "品质" ? 600 : options.budget === "节省" ? 200 : 360,
+          address: "????????????",
+          note: "????????????????????????",
+          tags: ["??", "??"],
+          budget: options.budget === "??" ? 600 : options.budget === "??" ? 200 : 360,
           image: images.gansu,
           x: 40 + (dayNumber % 5) * 8,
           y: 36 + (dayNumber % 4) * 7,
@@ -1259,52 +1259,52 @@ function buildGansuPlan(dayCount = 6, options = {}) {
 
   plan.days = plan.days.slice(0, dayCount);
 
-  if (options.pace === "高强度" && plan.days[2]) {
-    plan.days[2].stops.push(makeStop({ time: "17:40", title: "张掖市区夜游", type: "Walk", address: "张掖市甘州区", note: "高强度版本增加晚间散步和小吃。", tags: ["夜游", "美食"], budget: 160, image: images.food, x: 68, y: 48 }));
+  if (options.pace === "???" && plan.days[2]) {
+    plan.days[2].stops.push(makeStop({ time: "17:40", title: "??????", type: "Walk", address: "??????", note: "???????????????", tags: ["??", "??"], budget: 160, image: images.food, x: 68, y: 48 }));
   }
 
   return plan;
 }
 
 function buildBlankPlan(destination, dayCount = 3, options = {}) {
-  const safeDestination = destination || "自定义目的地";
+  const safeDestination = destination || "??????";
   return {
-    name: `${safeDestination} ${dayCount} 日空白计划`,
+    name: `${safeDestination} ${dayCount} ?????`,
     destination: safeDestination,
-    dateRange: "自定义日期",
-    budgetLimit: options.budget === "品质" ? 14000 : options.budget === "节省" ? 8000 : 10000,
-    cover: safeDestination.includes("甘肃") ? images.gansu : images.city,
-    activities: [`创建${safeDestination}${dayCount}天空白模板`],
+    dateRange: "?????",
+    budgetLimit: options.budget === "??" ? 14000 : options.budget === "??" ? 8000 : 10000,
+    cover: safeDestination.includes("??") ? images.gansu : images.city,
+    activities: [`??${safeDestination}${dayCount}?????`],
     candidates: [
       makeStop({
-        title: "备选景点",
+        title: "????",
         type: "Idea",
         address: safeDestination,
-        note: "可以把临时想法先放到备选池，再加入某一天。",
-        tags: ["备选", "待确认"],
+        note: "?????????????????????",
+        tags: ["??", "???"],
         budget: 0,
         amapKeyword: safeDestination,
-        image: safeDestination.includes("甘肃") ? images.gansu : images.city,
+        image: safeDestination.includes("??") ? images.gansu : images.city,
       }),
     ],
     days: Array.from({ length: dayCount }, (_, index) => ({
       id: uid(),
       label: `D${index + 1}`,
-      title: `第${index + 1}天`,
-      route: "待填写路线",
-      weather: "天气待确认",
-      transport: "交通待规划",
+      title: `?${index + 1}?`,
+      route: "?????",
+      weather: "?????",
+      transport: "?????",
       stops: [
         makeStop({
           time: index === 0 ? "10:00" : "09:30",
-          title: "待填写地点",
+          title: "?????",
           type: "Draft",
           address: safeDestination,
-          note: "在右侧编辑名称、地址、高德关键词、预算和备注。",
-          tags: ["空白模板", "待填写"],
+          note: "???????????????????????",
+          tags: ["????", "???"],
           budget: 0,
           amapKeyword: safeDestination,
-          image: safeDestination.includes("甘肃") ? images.gansu : images.city,
+          image: safeDestination.includes("??") ? images.gansu : images.city,
           x: 34 + ((index * 11) % 48),
           y: 32 + ((index * 9) % 38),
         }),
@@ -1331,7 +1331,7 @@ function applyPlanDates(plan, startDateValue) {
 
 function ensurePlanOrigin(plan) {
   if (!plan) return plan;
-  plan.origin = plan.origin || "上海";
+  plan.origin = plan.origin || "??";
   return plan;
 }
 
@@ -1575,9 +1575,9 @@ function mergePlans(localPlan, remotePlan, basePlan = lastSyncedState) {
 }
 
 function conflictSummary(conflict) {
-  const who = conflict?.updatedBy || "其他成员";
-  const when = conflict?.updatedAt ? new Date(conflict.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "刚刚";
-  return `${who} 在 ${when} 保存了云端版本，同时你本地也有未同步修改。`;
+  const who = conflict?.updatedBy || "????";
+  const when = conflict?.updatedAt ? new Date(conflict.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "??";
+  return `${who} ? ${when} ?????????????????????`;
 }
 
 function showConflictPanel(conflict) {
@@ -1585,7 +1585,7 @@ function showConflictPanel(conflict) {
   if (!dom.conflictPanel) return;
   dom.conflictPanel.hidden = false;
   dom.conflictText.textContent = conflictSummary(pendingConflict);
-  dom.conflictDetail.textContent = "请选择处理方式：智能合并会尽量保留双方新增的地点、评论、交通报价和活动记录。";
+  dom.conflictDetail.textContent = "??????????????????????????????????????";
   if (dom.conflictDiff) {
     const diff = conflictDiffSummary(pendingConflict);
     const renderGroup = (title, items, extra, emptyText) => `
@@ -1593,20 +1593,20 @@ function showConflictPanel(conflict) {
         <strong>${escapeHtml(title)}</strong>
         <ul>
           ${items.length ? items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : `<li>${escapeHtml(emptyText)}</li>`}
-          ${extra ? `<li>还有 ${extra} 项变化</li>` : ""}
+          ${extra ? `<li>?? ${extra} ???</li>` : ""}
         </ul>
       </div>
     `;
     dom.conflictDiff.innerHTML = [
-      renderGroup("我的修改", diff.local, diff.localExtra, "没有检测到本地内容变化"),
-      renderGroup("云端修改", diff.remote, diff.remoteExtra, "没有检测到云端内容变化"),
+      renderGroup("????", diff.local, diff.localExtra, "???????????"),
+      renderGroup("????", diff.remote, diff.remoteExtra, "???????????"),
       diff.overlap.length || diff.overlapExtra
-        ? renderGroup("同位置冲突", diff.overlap, diff.overlapExtra, "")
+        ? renderGroup("?????", diff.overlap, diff.overlapExtra, "")
         : "",
     ].join("");
   }
-  dom.collabMode.textContent = "待处理冲突";
-  dom.saveState.textContent = "发现协作冲突";
+  dom.collabMode.textContent = "?????";
+  dom.saveState.textContent = "??????";
   refreshIcons();
 }
 
@@ -1688,7 +1688,7 @@ function normalizeCommentAnchor(anchor = null) {
   const end = Math.max(start, Number(anchor.end || start));
   const normalized = {
     field: meta?.field || String(anchor.field || ""),
-    label: anchor.label || meta?.label || (blockScope ? "协作块" : "字段"),
+    label: anchor.label || meta?.label || (blockScope ? "???" : "??"),
     scope: blockScope ? "block" : scope,
     start,
     end,
@@ -1723,7 +1723,7 @@ function buildBlockCommentAnchor(blockId = activeBlockPresenceId) {
   const selection = elementSelectionPayload(input, {
     field: `block:${blockId}`,
     scope: "block",
-    label: "协作块",
+    label: "???",
   });
   if (!selection) return null;
   const day = currentDay();
@@ -1773,11 +1773,11 @@ function currentBlockCommentAnchor(blockId = activeBlockPresenceId) {
 }
 
 function textSelectionLabel(selection = {}) {
-  const label = selection.label || collabTextFieldMeta(selection.field)?.label || "文本";
+  const label = selection.label || collabTextFieldMeta(selection.field)?.label || "??";
   const start = Number(selection.start || 0);
   const end = Number(selection.end || start);
-  if (end > start) return `${label} · 选中 ${end - start} 字`;
-  return `${label} · 光标 ${start}`;
+  if (end > start) return `${label} ? ?? ${end - start} ?`;
+  return `${label} ? ?? ${start}`;
 }
 
 function escapeHtmlWithSpaces(value = "") {
@@ -1914,7 +1914,7 @@ function currentFocusedBlockContext() {
   const blockSelection = isText ? elementSelectionPayload(active, {
     field: `block:${blockId}`,
     scope: "block",
-    label: "协作块",
+    label: "???",
   }) : null;
   return {
     dayId: day.id,
@@ -1927,9 +1927,9 @@ function currentFocusedBlockContext() {
 
 function blockEditingLabel(context = {}) {
   if (!context?.blockId) return "";
-  if (context.mode === "comment") return "正在评论协作块";
-  if (context.mode === "text") return "正在编辑协作块";
-  return "正在查看协作块";
+  if (context.mode === "comment") return "???????";
+  if (context.mode === "text") return "???????";
+  return "???????";
 }
 
 function remoteEditorsForBlock(blockId = "") {
@@ -1946,21 +1946,21 @@ function remoteEditorsForBlock(blockId = "") {
 function remoteActiveEditorsForBlock(blockId = "") {
   return remoteEditorsForBlock(blockId).filter((member) => (
     member.blockSelection ||
-    /编辑|评论/.test(member.blockEditing || "")
+    /??|??/.test(member.blockEditing || "")
   ));
 }
 
 function remoteBlockEditorNames(blockId = "") {
-  const names = [...new Set(remoteActiveEditorsForBlock(blockId).map((member) => member.name || "协作者"))];
-  const visible = names.slice(0, 3).join("、");
-  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  const names = [...new Set(remoteActiveEditorsForBlock(blockId).map((member) => member.name || "???"))];
+  const visible = names.slice(0, 3).join("?");
+  const extra = names.length > 3 ? ` ? ${names.length} ?` : "";
   return visible ? `${visible}${extra}` : "";
 }
 
-function noteRemoteBlockEditors(blockId = "", action = "操作协作块") {
+function noteRemoteBlockEditors(blockId = "", action = "?????") {
   const names = remoteBlockEditorNames(blockId);
   if (!names || !dom.saveState) return;
-  dom.saveState.textContent = `${names} 正在同一协作块中，${action}前留意对方修改`;
+  dom.saveState.textContent = `${names} ?????????${action}???????`;
 }
 
 function renderDayBlockTextPresence(block) {
@@ -2020,7 +2020,7 @@ function renderCommentHighlight(comment, element, index = 0) {
   if (!geometry) return "";
   const resolvedClass = comment.resolved ? " is-resolved" : "";
   return `
-    <button type="button" class="comment-highlight${resolvedClass}" data-comment-highlight="${escapeHtml(comment.id || "")}" data-comment-scope="${escapeHtml(anchor.scope || "stop")}" style="--selection-x:${geometry.selectionLeft}px;--selection-y:${geometry.selectionTop}px;--selection-width:${geometry.selectionWidth}px;--selection-height:${geometry.selectionHeight}px;--comment-offset:${index * 3}px" title="${escapeHtml(comment.resolved ? "已解决批注" : "未解决批注")}">
+    <button type="button" class="comment-highlight${resolvedClass}" data-comment-highlight="${escapeHtml(comment.id || "")}" data-comment-scope="${escapeHtml(anchor.scope || "stop")}" style="--selection-x:${geometry.selectionLeft}px;--selection-y:${geometry.selectionTop}px;--selection-width:${geometry.selectionWidth}px;--selection-height:${geometry.selectionHeight}px;--comment-offset:${index * 3}px" title="${escapeHtml(comment.resolved ? "?????" : "?????")}">
       <i aria-hidden="true"></i>
     </button>
   `;
@@ -2070,7 +2070,7 @@ function renderTextPresence() {
         return `
           <span class="text-presence-chip ${accentClass}">
             ${initial}
-            <span>${escapeHtml(member.name || "协作者")} ${selected ? `选中 ${end - start} 字` : `光标 ${start}`}</span>
+            <span>${escapeHtml(member.name || "???")} ${selected ? `?? ${end - start} ?` : `?? ${start}`}</span>
           </span>
         `;
       })
@@ -2170,9 +2170,9 @@ function normalizeCollaborativeStop(stop = {}) {
     ...clone(stop),
     id: stop.id || uid(),
     time: String(stop.time || "").trim(),
-    title: String(stop.title || "未命名地点").trim(),
+    title: String(stop.title || "?????").trim(),
     type: String(stop.type || "Place").trim(),
-    address: String(stop.address || "地址待确认").trim(),
+    address: String(stop.address || "?????").trim(),
     note: String(stop.note || "").trim(),
     noteYjs: stop.noteYjs || "",
     textYjs: stop.textYjs || "",
@@ -2331,10 +2331,10 @@ function queuePendingPlanUpdate(updateBase64, origin = "local-plan-yjs") {
     by: getCollabName(),
   });
   savePendingPlanUpdates(updates);
-  dom.collabStatus.textContent = `网络不可用时已暂存 ${updates.length} 条计划协作更新，恢复连接后会自动同步。`;
+  dom.collabStatus.textContent = `????????? ${updates.length} ???????????????????`;
 }
 
-async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
+async function flushPendingPlanUpdates(reason = "????????") {
   if (!tripId || !supabaseClient || isReadonlyMode || !canEdit() || pendingConflict) return false;
   const updates = pendingPlanUpdates();
   if (!updates.length) return true;
@@ -2362,14 +2362,14 @@ async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
     isApplyingCollabPlanRemote = false;
   }
   if (!applied) return false;
-  persistCurrentPlanFromDoc(`${reason}：已合并 ${applied} 条离线协作更新`);
-  const pushed = await pushRemoteState(`${reason}：已同步 ${applied} 条离线协作更新`, { skipPendingFlush: true });
+  persistCurrentPlanFromDoc(`${reason}???? ${applied} ???????`);
+  const pushed = await pushRemoteState(`${reason}???? ${applied} ???????`, { skipPendingFlush: true });
   if (pushed) {
     clearPendingPlanUpdatesById(replayedIds);
     if (collabTextDoc && collabTextStopId) {
-      await persistCurrentTextFromDoc(`${reason}：当前地点文本协作快照已同步`);
+      await persistCurrentTextFromDoc(`${reason}??????????????`);
     }
-    dom.collabStatus.textContent = `${reason}：${applied} 条离线协作更新已同步到云端。`;
+    dom.collabStatus.textContent = `${reason}?${applied} ??????????????`;
   }
   return pushed;
 }
@@ -2390,7 +2390,7 @@ function normalizeTransportQuotes(quotes = []) {
       arrive: quote.arrive || quote.arriveTime || "--:--",
       duration: Number(quote.duration || 0),
       price: numberValue(quote.price || quote.amount || quote.lowestPrice),
-      source: quote.source || "手动保存",
+      source: quote.source || "????",
       carrier: quote.carrier || quote.airline || "",
       stops: Number(quote.stops || 0),
       createdBy: quote.createdBy || "",
@@ -2415,11 +2415,11 @@ function normalizeCandidateStops(candidates = []) {
     .map((stop) => ({
       ...clone(stop),
       id: stop.id || uid(),
-      title: String(stop.title || "备选地点").trim(),
+      title: String(stop.title || "????").trim(),
       type: stop.type || "Idea",
-      address: stop.address || state.destination || "地址待确认",
-      note: stop.note || "备选池地点，可加入任意一天继续编辑。",
-      tags: normalizeTags(stop.tags || ["备选"]),
+      address: stop.address || state.destination || "?????",
+      note: stop.note || "??????????????????",
+      tags: normalizeTags(stop.tags || ["??"]),
       budget: numberValue(stop.budget),
       image: stop.image || state.cover || images.city,
       createdBy: stop.createdBy || "",
@@ -2548,10 +2548,10 @@ function normalizeDayMetas(days = []) {
       id: day.id || uid(),
       label: day.label || `D${index + 1}`,
       date: day.date || "",
-      title: day.title || day.label || `第${index + 1}天`,
-      route: day.route || "待填写路线",
-      weather: day.weather || "天气待确认",
-      transport: day.transport || "交通待规划",
+      title: day.title || day.label || `?${index + 1}?`,
+      route: day.route || "?????",
+      weather: day.weather || "?????",
+      transport: day.transport || "?????",
       comments: normalizeComments(day.comments || []),
       amapRoute: day.amapRoute || null,
     }))
@@ -2641,7 +2641,7 @@ async function ensureYjs() {
       })
       .catch((error) => {
         console.warn("Yjs load failed", error);
-        setNoteCollabStatus("文本逐字协作加载失败，仍可随计划保存");
+        setNoteCollabStatus("??????????????????");
         yjsReadyPromise = null;
         throw error;
       });
@@ -2649,7 +2649,7 @@ async function ensureYjs() {
   return yjsReadyPromise;
 }
 
-async function persistCurrentTextFromDoc(label = "地点协作内容已实时同步", options = {}) {
+async function persistCurrentTextFromDoc(label = "???????????", options = {}) {
   const { refreshViews = true, scheduleSave = true, updateStatus = true } = options;
   if (!collabTextDoc || !collabTextStopId) return;
   const stop = state.days.flatMap((day) => day.stops || []).find((item) => item.id === collabTextStopId);
@@ -2684,17 +2684,17 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    pushRemoteState("地点协作内容已实时同步").then((pushed) => {
+    pushRemoteState("???????????").then((pushed) => {
       if (pushed) return;
       const pendingCount = pendingPlanUpdates().length;
       if (pendingCount) {
-        setNoteCollabStatus(`文本协作已暂存 ${pendingCount} 条结构更新，恢复网络后会自动同步`);
+        setNoteCollabStatus(`??????? ${pendingCount} ????????????????`);
       }
     });
   }, 900);
 }
 
-async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已实时同步", options = {}) {
+async function persistCurrentDayTextFromDoc(label = "?????????????", options = {}) {
   const { refreshViews = true, scheduleSave = true, updateStatus = true } = options;
   if (!collabDayTextDoc || !collabDayTextDayId) return;
   const day = state.days.find((item) => item.id === collabDayTextDayId);
@@ -2749,7 +2749,7 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
     });
   }
   if (updateStatus) {
-    dom.dayEditorStatus.textContent = tripId ? "逐字协作中" : "本地保存";
+    dom.dayEditorStatus.textContent = tripId ? "?????" : "????";
     dom.collabStatus.textContent = label;
   }
   if (refreshViews && (textChanged || commentsChanged)) {
@@ -2764,7 +2764,7 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
   clearTimeout(collabDayTextSaveTimer);
   collabDayTextSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    saveCollaborativePlanChange("当天文本协作内容已实时同步");
+    saveCollaborativePlanChange("?????????????");
   }, 900);
 }
 
@@ -3093,7 +3093,7 @@ function refreshRealtimePlanViews() {
   requestAnimationFrame(() => refreshDayBlockTextPresence());
 }
 
-function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同步", options = {}) {
+function persistCurrentPlanFromDoc(label = "?????????????", options = {}) {
   const { refreshViews = true, scheduleSave = true, updateStatus = true } = options;
   if (!collabPlanDoc || !collabDayMetasArray || !collabDayTextStatesMap || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || !collabStopListsMap || !collabStopTextStatesMap || !collabDayBlocksMap || !collabTransportQuotesArray || !collabCandidatesArray || !collabActivitiesArray || !collabSettingsMap || !collabSettingTextStatesMap || !collabSettingTextsMap) return;
   const nextDayMetas = readDayMetasFromDoc();
@@ -3153,17 +3153,17 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = setTimeout(() => {
     if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    pushRemoteState("计划结构协作内容已实时同步");
+    pushRemoteState("?????????????");
   }, 900);
 }
 
-async function saveCollaborativePlanChange(label = "计划结构协作内容已实时同步") {
+async function saveCollaborativePlanChange(label = "?????????????") {
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = null;
   await saveState(label);
 }
 
-async function saveCollaborativeTextChange(label = "地点协作内容已实时同步") {
+async function saveCollaborativeTextChange(label = "???????????") {
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = null;
   clearTimeout(collabPlanSaveTimer);
@@ -3177,7 +3177,7 @@ async function saveCollaborativeTextChange(label = "地点协作内容已实时�
   await saveState(label);
 }
 
-async function refreshLiveCollabStateBeforeRemoteSave(label = "保存前已刷新协作快照") {
+async function refreshLiveCollabStateBeforeRemoteSave(label = "??????????") {
   if (!tripId || isReadonlyMode) return;
   if (collabTextDoc && collabTextStopId) {
     await persistCurrentTextFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
@@ -3193,7 +3193,7 @@ async function refreshLiveCollabStateBeforeRemoteSave(label = "保存前已刷�
   }
 }
 
-async function ensureRemotePlanYjsSnapshot(label = "已补齐计划结构协作快照") {
+async function ensureRemotePlanYjsSnapshot(label = "???????????") {
   if (!tripId || !supabaseClient || isReadonlyMode || !canEdit() || pendingConflict || state.planYjs) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc) return false;
@@ -3212,7 +3212,7 @@ function currentPlanYjsState() {
   }
 }
 
-async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划结构协作快照", options = {}) {
+async function applyPlanYjsStateToCurrentPlan(planYjs, label = "???????????", options = {}) {
   if (!planYjs) return false;
   const { scheduleSave = true } = options;
   let Y;
@@ -3267,7 +3267,7 @@ async function applyPlanYjsStateToCurrentPlan(planYjs, label = "已应用计划�
   }
 }
 
-async function replaceLivePlanDocWithYjsState(planYjs, label = "已替换计划结构协作快照") {
+async function replaceLivePlanDocWithYjsState(planYjs, label = "???????????") {
   if (!planYjs || !tripId || isReadonlyMode) return applyPlanYjsStateToCurrentPlan(planYjs, label, { scheduleSave: false });
   let Y;
   try {
@@ -3491,7 +3491,7 @@ function normalizeCommentEntry(comment = {}) {
   const parentId = String(comment.parentId || "").trim();
   const normalized = {
     id: comment.id || uid(),
-    author: comment.author || "我",
+    author: comment.author || "?",
     text: String(comment.text || "").trim(),
     at: comment.at || new Date().toISOString(),
     updatedAt: comment.updatedAt || comment.resolvedAt || comment.at || new Date().toISOString(),
@@ -3633,7 +3633,7 @@ function commentIndexItems(plan = state) {
       items.push({
         id: comment.id,
         text: comment.text,
-        author: comment.author || "我",
+        author: comment.author || "?",
         at: comment.at || "",
         resolved: Boolean(comment.resolved),
         replies: replies.length,
@@ -3647,7 +3647,7 @@ function commentIndexItems(plan = state) {
     const dayThreads = commentRootsAndReplies(day.comments || []);
     dayThreads.roots.forEach((comment) => appendComment(comment, {
       scope: "day",
-      scopeLabel: "当天",
+      scopeLabel: "??",
       targetLabel: dayLabel,
       repliesByParent: dayThreads.repliesByParent,
     }));
@@ -3655,8 +3655,8 @@ function commentIndexItems(plan = state) {
       const stopThreads = commentRootsAndReplies(stop.comments || []);
       stopThreads.roots.forEach((comment) => appendComment(comment, {
         scope: "stop",
-        scopeLabel: "地点",
-        targetLabel: stop.title || `地点 ${stopIndex + 1}`,
+        scopeLabel: "??",
+        targetLabel: stop.title || `?? ${stopIndex + 1}`,
         stopIndex,
         stopId: stop.id || "",
         repliesByParent: stopThreads.repliesByParent,
@@ -3666,7 +3666,7 @@ function commentIndexItems(plan = state) {
       const blockThreads = commentRootsAndReplies(block.comments || []);
       blockThreads.roots.forEach((comment) => appendComment(comment, {
         scope: "block",
-        scopeLabel: "协作块",
+        scopeLabel: "???",
         targetLabel: block.text || dayBlockTypeLabel(block.type),
         blockId: block.id || "",
         blockType: block.type || "todo",
@@ -3714,18 +3714,18 @@ function createCommentReply(parentId = "", text = "") {
 function commentAnchorLabel(anchor = null) {
   if (!anchor?.field) return "";
   const meta = collabTextFieldMeta(anchor.field);
-  const label = anchor.label || meta?.label || (anchor.scope === "block" ? "协作块" : "字段");
+  const label = anchor.label || meta?.label || (anchor.scope === "block" ? "???" : "??");
   const start = Number(anchor.start || 0);
   const end = Number(anchor.end || start);
-  if (end > start) return `${label} · 选中 ${end - start} 字`;
-  return `${label} · 光标 ${start}`;
+  if (end > start) return `${label} ? ?? ${end - start} ?`;
+  return `${label} ? ?? ${start}`;
 }
 
 function commentAnchorHint(anchor = null) {
-  if (!anchor) return "选中名称、地址或备注里的文字后，可以把评论挂到对应位置。";
+  if (!anchor) return "????????????????????????????";
   const label = commentAnchorLabel(anchor);
-  const excerpt = anchor.excerpt ? `「${anchor.excerpt}」` : "";
-  return `将评论挂到：${label}${excerpt ? ` ${excerpt}` : ""}`;
+  const excerpt = anchor.excerpt ? `?${anchor.excerpt}?` : "";
+  return `??????${label}${excerpt ? ` ${excerpt}` : ""}`;
 }
 
 function renderCommentAnchorHint() {
@@ -3733,7 +3733,7 @@ function renderCommentAnchorHint() {
   const replying = replyingCommentId ? normalizeComments(currentStop()?.comments || []).find((comment) => comment.id === replyingCommentId) : null;
   if (replying) {
     dom.commentAnchorHint.hidden = false;
-    dom.commentAnchorHint.textContent = `正在回复 ${replying.author || "协作者"}：${replying.text.slice(0, 28)}`;
+    dom.commentAnchorHint.textContent = `???? ${replying.author || "???"}?${replying.text.slice(0, 28)}`;
     return;
   }
   const anchor = currentCommentAnchor("stop");
@@ -3746,7 +3746,7 @@ function renderDayCommentAnchorHint() {
   const replying = dayReplyingCommentId ? normalizeComments(currentDay()?.comments || []).find((comment) => comment.id === dayReplyingCommentId) : null;
   if (replying) {
     dom.dayCommentAnchorHint.hidden = false;
-    dom.dayCommentAnchorHint.textContent = `正在回复 ${replying.author || "协作者"}：${replying.text.slice(0, 28)}`;
+    dom.dayCommentAnchorHint.textContent = `???? ${replying.author || "???"}?${replying.text.slice(0, 28)}`;
     return;
   }
   const anchor = currentCommentAnchor("day");
@@ -3800,7 +3800,7 @@ function formatCommentTime(value) {
 }
 
 function commentAuthorInitial(name) {
-  return escapeHtml(memberInitial(name || "我"));
+  return escapeHtml(memberInitial(name || "?"));
 }
 
 function renderCommentReply(reply, editable, deleteAttr = "data-delete-comment") {
@@ -3809,12 +3809,12 @@ function renderCommentReply(reply, editable, deleteAttr = "data-delete-comment")
       <span class="avatar a3">${commentAuthorInitial(reply.author)}</span>
       <div class="comment-bubble">
         <div class="comment-meta">
-          <strong>${escapeHtml(reply.author || "我")}</strong>
+          <strong>${escapeHtml(reply.author || "?")}</strong>
           ${reply.at ? `<time>${escapeHtml(formatCommentTime(reply.at))}</time>` : ""}
         </div>
         <p>${escapeHtml(reply.text)}</p>
       </div>
-      ${editable ? `<button type="button" class="icon-btn subtle danger-icon" ${deleteAttr}="${escapeHtml(reply.id || "")}" aria-label="删除回复">${icon("trash-2")}</button>` : ""}
+      ${editable ? `<button type="button" class="icon-btn subtle danger-icon" ${deleteAttr}="${escapeHtml(reply.id || "")}" aria-label="????">${icon("trash-2")}</button>` : ""}
     </div>
   `;
 }
@@ -3832,7 +3832,7 @@ function ensureFieldCommentMark(fieldMeta) {
     mark.type = "button";
     mark.className = "field-comment-mark";
     mark.dataset.fieldCommentMark = field;
-    mark.title = "查看这个字段的批注";
+    mark.title = "?????????";
     target.insertAdjacentElement("afterend", mark);
   }
   return mark;
@@ -3848,8 +3848,8 @@ function renderFieldCommentMarks(stop = currentStop()) {
     mark.classList.toggle("is-resolved", stats.total > 0 && stats.open === 0);
     mark.innerHTML = `${icon(stats.open ? "message-square-more" : "message-square-check")}<span>${stats.open || stats.total}</span>`;
     mark.title = stats.open
-      ? `${fieldMeta.label}有 ${stats.open} 条未解决批注${stats.replies ? `，${stats.replies} 条回复` : ""}`
-      : `${fieldMeta.label}的批注已解决`;
+      ? `${fieldMeta.label}? ${stats.open} ??????${stats.replies ? `?${stats.replies} ???` : ""}`
+      : `${fieldMeta.label}??????`;
   });
 }
 
@@ -3863,8 +3863,8 @@ function renderDayFieldCommentMarks(day = currentDay()) {
     mark.classList.toggle("is-resolved", stats.total > 0 && stats.open === 0);
     mark.innerHTML = `${icon(stats.open ? "message-square-more" : "message-square-check")}<span>${stats.open || stats.total}</span>`;
     mark.title = stats.open
-      ? `${fieldMeta.label}有 ${stats.open} 条未解决批注${stats.replies ? `，${stats.replies} 条回复` : ""}`
-      : `${fieldMeta.label}的批注已解决`;
+      ? `${fieldMeta.label}? ${stats.open} ??????${stats.replies ? `?${stats.replies} ???` : ""}`
+      : `${fieldMeta.label}??????`;
   });
 }
 
@@ -3924,7 +3924,7 @@ function renderCommentThreads(comments = [], options = {}) {
     replyAttr = "data-reply-comment",
     resolveAttr = "data-toggle-comment-resolved",
     deleteAttr = "data-delete-comment",
-    emptyPrefix = "还没有评论",
+    emptyPrefix = "?????",
   } = options;
   const editable = canEdit();
   const { roots, repliesByParent } = commentRootsAndReplies(comments || []);
@@ -3942,26 +3942,26 @@ function renderCommentThreads(comments = [], options = {}) {
       const anchorExcerpt = anchor?.excerpt ? `<em>${escapeHtml(anchor.excerpt)}</em>` : "";
       const replies = repliesByParent.get(comment.id) || [];
       const resolvedClass = comment.resolved ? " is-resolved" : "";
-      const resolvedText = comment.resolved ? `<span class="comment-state">${icon("check-circle-2")}已解决</span>` : "";
+      const resolvedText = comment.resolved ? `<span class="comment-state">${icon("check-circle-2")}???</span>` : "";
       return `
         <div class="comment-thread${resolvedClass}" data-comment="${escapeHtml(comment.id || "")}">
         <div class="comment-item">
           <span class="avatar a2">${commentAuthorInitial(comment.author)}</span>
           <div class="comment-bubble">
-            ${anchor ? `<button type="button" class="comment-anchor" ${anchorAttr}="${escapeHtml(comment.id || "")}" title="回到评论位置">${escapeHtml(anchorLabel)}${anchorExcerpt}</button>` : ""}
+            ${anchor ? `<button type="button" class="comment-anchor" ${anchorAttr}="${escapeHtml(comment.id || "")}" title="??????">${escapeHtml(anchorLabel)}${anchorExcerpt}</button>` : ""}
             <div class="comment-meta">
-              <strong>${escapeHtml(comment.author || "我")}</strong>
+              <strong>${escapeHtml(comment.author || "?")}</strong>
               ${comment.at ? `<time>${escapeHtml(formatCommentTime(comment.at))}</time>` : ""}
               ${resolvedText}
             </div>
             <p>${escapeHtml(comment.text)}</p>
             <div class="comment-actions">
-              ${editable ? `<button type="button" class="comment-action" ${replyAttr}="${escapeHtml(comment.id || "")}">${icon("reply")}回复${replies.length ? ` ${replies.length}` : ""}</button>` : replies.length ? `<span>${replies.length} 条回复</span>` : ""}
-              ${editable ? `<button type="button" class="comment-action" ${resolveAttr}="${escapeHtml(comment.id || "")}">${comment.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}标记解决`}</button>` : ""}
+              ${editable ? `<button type="button" class="comment-action" ${replyAttr}="${escapeHtml(comment.id || "")}">${icon("reply")}??${replies.length ? ` ${replies.length}` : ""}</button>` : replies.length ? `<span>${replies.length} ???</span>` : ""}
+              ${editable ? `<button type="button" class="comment-action" ${resolveAttr}="${escapeHtml(comment.id || "")}">${comment.resolved ? `${icon("rotate-ccw")}????` : `${icon("check")}????`}</button>` : ""}
             </div>
             ${replies.length ? `<div class="comment-replies">${replies.map((reply) => renderCommentReply(reply, editable, deleteAttr)).join("")}</div>` : ""}
           </div>
-          ${editable ? `<button type="button" class="icon-btn subtle danger-icon" ${deleteAttr}="${escapeHtml(comment.id || "")}" aria-label="删除评论">${icon("trash-2")}</button>` : ""}
+          ${editable ? `<button type="button" class="icon-btn subtle danger-icon" ${deleteAttr}="${escapeHtml(comment.id || "")}" aria-label="????">${icon("trash-2")}</button>` : ""}
         </div>
         </div>
       `;
@@ -3969,11 +3969,11 @@ function renderCommentThreads(comments = [], options = {}) {
     .join("");
   const emptyText = roots.length
     ? activeFilter === "open"
-      ? "没有未解决批注。"
-      : "没有已解决批注。"
+      ? "????????"
+      : "????????"
     : emptyPrefix;
   return {
-    html: `<div class="comment-filters">${filters}</div>${threadHtml || `<div class="comment-item"><span class="avatar a1">我</span><p>${emptyText}</p></div>`}`,
+    html: `<div class="comment-filters">${filters}</div>${threadHtml || `<div class="comment-item"><span class="avatar a1">?</span><p>${emptyText}</p></div>`}`,
     filter: activeFilter,
     roots,
   };
@@ -3983,11 +3983,11 @@ function renderStopComments(stop) {
   const { roots } = commentRootsAndReplies(stop.comments || []);
   if (replyingCommentId && !roots.some((comment) => comment.id === replyingCommentId)) {
     replyingCommentId = "";
-    if (dom.commentInput) dom.commentInput.placeholder = "添加同行意见或提醒";
+    if (dom.commentInput) dom.commentInput.placeholder = "?????????";
   }
   const rendered = renderCommentThreads(stop.comments || [], {
     filter: commentFilter,
-    emptyPrefix: "还没有评论，可以先添加同行意见。",
+    emptyPrefix: "????????????????",
   });
   commentFilter = rendered.filter;
   dom.commentList.innerHTML = `
@@ -4003,7 +4003,7 @@ function renderDayComments(day = currentDay()) {
   const { roots } = commentRootsAndReplies(day.comments || []);
   if (dayReplyingCommentId && !roots.some((comment) => comment.id === dayReplyingCommentId)) {
     dayReplyingCommentId = "";
-    if (dom.dayCommentInput) dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+    if (dom.dayCommentInput) dom.dayCommentInput.placeholder = "??????????????????";
   }
   const rendered = renderCommentThreads(day.comments || [], {
     filter: dayCommentFilter,
@@ -4012,10 +4012,10 @@ function renderDayComments(day = currentDay()) {
     replyAttr: "data-reply-day-comment",
     resolveAttr: "data-toggle-day-comment-resolved",
     deleteAttr: "data-delete-day-comment",
-    emptyPrefix: "还没有当天批注，可以选中当天设置里的文字后添加。",
+    emptyPrefix: "????????????????????????",
   });
   dayCommentFilter = rendered.filter;
-  dom.dayCommentTitle.textContent = day.title || day.label || "当前日期";
+  dom.dayCommentTitle.textContent = day.title || day.label || "????";
   dom.dayCommentList.innerHTML = rendered.html;
   renderDayCommentAnchorHint();
   renderDayFieldCommentMarks(day);
@@ -4024,11 +4024,11 @@ function renderDayComments(day = currentDay()) {
 }
 
 function dayBlockTypeLabel(type = "todo") {
-  if (type === "callout") return "提醒";
-  if (type === "heading") return "标题";
-  if (type === "note") return "备注";
-  if (type === "decision") return "决定";
-  return "待办";
+  if (type === "callout") return "??";
+  if (type === "heading") return "??";
+  if (type === "note") return "??";
+  if (type === "decision") return "??";
+  return "??";
 }
 
 function dayBlockIcon(type = "todo") {
@@ -4047,20 +4047,20 @@ function dayBlockSlashCommand(value = "") {
   const command = String(value || "").trim().toLowerCase();
   const commands = {
     "/todo": "todo",
-    "/待办": "todo",
+    "/??": "todo",
     "/note": "note",
-    "/备注": "note",
+    "/??": "note",
     "/decision": "decision",
-    "/决定": "decision",
+    "/??": "decision",
     "/heading": "heading",
     "/h": "heading",
     "/h2": "heading",
-    "/标题": "heading",
+    "/??": "heading",
     "/callout": "callout",
     "/tip": "callout",
-    "/提醒": "callout",
-    "/提示": "callout",
-    "/注意": "callout",
+    "/??": "callout",
+    "/??": "callout",
+    "/??": "callout",
   };
   return commands[command] || "";
 }
@@ -4088,7 +4088,7 @@ function renderDayBlockComments(block) {
     replyAttr: "data-reply-block-comment",
     resolveAttr: "data-toggle-block-comment-resolved",
     deleteAttr: "data-delete-block-comment",
-    emptyPrefix: "还没有块级评论。",
+    emptyPrefix: "????????",
   });
   blockCommentFilters[block.id] = rendered.filter;
   return `<div class="day-block-comments" data-block-comments="${escapeHtml(block.id)}">${rendered.html}</div>`;
@@ -4099,9 +4099,9 @@ function renderDayBlockPresence(block) {
   if (!editors.length) return "";
   const names = remoteBlockEditorNames(block.id);
   return `
-    <span class="day-block-presence" title="${escapeHtml(editors.map((member) => `${member.name || "协作者"} ${member.blockEditing || "正在编辑协作块"}`).join("、"))}">
-      <span class="day-block-presence-warning">${escapeHtml(names)} 同块编辑中</span>
-      ${editors.map((member, index) => `<span class="text-presence-chip ${memberPresenceClass(member, index)}">${escapeHtml(memberInitial(member.name))}<span>${escapeHtml(member.blockEditing || "正在编辑")}</span></span>`).join("")}
+    <span class="day-block-presence" title="${escapeHtml(editors.map((member) => `${member.name || "???"} ${member.blockEditing || "???????"}`).join("?"))}">
+      <span class="day-block-presence-warning">${escapeHtml(names)} ?????</span>
+      ${editors.map((member, index) => `<span class="text-presence-chip ${memberPresenceClass(member, index)}">${escapeHtml(memberInitial(member.name))}<span>${escapeHtml(member.blockEditing || "????")}</span></span>`).join("")}
     </span>
   `;
 }
@@ -4125,6 +4125,24 @@ function selectedDayBlockList(blocks = normalizeDayBlocks(currentDay()?.blocks |
 
 function clearSelectedDayBlocks() {
   selectedDayBlockIds.clear();
+  lastSelectedDayBlockId = "";
+}
+
+function selectAllDayBlocks(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
+  selectedDayBlockIds = new Set(blocks.map((block) => block.id).filter(Boolean));
+}
+
+function setDayBlockRangeSelection(blocks = [], startId = "", endId = "", selected = true) {
+  const startIndex = blocks.findIndex((block) => block.id === startId);
+  const endIndex = blocks.findIndex((block) => block.id === endId);
+  if (startIndex < 0 || endIndex < 0) return false;
+  const [from, to] = startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+  blocks.slice(from, to + 1).forEach((block) => {
+    if (!block.id) return;
+    if (selected) selectedDayBlockIds.add(block.id);
+    else selectedDayBlockIds.delete(block.id);
+  });
+  return true;
 }
 
 function syncSelectedDayBlocks(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
@@ -4140,13 +4158,18 @@ function renderDayBlockBulkBar(blocks = []) {
   const count = selectedBlocks.length;
   const disabledAttr = isReadonlyMode ? " disabled" : "";
   return `
-    <div class="day-block-bulk-bar" role="toolbar" aria-label="协作块批量操作">
-      <strong>${count} 个块已选择</strong>
-      <button type="button" class="text-btn" data-day-block-bulk="copy"${disabledAttr}>${icon("copy")}复制</button>
-      <button type="button" class="text-btn" data-day-block-bulk="todo"${disabledAttr}>${icon("check-square")}设为待办</button>
-      <button type="button" class="text-btn" data-day-block-bulk="note"${disabledAttr}>${icon("notebook-text")}设为备注</button>
-      <button type="button" class="text-btn danger-text" data-day-block-bulk="delete"${disabledAttr}>${icon("trash-2")}删除</button>
-      <button type="button" class="text-btn" data-day-block-bulk="clear">${icon("x")}取消选择</button>
+    <div class="day-block-bulk-bar" role="toolbar" aria-label="???????">
+      <strong>${count} ?????</strong>
+      <button type="button" class="text-btn" data-day-block-bulk="all">${icon("list-checks")}??</button>
+      <button type="button" class="text-btn" data-day-block-bulk="copy"${disabledAttr}>${icon("copy")}??</button>
+      <button type="button" class="text-btn" data-day-block-bulk="done"${disabledAttr}>${icon("check-circle-2")}??</button>
+      <button type="button" class="text-btn" data-day-block-bulk="open"${disabledAttr}>${icon("circle")}??</button>
+      <button type="button" class="text-btn" data-day-block-bulk="todo"${disabledAttr}>${icon("check-square")}????</button>
+      <button type="button" class="text-btn" data-day-block-bulk="note"${disabledAttr}>${icon("notebook-text")}????</button>
+      <button type="button" class="text-btn" data-day-block-bulk="indent"${disabledAttr}>${icon("indent-increase")}??</button>
+      <button type="button" class="text-btn" data-day-block-bulk="outdent"${disabledAttr}>${icon("indent-decrease")}????</button>
+      <button type="button" class="text-btn danger-text" data-day-block-bulk="delete"${disabledAttr}>${icon("trash-2")}??</button>
+      <button type="button" class="text-btn" data-day-block-bulk="clear">${icon("x")}????</button>
     </div>
   `;
 }
@@ -4166,7 +4189,7 @@ function renderDayBlocks(day = currentDay()) {
   if (dom.dayBlocksStatus) {
     const openCount = blocks.filter((block) => block.type === "todo" && !block.done).length;
     const commentCount = blocks.reduce((sum, block) => sum + commentRootsAndReplies(block.comments || []).roots.length, 0);
-    dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办 · ${commentCount} 条评论` : "可添加块";
+    dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} ?? ? ${openCount} ??? ? ${commentCount} ???` : "????";
   }
   const blocksHtml = blocks.length
     ? blocks
@@ -4181,53 +4204,53 @@ function renderDayBlocks(day = currentDay()) {
           const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
           const commentPanelId = `block-comments-${block.id}`;
           const meta = block.updatedBy || block.createdBy
-            ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+            ? `${block.updatedBy ? `???${block.updatedBy}` : `???${block.createdBy}`}`
             : dayBlockTypeLabel(block.type);
           const upDisabled = isReadonlyMode || index === 0 ? " disabled" : "";
           const downDisabled = isReadonlyMode || index === blocks.length - 1 ? " disabled" : "";
           const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
-          const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
+          const placeholder = replyTarget ? `?? ${replyTarget.author || "??"}?${replyTarget.text.slice(0, 18)}` : "???????";
           const presenceHtml = renderDayBlockPresence(block);
           const rows = block.type === "heading" ? 1 : 2;
           const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
           return `
             <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
-              <label class="day-block-select" title="选择协作块">
-                <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="选择协作块"${selected ? " checked" : ""} />
+              <label class="day-block-select" title="?????">
+                <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="?????"${selected ? " checked" : ""} />
               </label>
-              <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
-              <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
+              <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="???????"${disabledAttr}>${icon("grip-vertical")}</button>
+              <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "?????" : "????"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <span class="day-block-text-wrap">
                 <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
                 ${renderDayBlockTextPresence(block)}
               </span>
-              <button type="button" class="day-block-collapsed-text" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="展开协作块">${escapeHtml(collapsedPreview)}</button>
-              <label class="day-block-type-control" title="切换块类型">
-                <span>类型</span>
-                <select data-day-block-type="${escapeHtml(block.id)}" aria-label="切换协作块类型"${disabledAttr}>${dayBlockTypeOptions(block.type)}</select>
+              <button type="button" class="day-block-collapsed-text" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="?????">${escapeHtml(collapsedPreview)}</button>
+              <label class="day-block-type-control" title="?????">
+                <span>??</span>
+                <select data-day-block-type="${escapeHtml(block.id)}" aria-label="???????"${disabledAttr}>${dayBlockTypeOptions(block.type)}</select>
               </label>
               <span class="day-block-meta">${escapeHtml(meta)}</span>
               ${presenceHtml}
-              <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
+              <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}??${openCommentCount ? ` ${openCommentCount}` : ""}</button>
               <span class="day-block-order">
-                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
-                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
-                <button type="button" class="icon-btn subtle" data-duplicate-day-block="${escapeHtml(block.id)}" aria-label="复制协作块"${disabledAttr}>${icon("copy")}</button>
-                <button type="button" class="icon-btn subtle" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="${collapsed ? "展开协作块" : "折叠协作块"}">${icon(collapsed ? "chevrons-down-up" : "chevrons-up-down")}</button>
+                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="?????"${upDisabled}>${icon("chevron-up")}</button>
+                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="?????"${downDisabled}>${icon("chevron-down")}</button>
+                <button type="button" class="icon-btn subtle" data-duplicate-day-block="${escapeHtml(block.id)}" aria-label="?????"${disabledAttr}>${icon("copy")}</button>
+                <button type="button" class="icon-btn subtle" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="${collapsed ? "?????" : "?????"}">${icon(collapsed ? "chevrons-down-up" : "chevrons-up-down")}</button>
               </span>
-              <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
+              <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="?????"${disabledAttr}>${icon("trash-2")}</button>
               <div class="day-block-comment-panel" id="${escapeHtml(commentPanelId)}">
                 ${renderDayBlockComments(block)}
                 <form class="comment-form day-block-comment-form" data-block-comment-form="${escapeHtml(block.id)}">
                   <input data-block-comment-input="${escapeHtml(block.id)}" placeholder="${escapeHtml(placeholder)}"${disabledAttr} />
-                  <button class="primary-btn" type="submit" aria-label="${replyTarget ? "回复块级评论" : "添加块级评论"}"${disabledAttr}>${icon(replyTarget ? "reply" : "send")}</button>
+                  <button class="primary-btn" type="submit" aria-label="${replyTarget ? "??????" : "??????"}"${disabledAttr}>${icon(replyTarget ? "reply" : "send")}</button>
                 </form>
               </div>
             </article>
           `;
         })
         .join("")
-    : `<div class="empty-state">还没有协作块，可以添加待办、备注、决定、标题或提醒。</div>`;
+    : `<div class="empty-state">??????????????????????????</div>`;
   dom.dayBlockList.innerHTML = `${renderDayBlockBulkBar(blocks)}${blocksHtml}`;
   refreshIcons();
   requestAnimationFrame(() => refreshDayBlockTextPresence());
@@ -4246,11 +4269,11 @@ function focusDayBlockInput(blockId = "") {
 
 async function setSelectedDayBlockType(day, nextType) {
   const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
-  if (!day || !selectedBlocks.length || !DAY_BLOCK_TYPES.includes(nextType) || !requireEdit("批量切换协作块类型")) return false;
+  if (!day || !selectedBlocks.length || !DAY_BLOCK_TYPES.includes(nextType) || !requireEdit("?????????")) return false;
   let changedCount = 0;
   for (const block of selectedBlocks) {
     if (block.type === nextType) continue;
-    noteRemoteBlockEditors(block.id, "批量切换类型");
+    noteRemoteBlockEditors(block.id, "??????");
     const updated = await updateDayBlockInDoc(day.id, block.id, { type: nextType }, "local-day-block-bulk-type");
     if (updated) {
       changedCount += 1;
@@ -4264,7 +4287,7 @@ async function setSelectedDayBlockType(day, nextType) {
       selectedDayBlockIds.has(block.id) && block.type !== nextType ? { ...block, type: nextType } : block
     )));
     changedCount = fallbackBlocks.filter((block) => selectedDayBlockIds.has(block.id) && block.type === nextType).length;
-    if (changedCount && mutate("批量切换协作块类型", () => {
+    if (changedCount && mutate("?????????", () => {
       currentDay().blocks = fallbackBlocks;
     }, { requireUnlocked: false, save: false, render: false })) {
       await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-type-fallback");
@@ -4272,14 +4295,95 @@ async function setSelectedDayBlockType(day, nextType) {
     }
   }
   if (!changedCount) {
-    dom.saveState.textContent = `所选块已经是${dayBlockTypeLabel(nextType)}`;
+    dom.saveState.textContent = `??????${dayBlockTypeLabel(nextType)}`;
     return false;
   }
   activeBlockPresenceId = selectedBlocks[0]?.id || activeBlockPresenceId;
   renderDayBlocks(day);
-  await logActivity(`批量切换 ${changedCount} 个协作块为${dayBlockTypeLabel(nextType)}`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-type" } });
-  await saveCollaborativePlanChange("已批量切换协作块类型");
-  dom.saveState.textContent = `已批量切换 ${changedCount} 个块`;
+  await logActivity(`???? ${changedCount} ?????${dayBlockTypeLabel(nextType)}`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-type" } });
+  await saveCollaborativePlanChange("??????????");
+  dom.saveState.textContent = `????? ${changedCount} ??`;
+  return true;
+}
+
+async function setSelectedDayBlockDone(day, done) {
+  const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
+  if (!day || !selectedBlocks.length || !requireEdit(done ? "???????" : "?????????")) return false;
+  let changedCount = 0;
+  for (const block of selectedBlocks) {
+    if (Boolean(block.done) === Boolean(done)) continue;
+    noteRemoteBlockEditors(block.id, done ? "????" : "????");
+    const updated = await updateDayBlockInDoc(day.id, block.id, { done }, "local-day-block-bulk-done");
+    if (updated) {
+      changedCount += 1;
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+        item.id === block.id ? { ...item, done, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+      )));
+    }
+  }
+  if (!changedCount) {
+    const fallbackBlocks = normalizeDayBlocks((day.blocks || []).map((block) => (
+      selectedDayBlockIds.has(block.id) && Boolean(block.done) !== Boolean(done) ? { ...block, done } : block
+    )));
+    changedCount = fallbackBlocks.filter((block) => selectedDayBlockIds.has(block.id) && Boolean(block.done) === Boolean(done)).length;
+    if (changedCount && mutate(done ? "???????" : "?????????", () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-done-fallback");
+      day = currentDay();
+    }
+  }
+  if (!changedCount) {
+    dom.saveState.textContent = done ? "????????" : "?????????";
+    return false;
+  }
+  renderDayBlocks(day);
+  await logActivity(`${done ? "????" : "??????"} ${changedCount} ????`, { target: { type: "day", dayId: day.id || "", action: done ? "bulk-block-done" : "bulk-block-open" } });
+  await saveCollaborativePlanChange(done ? "????????" : "??????????");
+  dom.saveState.textContent = done ? `??? ${changedCount} ??` : `????? ${changedCount} ??`;
+  return true;
+}
+
+async function indentSelectedDayBlocks(day, delta = 1) {
+  const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
+  const actionLabel = delta > 0 ? "?????????" : "?????????";
+  if (!day || !selectedBlocks.length || !requireEdit(actionLabel)) return false;
+  let changedCount = 0;
+  for (const block of selectedBlocks) {
+    const nextLevel = Math.max(0, Math.min((Number(block.level) || 0) + delta, 3));
+    if (nextLevel === (Number(block.level) || 0)) continue;
+    noteRemoteBlockEditors(block.id, delta > 0 ? "????" : "??????");
+    const updated = await updateDayBlockInDoc(day.id, block.id, { level: nextLevel }, "local-day-block-bulk-indent");
+    if (updated) {
+      changedCount += 1;
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+        item.id === block.id ? { ...item, level: nextLevel, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+      )));
+    }
+  }
+  if (!changedCount) {
+    const previousLevels = new Map(normalizeDayBlocks(day.blocks || []).map((block) => [block.id, Number(block.level) || 0]));
+    const fallbackBlocks = normalizeDayBlocks((day.blocks || []).map((block) => {
+      if (!selectedDayBlockIds.has(block.id)) return block;
+      const nextLevel = Math.max(0, Math.min((Number(block.level) || 0) + delta, 3));
+      return nextLevel === (Number(block.level) || 0) ? block : { ...block, level: nextLevel };
+    }));
+    changedCount = fallbackBlocks.filter((block) => selectedDayBlockIds.has(block.id) && (Number(block.level) || 0) !== (previousLevels.get(block.id) || 0)).length;
+    if (changedCount && mutate(actionLabel, () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-indent-fallback");
+      day = currentDay();
+    }
+  }
+  if (!changedCount) {
+    dom.saveState.textContent = delta > 0 ? "???????????" : "?????????";
+    return false;
+  }
+  renderDayBlocks(day);
+  await logActivity(`${delta > 0 ? "????" : "????"} ${changedCount} ??????`, { target: { type: "day", dayId: day.id || "", action: delta > 0 ? "bulk-block-indent" : "bulk-block-outdent" } });
+  await saveCollaborativePlanChange(delta > 0 ? "??????????" : "??????????");
+  dom.saveState.textContent = delta > 0 ? `??? ${changedCount} ??` : `????? ${changedCount} ??`;
   return true;
 }
 
@@ -4287,7 +4391,7 @@ function duplicateDayBlockDraft(block) {
   return normalizeDayBlock({
     ...block,
     id: uid(),
-    text: block.text ? `${block.text} 副本` : dayBlockTypeLabel(block.type),
+    text: block.text ? `${block.text} ??` : dayBlockTypeLabel(block.type),
     textYjs: "",
     comments: [],
     done: false,
@@ -4301,14 +4405,14 @@ function duplicateDayBlockDraft(block) {
 async function duplicateSelectedDayBlocks(day) {
   const blocks = normalizeDayBlocks(day?.blocks || []);
   const selectedBlocks = selectedDayBlockList(blocks);
-  if (!day || !selectedBlocks.length || !requireEdit("批量复制协作块")) return false;
+  if (!day || !selectedBlocks.length || !requireEdit("???????")) return false;
   let workingBlocks = blocks;
   let insertedCount = 0;
   let lastAddedId = "";
   for (const block of selectedBlocks) {
     const sourceIndex = workingBlocks.findIndex((item) => item.id === block.id);
     if (sourceIndex < 0) continue;
-    noteRemoteBlockEditors(block.id, "批量复制");
+    noteRemoteBlockEditors(block.id, "????");
     const duplicateBlock = duplicateDayBlockDraft(block);
     if (!duplicateBlock) continue;
     const insertIndex = sourceIndex + 1;
@@ -4330,7 +4434,7 @@ async function duplicateSelectedDayBlocks(day) {
       insertedCount += 1;
       lastAddedId = duplicateBlock.id;
     }
-    if (insertedCount && mutate("批量复制协作块", () => {
+    if (insertedCount && mutate("???????", () => {
       currentDay().blocks = fallbackBlocks;
     }, { requireUnlocked: false, save: false, render: false })) {
       await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-duplicate-fallback");
@@ -4339,7 +4443,7 @@ async function duplicateSelectedDayBlocks(day) {
     }
   }
   if (!insertedCount) {
-    dom.saveState.textContent = "批量复制失败，请稍后再试";
+    dom.saveState.textContent = "????????????";
     return false;
   }
   day.blocks = normalizeDayBlocks(workingBlocks);
@@ -4347,19 +4451,19 @@ async function duplicateSelectedDayBlocks(day) {
   activeBlockPresenceId = lastAddedId || activeBlockPresenceId;
   renderDayBlocks(day);
   if (lastAddedId) focusDayBlockInput(lastAddedId);
-  await logActivity(`批量复制 ${insertedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-duplicate" } });
-  await saveCollaborativePlanChange("已批量复制协作块");
-  dom.saveState.textContent = `已复制 ${insertedCount} 个块`;
+  await logActivity(`???? ${insertedCount} ????`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-duplicate" } });
+  await saveCollaborativePlanChange("????????");
+  dom.saveState.textContent = `??? ${insertedCount} ??`;
   return true;
 }
 
 async function deleteSelectedDayBlocks(day) {
   const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
-  if (!day || !selectedBlocks.length || !requireEdit("批量删除协作块")) return false;
+  if (!day || !selectedBlocks.length || !requireEdit("???????")) return false;
   let deletedCount = 0;
   const deletedIds = new Set();
   for (const block of selectedBlocks) {
-    noteRemoteBlockEditors(block.id, "批量删除");
+    noteRemoteBlockEditors(block.id, "????");
     const deleted = await deleteDayBlockFromDoc(day.id, block.id, "local-day-block-bulk-delete");
     if (deleted) {
       deletedIds.add(block.id);
@@ -4370,7 +4474,7 @@ async function deleteSelectedDayBlocks(day) {
     const selectedIds = new Set(selectedBlocks.map((block) => block.id));
     const fallbackBlocks = normalizeDayBlocks((day.blocks || []).filter((block) => !selectedIds.has(block.id)));
     deletedCount = normalizeDayBlocks(day.blocks || []).length - fallbackBlocks.length;
-    if (deletedCount && mutate("批量删除协作块", () => {
+    if (deletedCount && mutate("???????", () => {
       currentDay().blocks = fallbackBlocks;
     }, { requireUnlocked: false, save: false, render: false })) {
       await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-delete-fallback");
@@ -4378,25 +4482,25 @@ async function deleteSelectedDayBlocks(day) {
     }
   }
   if (!deletedCount) {
-    dom.saveState.textContent = "批量删除失败，请稍后再试";
+    dom.saveState.textContent = "????????????";
     return false;
   }
   day.blocks = normalizeDayBlocks((day.blocks || []).filter((block) => !deletedIds.has(block.id)));
   clearSelectedDayBlocks();
   activeBlockPresenceId = "";
   renderDayBlocks(day);
-  await logActivity(`批量删除 ${deletedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-delete", deleted: true } });
-  await saveCollaborativePlanChange("已批量删除协作块");
-  dom.saveState.textContent = `已删除 ${deletedCount} 个块`;
+  await logActivity(`???? ${deletedCount} ????`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-delete", deleted: true } });
+  await saveCollaborativePlanChange("????????");
+  dom.saveState.textContent = `??? ${deletedCount} ??`;
   return true;
 }
 
 function applyStopRealtimeFields(stop) {
   dom.placeType.textContent = stop.type || "Place";
-  dom.placeTitle.textContent = stop.title || "未命名地点";
-  dom.placeAddress.textContent = stop.address || "地址待确认";
+  dom.placeTitle.textContent = stop.title || "?????";
+  dom.placeAddress.textContent = stop.address || "?????";
   dom.placeNote.textContent = stop.note || "";
-  dom.commentTitle.textContent = stop.title || "当前地点";
+  dom.commentTitle.textContent = stop.title || "????";
   dom.placePhoto.style.setProperty("--photo", `url("${stop.image || images.city}")`);
   dom.favoriteBtn.classList.toggle("selected", Boolean(stop.favorite));
   dom.mustVote.classList.toggle("is-active", Boolean(stop.userVoted));
@@ -4467,7 +4571,7 @@ function broadcastStopDeleted(dayId, stop) {
       tripId,
       dayId,
       stopId: stop.id,
-      title: stop.title || "地点",
+      title: stop.title || "??",
       planYjs,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
@@ -4549,7 +4653,7 @@ function broadcastDayDeleted(day, index = activeDay) {
     payload: {
       tripId,
       dayId: day.id,
-      title: day.title || day.label || "当天",
+      title: day.title || day.label || "??",
       index,
       planMeta: currentPlanMeta(),
       planYjs,
@@ -4578,7 +4682,7 @@ function broadcastDaysReordered() {
   });
 }
 
-async function broadcastPlanReplaced(reason = "更新整份计划", meta = {}) {
+async function broadcastPlanReplaced(reason = "??????", meta = {}) {
   if (!realtimeChannel || !tripId || !state?.days?.length) return;
   await bindCollabPlanDoc();
   const planYjs = currentPlanYjsState();
@@ -4652,17 +4756,17 @@ function attachCollabPlanDocObserver() {
   if (!collabPlanDoc) return;
   collabPlanDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentPlanFromDoc("收到协作者计划结构更新", { scheduleSave: !pendingConflict });
+      persistCurrentPlanFromDoc("???????????", { scheduleSave: !pendingConflict });
       return;
     }
     if (origin === "restore" || String(origin || "").startsWith("pending:")) {
-      persistCurrentPlanFromDoc(origin === "restore" ? "已载入计划结构协作状态" : "已重放离线协作更新");
+      persistCurrentPlanFromDoc(origin === "restore" ? "???????????" : "?????????");
       return;
     }
     const updateBase64 = bytesToBase64(update);
     queuePendingPlanUpdate(updateBase64, String(origin || "local-plan-yjs"));
     broadcastPlanYjsUpdate(updateBase64);
-    persistCurrentPlanFromDoc("计划结构协作内容实时同步中");
+    persistCurrentPlanFromDoc("?????????????");
   });
 }
 
@@ -4702,7 +4806,7 @@ async function bindCollabPlanDoc() {
     restored = false;
   }
   attachCollabPlanDocObserver();
-  persistCurrentPlanFromDoc("已载入计划结构协作状态");
+  persistCurrentPlanFromDoc("???????????");
   renderTransport();
   refreshIcons();
 }
@@ -5752,10 +5856,10 @@ async function bindCollabTextDoc() {
   collabTextBindRequestId = requestId;
   destroyCollabTextDoc();
   if (!tripId || isReadonlyMode) {
-    setNoteCollabStatus(tripId ? "文本会随计划保存" : "创建共享计划后可逐字协作");
+    setNoteCollabStatus(tripId ? "????????" : "????????????");
     return;
   }
-  setNoteCollabStatus("文本逐字协作加载中...");
+  setNoteCollabStatus("?????????...");
   let Y;
   try {
     Y = await ensureYjs();
@@ -5818,16 +5922,16 @@ async function bindCollabTextDoc() {
   }
   collabTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentTextFromDoc("收到协作者地点协作更新").catch((error) => console.warn("Persist remote text update failed", error));
+      persistCurrentTextFromDoc("???????????").catch((error) => console.warn("Persist remote text update failed", error));
       return;
     }
     broadcastTextUpdate(update);
-    persistCurrentTextFromDoc("地点协作内容实时同步中").catch((error) => console.warn("Persist text update failed", error));
+    persistCurrentTextFromDoc("???????????").catch((error) => console.warn("Persist text update failed", error));
   });
   if (restored && COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== collabTextFields[field].toString())) {
-    persistCurrentTextFromDoc("已载入文本协作状态").catch((error) => console.warn("Persist restored text state failed", error));
+    persistCurrentTextFromDoc("?????????").catch((error) => console.warn("Persist restored text state failed", error));
   }
-  setNoteCollabStatus("文本、结构字段与评论协作已开启");
+  setNoteCollabStatus("???????????????");
 }
 
 async function bindCollabDayTextDoc() {
@@ -5837,10 +5941,10 @@ async function bindCollabDayTextDoc() {
   collabDayTextBindRequestId = requestId;
   destroyCollabDayTextDoc();
   if (!tripId || isReadonlyMode) {
-    if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = tripId ? "随计划保存" : "本地保存";
+    if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = tripId ? "?????" : "????";
     return;
   }
-  if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = "逐字协作加载中";
+  if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = "???????";
   let Y;
   try {
     Y = await ensureYjs();
@@ -5885,16 +5989,16 @@ async function bindCollabDayTextDoc() {
   }
   collabDayTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentDayTextFromDoc("收到协作者当天文本更新").catch((error) => console.warn("Persist remote day text update failed", error));
+      persistCurrentDayTextFromDoc("???????????").catch((error) => console.warn("Persist remote day text update failed", error));
       return;
     }
     broadcastDayTextUpdate(update);
-    persistCurrentDayTextFromDoc("当天文本协作内容实时同步中").catch((error) => console.warn("Persist day text update failed", error));
+    persistCurrentDayTextFromDoc("?????????????").catch((error) => console.warn("Persist day text update failed", error));
   });
   if (restored && COLLAB_DAY_TEXT_FIELDS.some(({ docField }) => day[docField] !== collabDayTextFields[docField].toString())) {
-    persistCurrentDayTextFromDoc("已载入当天文本协作状态").catch((error) => console.warn("Persist restored day text state failed", error));
+    persistCurrentDayTextFromDoc("???????????").catch((error) => console.warn("Persist restored day text state failed", error));
   }
-  if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = "逐字协作已开启";
+  if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = "???????";
 }
 
 async function applyRemoteTextUpdate(payload = {}) {
@@ -5921,7 +6025,7 @@ async function applyRemoteTextUpdate(payload = {}) {
     });
     const stop = currentStop();
     if (stop?.id === collabTextStopId) applyStopRealtimeFields({ ...stop, ...readStructFromDoc() });
-    setNoteCollabStatus(`${payload.name || "协作者"} 正在同步地点协作内容`);
+    setNoteCollabStatus(`${payload.name || "???"} ??????????`);
   } finally {
     isApplyingCollabTextRemote = false;
   }
@@ -5949,7 +6053,7 @@ async function applyRemoteDayTextUpdate(payload = {}) {
       renderDayComments(currentDay());
       renderTextPresence();
     }
-    if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = `${payload.name || "协作者"} 正在同步`;
+    if (dom.dayEditorStatus) dom.dayEditorStatus.textContent = `${payload.name || "???"} ????`;
   } finally {
     isApplyingCollabDayTextRemote = false;
   }
@@ -5968,18 +6072,18 @@ async function applyRemotePlanYjsUpdate(payload = {}) {
   isApplyingCollabPlanRemote = true;
   try {
     Y.applyUpdate(collabPlanDoc, base64ToBytes(payload.update), "remote");
-    dom.collabStatus.textContent = `${payload.name || "协作者"} 正在同步计划结构`;
+    dom.collabStatus.textContent = `${payload.name || "???"} ????????`;
   } finally {
     isApplyingCollabPlanRemote = false;
   }
   if (pendingPlanUpdates().length && !pendingConflict) {
-    flushPendingPlanUpdates("收到协作者更新后重放离线协作更新").catch((error) => {
-      dom.collabStatus.textContent = `重放离线协作更新失败：${error.message}`;
+    flushPendingPlanUpdates("????????????????").catch((error) => {
+      dom.collabStatus.textContent = `???????????${error.message}`;
     });
   }
 }
 
-async function mergePlanYjsStateIntoLiveDoc(planYjs, label = "已合并计划结构协作快照", options = {}) {
+async function mergePlanYjsStateIntoLiveDoc(planYjs, label = "???????????", options = {}) {
   if (!planYjs) return false;
   const { scheduleSave = true } = options;
   if (!collabPlanDoc || collabPlanTripId !== tripId) await bindCollabPlanDoc();
@@ -6003,9 +6107,9 @@ async function mergePlanYjsStateIntoLiveDoc(planYjs, label = "已合并计划结
   return true;
 }
 
-async function mergeConflictPlanYjsSnapshot(remotePlan = {}, label = "已通过协作快照合并冲突") {
+async function mergeConflictPlanYjsSnapshot(remotePlan = {}, label = "???????????") {
   if (!remotePlan?.planYjs || !canEdit() || isReadonlyMode) return false;
-  await refreshLiveCollabStateBeforeRemoteSave("合并冲突前已刷新本地协作快照");
+  await refreshLiveCollabStateBeforeRemoteSave("??????????????");
   if (!collabPlanDoc || collabPlanTripId !== tripId) await bindCollabPlanDoc();
   if (!collabPlanDoc) return false;
   const merged = await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, label, { scheduleSave: false });
@@ -6016,7 +6120,7 @@ async function mergeConflictPlanYjsSnapshot(remotePlan = {}, label = "已通过�
   return true;
 }
 
-async function applyRemoteStructureSnapshot(payload = {}, label = "收到协作者结构快照") {
+async function applyRemoteStructureSnapshot(payload = {}, label = "?????????") {
   if (!payload.planYjs || payload.tripId !== tripId) return false;
   const applied = await mergePlanYjsStateIntoLiveDoc(payload.planYjs, label);
   if (applied) {
@@ -6046,10 +6150,10 @@ function dayOrderMatches(dayOrder = []) {
 async function applyRemoteStopCreated(payload = {}) {
   if (!payload.stop?.id || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: stopActivityTarget(payload.dayId || "", payload.stop.id || "", { action: "remote-create" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 新增地点协作快照`)) {
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "???"} ????????`)) {
     if (stopExistsInPlan(payload.stop.id)) {
-      logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了「${payload.stop.title || "地点"}」`;
+      logActivity(`${payload.name || "???"} ?????${payload.stop.title || "?????"}?`, activityOptions);
+      dom.collabStatus.textContent = `${payload.name || "???"} ??????????${payload.stop.title || "??"}?`;
       render();
       return;
     }
@@ -6062,19 +6166,19 @@ async function applyRemoteStopCreated(payload = {}) {
   if (!day) return;
   day.stops = [...(day.stops || []), clone(payload.stop)];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, { ...activityOptions, target: stopActivityTarget(day.id || payload.dayId || "", payload.stop.id || "", { action: "remote-create" }) });
-  dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了「${payload.stop.title || "地点"}」`;
+  logActivity(`${payload.name || "???"} ?????${payload.stop.title || "?????"}?`, { ...activityOptions, target: stopActivityTarget(day.id || payload.dayId || "", payload.stop.id || "", { action: "remote-create" }) });
+  dom.collabStatus.textContent = `${payload.name || "???"} ????${payload.stop.title || "??"}?`;
   render();
 }
 
 async function applyRemoteStopDeleted(payload = {}) {
   if (!payload.stopId || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: stopActivityTarget(payload.dayId || "", payload.stopId || "", { deleted: true, action: "remote-delete" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 删除地点协作快照`)) {
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "???"} ????????`)) {
     if (!stopExistsInPlan(payload.stopId)) {
       destroyCollabTextDoc();
-      logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了「${payload.title || "地点"}」`;
+      logActivity(`${payload.name || "???"} ?????${payload.title || "??"}?`, activityOptions);
+      dom.collabStatus.textContent = `${payload.name || "???"} ??????????${payload.title || "??"}?`;
       render();
       return;
     }
@@ -6093,18 +6197,18 @@ async function applyRemoteStopDeleted(payload = {}) {
   if (dayIndex === activeDay) clearCurrentAmapRoute();
   destroyCollabTextDoc();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, { ...activityOptions, target: stopActivityTarget(day.id || payload.dayId || "", payload.stopId || "", { deleted: true, action: "remote-delete" }) });
-  dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了「${payload.title || "地点"}」`;
+  logActivity(`${payload.name || "???"} ?????${payload.title || "??"}?`, { ...activityOptions, target: stopActivityTarget(day.id || payload.dayId || "", payload.stopId || "", { deleted: true, action: "remote-delete" }) });
+  dom.collabStatus.textContent = `${payload.name || "???"} ????${payload.title || "??"}?`;
   render();
 }
 
 async function applyRemoteStopsReordered(payload = {}) {
   if (!payload.dayId || !Array.isArray(payload.stopOrder) || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(payload.dayId || "", { action: "remote-stop-reorder" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 调整地点顺序协作快照`)) {
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "???"} ??????????`)) {
     if (stopOrderMatches(payload.dayId, payload.stopOrder)) {
-      logActivity(`${payload.name || "协作者"} 调整地点顺序`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了地点顺序`;
+      logActivity(`${payload.name || "???"} ??????`, activityOptions);
+      dom.collabStatus.textContent = `${payload.name || "???"} ?????????????`;
       render();
       return;
     }
@@ -6123,19 +6227,19 @@ async function applyRemoteStopsReordered(payload = {}) {
   }
   if (dayIndex === activeDay) clearCurrentAmapRoute();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 调整地点顺序`, activityOptions);
-  dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了地点顺序`;
+  logActivity(`${payload.name || "???"} ??????`, activityOptions);
+  dom.collabStatus.textContent = `${payload.name || "???"} ???????`;
   render();
 }
 
 async function applyRemoteDayUpdated(payload = {}) {
   if (!payload.day?.id || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(payload.day.id || payload.dayId || "", { action: "remote-settings" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 更新当天设置协作快照`)) {
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "???"} ??????????`)) {
     const day = state.days.find((item) => item.id === payload.day.id);
     if (day) {
-      logActivity(`${payload.name || "协作者"} 更新当天设置`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照更新了 ${day.label}`;
+      logActivity(`${payload.name || "???"} ??????`, activityOptions);
+      dom.collabStatus.textContent = `${payload.name || "???"} ????????? ${day.label}`;
       render();
       return;
     }
@@ -6156,18 +6260,18 @@ async function applyRemoteDayUpdated(payload = {}) {
   guideState.startDate = state.startDate || guideState.startDate;
   guideState.endDate = state.endDate || guideState.endDate;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 更新当天设置`, activityOptions);
-  dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了 ${state.days[index].label}`;
+  logActivity(`${payload.name || "???"} ??????`, activityOptions);
+  dom.collabStatus.textContent = `${payload.name || "???"} ??? ${state.days[index].label}`;
   render();
 }
 
 async function applyRemoteDayCreated(payload = {}) {
   if (!payload.day?.id || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(payload.day.id || "", { action: "remote-create" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 新增一天协作快照`)) {
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "???"} ????????`)) {
     if (state.days.some((day) => day.id === payload.day.id)) {
-      logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了 ${payload.day.title || "一天"}`;
+      logActivity(`${payload.name || "???"} ?????${payload.day.title || payload.day.label || "???"}?`, activityOptions);
+      dom.collabStatus.textContent = `${payload.name || "???"} ????????? ${payload.day.title || "??"}`;
       render();
       return;
     }
@@ -6181,19 +6285,19 @@ async function applyRemoteDayCreated(payload = {}) {
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   activeStop = Math.min(activeStop, currentDay()?.stops?.length - 1 || 0);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, activityOptions);
-  dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了 ${payload.day.title || "一天"}`;
+  logActivity(`${payload.name || "???"} ?????${payload.day.title || payload.day.label || "???"}?`, activityOptions);
+  dom.collabStatus.textContent = `${payload.name || "???"} ??? ${payload.day.title || "??"}`;
   render();
 }
 
 async function applyRemoteDayDeleted(payload = {}) {
   if (!payload.dayId || payload.tripId !== tripId || state.days.length <= 1) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(payload.dayId || "", { deleted: true, action: "remote-delete", fallbackIndex: Number(payload.index ?? activeDay) }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 删除一天协作快照`)) {
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "???"} ????????`)) {
     if (!state.days.some((day) => day.id === payload.dayId)) {
       destroyCollabTextDoc();
-      logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了 ${payload.title || "一天"}`;
+      logActivity(`${payload.name || "???"} ?????${payload.title || "??"}?`, activityOptions);
+      dom.collabStatus.textContent = `${payload.name || "???"} ????????? ${payload.title || "??"}`;
       render();
       return;
     }
@@ -6212,18 +6316,18 @@ async function applyRemoteDayDeleted(payload = {}) {
     activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, { ...activityOptions, target: dayActivityTarget(payload.dayId || "", { deleted: true, action: "remote-delete", fallbackIndex: index }) });
-  dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了 ${payload.title || "一天"}`;
+  logActivity(`${payload.name || "???"} ?????${payload.title || "??"}?`, { ...activityOptions, target: dayActivityTarget(payload.dayId || "", { deleted: true, action: "remote-delete", fallbackIndex: index }) });
+  dom.collabStatus.textContent = `${payload.name || "???"} ??? ${payload.title || "??"}`;
   render();
 }
 
 async function applyRemoteDaysReordered(payload = {}) {
   if (!Array.isArray(payload.dayOrder) || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(currentDay()?.id || payload.dayOrder[0] || "", { action: "remote-day-reorder" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 调整日期顺序协作快照`)) {
+  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "???"} ??????????`)) {
     if (dayOrderMatches(payload.dayOrder)) {
-      logActivity(`${payload.name || "协作者"} 调整日期顺序`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了日期顺序`;
+      logActivity(`${payload.name || "???"} ??????`, activityOptions);
+      dom.collabStatus.textContent = `${payload.name || "???"} ?????????????`;
       render();
       return;
     }
@@ -6238,8 +6342,8 @@ async function applyRemoteDaysReordered(payload = {}) {
   resequencePlanDays();
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  logActivity(`${payload.name || "协作者"} 调整日期顺序`, { ...activityOptions, target: dayActivityTarget(activeDayId || currentDay()?.id || "", { action: "remote-day-reorder" }) });
-  dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了日期顺序`;
+  logActivity(`${payload.name || "???"} ??????`, { ...activityOptions, target: dayActivityTarget(activeDayId || currentDay()?.id || "", { action: "remote-day-reorder" }) });
+  dom.collabStatus.textContent = `${payload.name || "???"} ???????`;
   render();
 }
 
@@ -6249,7 +6353,7 @@ async function applyRemotePlanReplaced(payload = {}) {
   const activeStopId = currentStop()?.id || "";
   let appliedYjs = false;
   if (payload.planYjs) {
-    appliedYjs = await replaceLivePlanDocWithYjsState(payload.planYjs, `${payload.name || "协作者"} 更新了整份计划`);
+    appliedYjs = await replaceLivePlanDocWithYjsState(payload.planYjs, `${payload.name || "???"} ???????`);
   }
   if (!appliedYjs && payload.state?.days?.length) {
     state = ensurePlanDates(clone(payload.state));
@@ -6272,13 +6376,13 @@ async function applyRemotePlanReplaced(payload = {}) {
     bindCollabPlanDoc();
   }
   if (payload.replacementType === "version-restore") {
-    const versionLabel = restoredVersionLabel(payload.restoredVersionReason || "历史版本", payload.restoredVersionAt || "");
-    logActivity(`${payload.name || "协作者"} 恢复历史版本：${versionLabel}`, { broadcast: false });
-    dom.saveState.textContent = "计划已被恢复到历史版本";
-    dom.collabStatus.textContent = `${payload.name || "协作者"} 恢复了历史版本：${versionLabel}`;
+    const versionLabel = restoredVersionLabel(payload.restoredVersionReason || "????", payload.restoredVersionAt || "");
+    logActivity(`${payload.name || "???"} ???????${versionLabel}`, { broadcast: false });
+    dom.saveState.textContent = "???????????";
+    dom.collabStatus.textContent = `${payload.name || "???"} ????????${versionLabel}`;
   } else {
-    logActivity(`${payload.name || "协作者"} ${payload.reason || "更新整份计划"}`, { broadcast: false });
-    dom.collabStatus.textContent = appliedYjs ? `${payload.name || "协作者"} 通过协作快照更新了整份计划` : `${payload.name || "协作者"} 更新了整份计划`;
+    logActivity(`${payload.name || "???"} ${payload.reason || "??????"}`, { broadcast: false });
+    dom.collabStatus.textContent = appliedYjs ? `${payload.name || "???"} ?????????????` : `${payload.name || "???"} ???????`;
   }
   render();
 }
@@ -6527,10 +6631,10 @@ async function applyRemotePlan(remotePlan, meta = {}) {
   const nextRemotePlan = ensurePlanDates(clone(remotePlan));
   state = nextRemotePlan;
   const appliedLivePlanYjs = state.planYjs
-    ? await replaceLivePlanDocWithYjsState(state.planYjs, meta.label || "已应用云端计划结构协作快照")
+    ? await replaceLivePlanDocWithYjsState(state.planYjs, meta.label || "?????????????")
     : false;
   if (!appliedLivePlanYjs && state.planYjs) {
-    await applyPlanYjsStateToCurrentPlan(state.planYjs, meta.label || "已应用云端计划结构协作快照", { scheduleSave: false });
+    await applyPlanYjsStateToCurrentPlan(state.planYjs, meta.label || "?????????????", { scheduleSave: false });
   }
   lastSyncedState = clone(state);
   lastRemoteUpdatedAt = meta.updatedAt || lastRemoteUpdatedAt;
@@ -6560,27 +6664,27 @@ async function applyRemotePlan(remotePlan, meta = {}) {
 }
 
 async function resolveConflict(mode) {
-  if (!pendingConflict || !requireEdit("处理协作冲突")) return;
-  persistCurrentPlanFromDoc("处理冲突前已同步当前协作结构");
+  if (!pendingConflict || !requireEdit("??????")) return;
+  persistCurrentPlanFromDoc("??????????????");
   const conflict = pendingConflict;
   const localPlan = clone(state);
   const remotePlan = ensurePlanDates(clone(conflict.remote));
   const basePlan = clone(conflict.base || lastSyncedState || {});
   isResolvingConflict = true;
   try {
-    savePlanSnapshot(localPlan, "冲突处理前：我的版本");
-    savePlanSnapshot(remotePlan, "冲突处理前：云端版本", conflict.updatedBy || "协作者");
+    savePlanSnapshot(localPlan, "??????????");
+    savePlanSnapshot(remotePlan, "??????????", conflict.updatedBy || "???");
     if (mode === "remote") {
       await applyRemotePlan(remotePlan, { updatedAt: conflict.updatedAt || "" });
       hideConflictPanel();
-      dom.saveState.textContent = "已使用云端版本";
-      dom.collabStatus.textContent = "已采用协作者保存的云端版本，你的旧版本已进入历史版本。";
+      dom.saveState.textContent = "???????";
+      dom.collabStatus.textContent = "???????????????????????????";
       render();
       return;
     }
     let mergedWithYjsSnapshot = false;
     if (mode === "merge") {
-      mergedWithYjsSnapshot = await mergeConflictPlanYjsSnapshot(remotePlan, "已通过协作快照合并冲突");
+      mergedWithYjsSnapshot = await mergeConflictPlanYjsSnapshot(remotePlan, "???????????");
       if (!mergedWithYjsSnapshot) state = mergePlans(localPlan, remotePlan, basePlan);
     } else {
       state = ensurePlanDates(localPlan);
@@ -6588,16 +6692,16 @@ async function resolveConflict(mode) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     lastRemoteUpdatedAt = conflict.updatedAt || lastRemoteUpdatedAt;
     hideConflictPanel();
-    await logActivity(mergedWithYjsSnapshot ? "通过协作快照合并冲突" : mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
+    await logActivity(mergedWithYjsSnapshot ? "??????????" : mode === "merge" ? "??????" : "??????????");
     if (!mergedWithYjsSnapshot) {
       await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep");
     }
-    await pushRemoteState(mergedWithYjsSnapshot ? "已通过协作快照合并冲突" : mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
+    await pushRemoteState(mergedWithYjsSnapshot ? "???????????" : mode === "merge" ? "???????" : "???????");
     render();
   } catch (error) {
     pendingConflict = conflict;
     showConflictPanel(conflict);
-    dom.collabStatus.textContent = `处理冲突失败：${error.message}`;
+    dom.collabStatus.textContent = `???????${error.message}`;
   } finally {
     isResolvingConflict = false;
   }
@@ -6605,7 +6709,7 @@ async function resolveConflict(mode) {
 
 async function handleRemotePlanUpdate(next) {
   if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
-  persistCurrentPlanFromDoc("收到云端更新前已同步当前协作结构");
+  persistCurrentPlanFromDoc("????????????????");
   const remotePlan = ensurePlanDates(clone(next.data));
   if (pendingLocalRemoteUpdatedAt && next.updated_at === pendingLocalRemoteUpdatedAt && samePlanContent(state, remotePlan)) {
     lastRemoteUpdatedAt = next.updated_at || lastRemoteUpdatedAt;
@@ -6616,8 +6720,8 @@ async function handleRemotePlanUpdate(next) {
   }
   if (remotePlan.planYjs) {
     const localHadChanges = hasLocalChanges();
-    if (!localHadChanges) saveVersionSnapshot("协作者更新前版本");
-    const appliedYjs = await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, `${next.updated_by || "协作者"} 的云端协作快照已合并`);
+    if (!localHadChanges) saveVersionSnapshot("????????");
+    const appliedYjs = await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, `${next.updated_by || "???"} ??????????`);
     if (appliedYjs) {
       lastRemoteUpdatedAt = next.updated_at || lastRemoteUpdatedAt;
       if (!localHadChanges) lastSyncedState = clone(state);
@@ -6625,23 +6729,23 @@ async function handleRemotePlanUpdate(next) {
       await refreshEditAccessFromUrl();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       hideConflictPanel();
-      dom.saveState.textContent = "收到协作者协作快照";
+      dom.saveState.textContent = "?????????";
       dom.collabStatus.textContent = localHadChanges
-        ? `${next.updated_by || "协作者"} 的协作快照已合并，本地修改会继续保留。`
+        ? `${next.updated_by || "???"} ???????????????????`
         : next.updated_by
-          ? `${next.updated_by} 刚刚同步了协作快照`
-          : "共享计划协作快照已更新";
+          ? `${next.updated_by} ?????????`
+          : "???????????";
       render();
       if (localHadChanges && pendingPlanUpdates().length) {
-        flushPendingPlanUpdates("合并云端协作快照后重放离线协作更新").catch((error) => {
-          dom.collabStatus.textContent = `重放离线协作更新失败：${error.message}`;
+        flushPendingPlanUpdates("?????????????????").catch((error) => {
+          dom.collabStatus.textContent = `???????????${error.message}`;
         });
       }
       return;
     }
   }
   if (hasLocalChanges() && !samePlanContent(state, remotePlan)) {
-    savePlanSnapshot(remotePlan, "待合并的云端版本", next.updated_by || "协作者");
+    savePlanSnapshot(remotePlan, "????????", next.updated_by || "???");
     showConflictPanel({
       remote: remotePlan,
       local: clone(state),
@@ -6652,10 +6756,10 @@ async function handleRemotePlanUpdate(next) {
     });
     return;
   }
-  saveVersionSnapshot("协作者更新前版本");
+  saveVersionSnapshot("????????");
   await applyRemotePlan(remotePlan, { updatedAt: next.updated_at || "" });
-  dom.saveState.textContent = "收到协作者更新";
-  dom.collabStatus.textContent = next.updated_by ? `${next.updated_by} 刚刚更新了计划` : "共享计划已更新";
+  dom.saveState.textContent = "???????";
+  dom.collabStatus.textContent = next.updated_by ? `${next.updated_by} ???????` : "???????";
   render();
 }
 
@@ -6963,6 +7067,7 @@ let blockCommentFilters = {};
 let activeBlockPresenceId = "";
 let draggingDayBlockId = "";
 let selectedDayBlockIds = new Set();
+let lastSelectedDayBlockId = "";
 let collapsedDayBlockIds = loadCollapsedDayBlocks();
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
@@ -6984,13 +7089,13 @@ let amapLoadedKey = "";
 let amapRenderQueued = false;
 const initialGuideDates = defaultGuideDates();
 const guideState = {
-  destination: "甘肃",
-  origin: "上海",
+  destination: "??",
+  origin: "??",
   startDate: initialGuideDates.startDate,
   endDate: initialGuideDates.endDate,
-  pace: "轻松",
-  budget: "舒适",
-  interests: ["文化", "美食"],
+  pace: "??",
+  budget: "??",
+  interests: ["??", "??"],
 };
 
 function loadState() {
@@ -7072,7 +7177,7 @@ function versionHistory() {
   return safeJsonParse(localStorage.getItem(historyKey()), []) || [];
 }
 
-function savePlanSnapshot(plan, reason = "保存前版本", by = getCollabName()) {
+function savePlanSnapshot(plan, reason = "?????", by = getCollabName()) {
   if (!plan?.days?.length) return;
   const history = versionHistory();
   const last = history[0];
@@ -7091,7 +7196,7 @@ function savePlanSnapshot(plan, reason = "保存前版本", by = getCollabName()
   queueRemoteVersionSnapshot(entry);
 }
 
-function saveVersionSnapshot(reason = "保存前版本") {
+function saveVersionSnapshot(reason = "?????") {
   savePlanSnapshot(state, reason);
 }
 
@@ -7126,9 +7231,9 @@ async function loadRemoteVersionHistory() {
     .filter((entry) => entry.data?.days?.length)
     .map((entry) => ({
       id: entry.id,
-      reason: entry.reason || "云端历史版本",
+      reason: entry.reason || "??????",
       at: entry.created_at,
-      by: entry.created_by || "未知成员",
+      by: entry.created_by || "????",
       serialized: planVersionSerialized(entry.data),
       data: entry.data,
     }));
@@ -7157,60 +7262,60 @@ function renderVersionPreview() {
   }
   const summary = versionPreviewSummary(entry.data, state);
   const impact = versionRestoreImpactSummary();
-  const when = entry.at ? new Date(entry.at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "刚刚";
+  const when = entry.at ? new Date(entry.at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "??";
   dom.versionPreview.hidden = false;
   dom.versionPreview.innerHTML = `
-    <strong>准备恢复：${escapeHtml(entry.reason || "历史版本")}</strong>
-    <span>${escapeHtml(when)} · ${escapeHtml(entry.by || "未知成员")}</span>
+    <strong>?????${escapeHtml(entry.reason || "????")}</strong>
+    <span>${escapeHtml(when)} ? ${escapeHtml(entry.by || "????")}</span>
     <small>${escapeHtml(versionDiffSummary(entry.data, state))}</small>
     <ul>
-      ${summary.items.length ? summary.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "<li>与当前版本一致</li>"}
-      ${summary.extra ? `<li>还有 ${summary.extra} 项变化</li>` : ""}
+      ${summary.items.length ? summary.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "<li>???????</li>"}
+      ${summary.extra ? `<li>?? ${summary.extra} ???</li>` : ""}
     </ul>
     <div class="version-impact">
-      <strong>${impact.members.length ? "将影响当前在线协作者" : "当前没有其他成员在线编辑"}</strong>
+      <strong>${impact.members.length ? "??????????" : "????????????"}</strong>
       <ul>
-        ${impact.members.map((member) => `<li>${escapeHtml(member.name)} · ${escapeHtml(member.day)} · ${escapeHtml(member.activity)}</li>`).join("")}
-        ${impact.extra ? `<li>还有 ${impact.extra} 位成员在线</li>` : ""}
-        ${impact.members.length ? "" : "<li>恢复仍会写入共享计划，并同步给之后打开链接的成员。</li>"}
+        ${impact.members.map((member) => `<li>${escapeHtml(member.name)} ? ${escapeHtml(member.day)} ? ${escapeHtml(member.activity)}</li>`).join("")}
+        ${impact.extra ? `<li>?? ${impact.extra} ?????</li>` : ""}
+        ${impact.members.length ? "" : "<li>?????????????????????????</li>"}
       </ul>
     </div>
     <div class="version-preview-actions">
-      <button type="button" class="primary-btn" data-confirm-version-restore="${escapeHtml(entry.id)}">${icon("rotate-ccw")}确认恢复</button>
-      <button type="button" class="text-btn" data-cancel-version-restore>${icon("x")}取消</button>
+      <button type="button" class="primary-btn" data-confirm-version-restore="${escapeHtml(entry.id)}">${icon("rotate-ccw")}????</button>
+      <button type="button" class="text-btn" data-cancel-version-restore>${icon("x")}??</button>
     </div>
   `;
 }
 
 async function restoreVersion(versionId) {
-  if (!requireEdit("恢复历史版本")) return;
+  if (!requireEdit("??????")) return;
   const entry = versionHistory().find((item) => item.id === versionId);
   if (!entry?.data?.days?.length) return;
   pendingVersionRestoreId = "";
-  saveVersionSnapshot("恢复前版本");
+  saveVersionSnapshot("?????");
   state = ensurePlanDates(clone(entry.data));
   activeDay = 0;
   activeStop = 0;
   const restoredPlanYjs = state.planYjs || "";
   const restoredFromYjs = restoredPlanYjs
-    ? await replaceLivePlanDocWithYjsState(restoredPlanYjs, "已从历史版本恢复协作快照")
+    ? await replaceLivePlanDocWithYjsState(restoredPlanYjs, "????????????")
     : false;
   if (!restoredFromYjs) await replacePlanCollabDoc("local-version-restore");
-  const versionLabel = restoredVersionLabel(entry.reason || "历史版本", entry.at || "");
-  await logActivity(`恢复历史版本：${versionLabel}`);
-  await saveCollaborativePlanChange("已恢复历史版本");
-  await broadcastPlanReplaced("恢复历史版本", {
+  const versionLabel = restoredVersionLabel(entry.reason || "????", entry.at || "");
+  await logActivity(`???????${versionLabel}`);
+  await saveCollaborativePlanChange("???????");
+  await broadcastPlanReplaced("??????", {
     replacementType: "version-restore",
-    restoredVersionReason: entry.reason || "历史版本",
+    restoredVersionReason: entry.reason || "????",
     restoredVersionAt: entry.at || "",
     restoredVersionBy: entry.by || "",
   });
   render();
 }
 
-async function saveState(label = "已保存到本地") {
+async function saveState(label = "??????") {
   if (!canEdit()) {
-    dom.saveState.textContent = "只读模式未保存修改";
+    dom.saveState.textContent = "?????????";
     return;
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -7242,7 +7347,7 @@ function logActivity(text, options = {}) {
 }
 
 function getCollabName() {
-  const name = memberProfile?.name || dom.collabName.value.trim() || localStorage.getItem("tripboard-user-name") || "匿名成员";
+  const name = memberProfile?.name || dom.collabName.value.trim() || localStorage.getItem("tripboard-user-name") || "????";
   localStorage.setItem("tripboard-user-name", name);
   return name;
 }
@@ -7262,7 +7367,7 @@ function collabActorId() {
 }
 
 function memberInitial(name) {
-  const trimmed = String(name || "我").trim();
+  const trimmed = String(name || "?").trim();
   return trimmed.slice(0, 1).toUpperCase();
 }
 
@@ -7273,7 +7378,7 @@ function normalizeMemberProfile(profile = {}) {
   return {
     id: sessionId,
     name,
-    role: role || "同行成员",
+    role: role || "????",
     joinedAt: profile.joinedAt || new Date().toISOString(),
   };
 }
@@ -7290,7 +7395,7 @@ function saveMemberProfile(profile) {
 }
 
 function presencePayload() {
-  const profile = memberProfile || normalizeMemberProfile({ name: dom.collabName.value.trim() || "匿名成员", role: dom.collabRole.value.trim() || "同行成员" });
+  const profile = memberProfile || normalizeMemberProfile({ name: dom.collabName.value.trim() || "????", role: dom.collabRole.value.trim() || "????" });
   const stop = currentStop();
   const day = currentDay();
   const focusedTextField = currentFocusedTextField();
@@ -7299,8 +7404,8 @@ function presencePayload() {
   const blockEditing = blockEditingLabel(blockContext);
   return {
     memberId: profile?.id || sessionId,
-    name: profile?.name || "匿名成员",
-    role: profile?.role || "同行成员",
+    name: profile?.name || "????",
+    role: profile?.role || "????",
     activeDay: day?.label || "D1",
     activeDayId: day?.id || "",
     activeStopId: stop?.id || "",
@@ -7308,7 +7413,7 @@ function presencePayload() {
     activeBlockText: blockContext?.blockText || "",
     blockSelection: blockContext?.blockSelection || null,
     blockEditing,
-    editing: blockEditing ? blockContext.blockText : stop?.title || "行程",
+    editing: blockEditing ? blockContext.blockText : stop?.title || "??",
     textSelection,
     textEditing: textSelection ? textSelectionLabel(textSelection) : "",
     lockStopId: editLockEnabled && canEdit() ? stop?.id || "" : "",
@@ -7341,11 +7446,11 @@ function lockOwnerForStop(stopId = currentStop()?.id) {
   }) || null;
 }
 
-function requireStopUnlocked(actionLabel = "编辑这个地点") {
+function requireStopUnlocked(actionLabel = "??????") {
   const owner = lockOwnerForStop();
   if (!owner) return true;
-  dom.saveState.textContent = `${owner.name || "其他成员"} 正在编辑`;
-  dom.collabStatus.textContent = `${owner.name || "其他成员"} 正在编辑「${currentStop()?.title || "当前地点"}」，暂时不能${actionLabel}。`;
+  dom.saveState.textContent = `${owner.name || "????"} ????`;
+  dom.collabStatus.textContent = `${owner.name || "????"} ?????${currentStop()?.title || "????"}??????${actionLabel}?`;
   return false;
 }
 
@@ -7353,28 +7458,28 @@ function renderMembers() {
   const fallback = memberProfile ? [presencePayload()] : [];
   const members = onlineMembers.length ? onlineMembers : fallback;
   const count = members.length;
-  dom.onlineCountText.textContent = count ? `${count} 位成员在线协作` : "填写信息后加入协作";
+  dom.onlineCountText.textContent = count ? `${count} ???????` : "?????????";
   dom.onlineAvatars.innerHTML = members
     .slice(0, 5)
-    .map((member, index) => `<span class="avatar a${(index % 4) + 1}" title="${member.name} · ${member.role || "同行成员"}">${memberInitial(member.name)}</span>`)
+    .map((member, index) => `<span class="avatar a${(index % 4) + 1}" title="${member.name} ? ${member.role || "????"}">${memberInitial(member.name)}</span>`)
     .join("") + (count ? `<span class="online-dot"></span>` : "");
   dom.memberList.innerHTML =
     members
       .map(
         (member, index) => {
           const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
-          const blockEditing = member.blockEditing ? `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}` : "";
-          const activity = textEditing || blockEditing || `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}`;
+          const blockEditing = member.blockEditing ? `${member.blockEditing}?${member.activeBlockText || member.editing || "???"}` : "";
+          const activity = textEditing || blockEditing || `${member.lockMode === "editing" ? "????" : "??"}?${member.editing || "??"}`;
           return `
           <div class="member-item ${textEditing || blockEditing ? "is-text-editing" : ""}">
             <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
-            <p><strong>${escapeHtml(member.name || "匿名成员")}</strong><small>${escapeHtml(member.role || "同行成员")} · ${escapeHtml(member.activeDay || "在线")} · ${escapeHtml(activity)}</small></p>
-            ${textEditing || blockEditing ? `<em>${escapeHtml(member.editing || member.activeBlockText || "当前内容")}</em>` : ""}
+            <p><strong>${escapeHtml(member.name || "????")}</strong><small>${escapeHtml(member.role || "????")} ? ${escapeHtml(member.activeDay || "??")} ? ${escapeHtml(activity)}</small></p>
+            ${textEditing || blockEditing ? `<em>${escapeHtml(member.editing || member.activeBlockText || "????")}</em>` : ""}
           </div>
         `;
         },
       )
-      .join("") || `<div class="member-empty">填写姓名后加入协作，在线成员会显示在这里。</div>`;
+      .join("") || `<div class="member-empty">?????????????????????</div>`;
   renderTextPresence();
   refreshDayBlockTextPresence();
 }
@@ -7382,17 +7487,17 @@ function renderMembers() {
 function renderEditAccessState() {
   if (!dom.editAccessStatus || !dom.editAccessBtn) return;
   if (!tripId) {
-    dom.editAccessStatus.textContent = "创建共享计划后可设置编辑口令。";
-    dom.editAccessBtn.innerHTML = `${icon("key-round")}设置口令`;
+    dom.editAccessStatus.textContent = "???????????????";
+    dom.editAccessBtn.innerHTML = `${icon("key-round")}????`;
   } else if (state.editKeyHash && canEdit()) {
-    dom.editAccessStatus.textContent = "已启用编辑口令；口令编辑链接需要输入口令，直入邀请会带密钥，请只发给可信成员。";
-    dom.editAccessBtn.innerHTML = `${icon("key-round")}更新口令`;
+    dom.editAccessStatus.textContent = "???????????????????????????????????????";
+    dom.editAccessBtn.innerHTML = `${icon("key-round")}????`;
   } else if (state.editKeyHash) {
-    dom.editAccessStatus.textContent = state.editKeyHint ? `需要编辑口令，提示：${state.editKeyHint}` : "需要编辑口令才能修改计划。";
-    dom.editAccessBtn.innerHTML = `${icon("unlock-keyhole")}解锁编辑`;
+    dom.editAccessStatus.textContent = state.editKeyHint ? `??????????${state.editKeyHint}` : "?????????????";
+    dom.editAccessBtn.innerHTML = `${icon("unlock-keyhole")}????`;
   } else {
-    dom.editAccessStatus.textContent = "未设置编辑口令，编辑链接可直接修改；建议先设置口令再邀请成员。";
-    dom.editAccessBtn.innerHTML = `${icon("key-round")}设置口令`;
+    dom.editAccessStatus.textContent = "???????????????????????????????";
+    dom.editAccessBtn.innerHTML = `${icon("key-round")}????`;
   }
   refreshIcons();
 }
@@ -7464,46 +7569,46 @@ function applyReadonlyUi() {
   });
   if (dom.editAccessInput) dom.editAccessInput.disabled = forcedReadonlyMode || !tripId;
   if (dom.editAccessBtn) dom.editAccessBtn.disabled = forcedReadonlyMode || !tripId;
-  if (dom.copySharedLinkBtn) dom.copySharedLinkBtn.textContent = isReadonlyMode ? "复制当前只读链接" : state.editKeyHash ? "复制口令编辑链接" : "复制编辑链接";
+  if (dom.copySharedLinkBtn) dom.copySharedLinkBtn.textContent = isReadonlyMode ? "????????" : state.editKeyHash ? "????????" : "??????";
   if (dom.copyInviteLinkBtn) {
     dom.copyInviteLinkBtn.hidden = !tripId || !state.editKeyHash || isReadonlyMode;
     dom.copyInviteLinkBtn.disabled = isReadonlyMode;
   }
   renderEditAccessState();
   if (pendingConflict) {
-    dom.collabMode.textContent = "待处理冲突";
-    dom.saveState.textContent = "发现协作冲突";
+    dom.collabMode.textContent = "?????";
+    dom.saveState.textContent = "??????";
     return;
   }
   if (isReadonlyMode) {
-    dom.collabMode.textContent = editAccessRequired ? "需口令编辑" : "只读查看";
-    dom.saveState.textContent = editAccessRequired ? "需要编辑口令" : "只读模式";
-    dom.presenceText.textContent = "你正在查看计划";
-    dom.guideProgress.textContent = "只读";
+    dom.collabMode.textContent = editAccessRequired ? "?????" : "????";
+    dom.saveState.textContent = editAccessRequired ? "??????" : "????";
+    dom.presenceText.textContent = "???????";
+    dom.guideProgress.textContent = "??";
   } else {
-    dom.presenceText.textContent = "你正在编辑计划";
-    dom.guideProgress.textContent = "可保存";
+    dom.presenceText.textContent = "???????";
+    dom.guideProgress.textContent = "???";
   }
 }
 
 function renderVersionHistory() {
   const history = versionHistory();
   if (pendingVersionRestoreId && !history.some((entry) => entry.id === pendingVersionRestoreId)) pendingVersionRestoreId = "";
-  dom.versionCount.textContent = `${history.length} 条`;
+  dom.versionCount.textContent = `${history.length} ?`;
   dom.versionList.innerHTML =
     history
       .map((entry) => {
         const date = new Date(entry.at);
-        const time = Number.isNaN(date.getTime()) ? "刚刚" : date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        const time = Number.isNaN(date.getTime()) ? "??" : date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
         return `
           <button class="version-item${pendingVersionRestoreId === entry.id ? " is-selected" : ""}" data-version="${entry.id}">
-            <strong>${entry.reason || "历史版本"}</strong>
-            <span>${time} · ${entry.by || "未知成员"}</span>
+            <strong>${entry.reason || "????"}</strong>
+            <span>${time} ? ${entry.by || "????"}</span>
             <small class="version-diff">${escapeHtml(versionDiffSummary(entry.data, state))}</small>
           </button>
         `;
       })
-      .join("") || `<div class="member-empty">开始编辑后会自动保存最近 ${MAX_VERSION_HISTORY} 个版本。</div>`;
+      .join("") || `<div class="member-empty">???????????? ${MAX_VERSION_HISTORY} ????</div>`;
   renderVersionPreview();
 }
 
@@ -7513,7 +7618,7 @@ function renderCommentIndex() {
   const counts = commentIndexCounts(items);
   if (!counts[commentIndexFilter] && commentIndexFilter !== "open") commentIndexFilter = "open";
   const visibleItems = items.filter((item) => commentIndexFilter === "all" || (commentIndexFilter === "open" ? !item.resolved : item.resolved));
-  dom.commentIndexCount.textContent = `${counts.open} 未解决 / ${counts.all} 总计`;
+  dom.commentIndexCount.textContent = `${counts.open} ??? / ${counts.all} ??`;
   dom.commentIndexFilters.innerHTML = COMMENT_INDEX_FILTERS.map((filter) => `
     <button type="button" class="comment-filter${commentIndexFilter === filter.value ? " is-active" : ""}" data-comment-index-filter="${filter.value}">
       ${filter.label}<span>${counts[filter.value] || 0}</span>
@@ -7522,29 +7627,29 @@ function renderCommentIndex() {
   dom.commentIndexList.innerHTML = visibleItems
     .slice(0, 24)
     .map((item) => {
-      const status = item.resolved ? "已解决" : "未解决";
+      const status = item.resolved ? "???" : "???";
       const anchorLabel = item.anchor ? commentAnchorLabel(item.anchor) : "";
-      const replyText = item.replies ? ` · ${item.replies} 回复` : "";
-      const meta = `${item.dayLabel} · ${item.scopeLabel}${anchorLabel ? ` · ${anchorLabel}` : ""}${replyText}`;
+      const replyText = item.replies ? ` ? ${item.replies} ??` : "";
+      const meta = `${item.dayLabel} ? ${item.scopeLabel}${anchorLabel ? ` ? ${anchorLabel}` : ""}${replyText}`;
       return `
         <article class="comment-index-item${item.resolved ? " is-resolved" : ""}" data-comment-index-id="${escapeHtml(item.id)}" data-comment-index-scope="${escapeHtml(item.scope)}" role="button" tabindex="0">
           <span class="comment-index-status">${icon(item.resolved ? "check-circle-2" : "message-square-more")}${status}</span>
           <strong>${escapeHtml(item.targetLabel)}</strong>
           <p>${escapeHtml(item.text)}</p>
           <small>${escapeHtml(meta)}</small>
-          ${canEdit() ? `<span class="comment-index-actions"><span class="comment-index-author">${escapeHtml(item.author || "我")}${item.at ? ` · ${escapeHtml(formatCommentTime(item.at))}` : ""}</span><button type="button" class="comment-action" data-comment-index-resolve="${escapeHtml(item.id)}">${item.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}解决`}</button></span>` : ""}
-          ${canEdit() ? `<form class="comment-index-reply-form" data-comment-index-reply="${escapeHtml(item.id)}"><input placeholder="回复这个批注" aria-label="回复批注" /><button type="submit" class="icon-btn subtle" aria-label="发送回复">${icon("send")}</button></form>` : ""}
+          ${canEdit() ? `<span class="comment-index-actions"><span class="comment-index-author">${escapeHtml(item.author || "?")}${item.at ? ` ? ${escapeHtml(formatCommentTime(item.at))}` : ""}</span><button type="button" class="comment-action" data-comment-index-resolve="${escapeHtml(item.id)}">${item.resolved ? `${icon("rotate-ccw")}????` : `${icon("check")}??`}</button></span>` : ""}
+          ${canEdit() ? `<form class="comment-index-reply-form" data-comment-index-reply="${escapeHtml(item.id)}"><input placeholder="??????" aria-label="????" /><button type="submit" class="icon-btn subtle" aria-label="????">${icon("send")}</button></form>` : ""}
         </article>
       `;
     })
-    .join("") || `<div class="member-empty">${commentIndexFilter === "open" ? "当前没有未解决批注。" : "还没有批注记录。"}</div>`;
+    .join("") || `<div class="member-empty">${commentIndexFilter === "open" ? "??????????" : "????????"}</div>`;
 }
 
 async function toggleCommentIndexResolved(commentId = "") {
   const item = commentIndexItems().find((entry) => entry.id === commentId);
-  if (!item || !requireEdit(item.resolved ? "重新打开批注" : "解决批注")) return false;
+  if (!item || !requireEdit(item.resolved ? "??????" : "????")) return false;
   const patch = resolvedCommentPatch(item.resolved);
-  const actionText = item.resolved ? "重新打开" : "解决";
+  const actionText = item.resolved ? "????" : "??";
   const day = state.days[item.dayIndex] || state.days.find((entry) => entry.id === item.dayId);
   if (!day) return false;
   if (item.scope === "stop") {
@@ -7554,19 +7659,19 @@ async function toggleCommentIndexResolved(commentId = "") {
     let updated = false;
     if (wasCurrentStop) updated = await updateCollaborativeComment(commentId, patch);
     stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, patch);
-    await logActivity(`${actionText}批注「${stop.title || "地点"}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
+    await logActivity(`${actionText}???${stop.title || "??"}?`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
     await syncStopSnapshotToPlanDoc(stop.id, updated ? "comment-index-stop-resolve-snapshot" : "comment-index-stop-resolve-fallback-snapshot");
-    if (wasCurrentStop) await saveCollaborativeTextChange(`${actionText}批注「${stop.title || "地点"}」`);
-    else await saveCollaborativePlanChange(`${actionText}批注「${stop.title || "地点"}」`);
+    if (wasCurrentStop) await saveCollaborativeTextChange(`${actionText}???${stop.title || "??"}?`);
+    else await saveCollaborativePlanChange(`${actionText}???${stop.title || "??"}?`);
   } else if (item.scope === "day") {
     const wasCurrentDay = currentDay()?.id === day.id;
     let updated = false;
     if (wasCurrentDay) updated = await updateCollaborativeDayComment(commentId, patch);
     day.comments = commentsWithUpdatedComment(day.comments || [], commentId, patch);
-    await logActivity(`${actionText}当天批注「${day.title || day.label}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
+    await logActivity(`${actionText}?????${day.title || day.label}?`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, updated ? "comment-index-day-resolve-snapshot" : "comment-index-day-resolve-fallback-snapshot");
-    if (wasCurrentDay) await saveCollaborativeTextChange(`${actionText}当天批注「${day.title || day.label}」`);
-    else await saveCollaborativePlanChange(`${actionText}当天批注「${day.title || day.label}」`);
+    if (wasCurrentDay) await saveCollaborativeTextChange(`${actionText}?????${day.title || day.label}?`);
+    else await saveCollaborativePlanChange(`${actionText}?????${day.title || day.label}?`);
   } else if (item.scope === "block") {
     const blocks = normalizeDayBlocks(day.blocks || []);
     const block = blocks.find((entry) => entry.id === item.blockId);
@@ -7577,19 +7682,19 @@ async function toggleCommentIndexResolved(commentId = "") {
         ? { ...entry, comments: commentsWithUpdatedComment(entry.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() }
         : entry
     )));
-    await logActivity(`${actionText}块级批注「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
+    await logActivity(`${actionText}?????${block.text.slice(0, 18)}?`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
     if (!updated) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-resolve-fallback");
-    await saveCollaborativePlanChange(`${actionText}块级批注`);
+    await saveCollaborativePlanChange(`${actionText}????`);
   }
   render();
-  dom.saveState.textContent = item.resolved ? "已重新打开批注" : "已标记批注解决";
+  dom.saveState.textContent = item.resolved ? "???????" : "???????";
   return true;
 }
 
 async function replyFromCommentIndex(commentId = "", text = "") {
   const item = commentIndexItems().find((entry) => entry.id === commentId);
   const replyText = String(text || "").trim();
-  if (!item || !replyText || !requireEdit("回复批注")) return false;
+  if (!item || !replyText || !requireEdit("????")) return false;
   const day = state.days[item.dayIndex] || state.days.find((entry) => entry.id === item.dayId);
   if (!day) return false;
   if (item.scope === "stop") {
@@ -7600,20 +7705,20 @@ async function replyFromCommentIndex(commentId = "", text = "") {
     if (wasCurrentStop) reply = await addCollaborativeCommentReply(item.id, replyText);
     const nextReply = reply || createCommentReply(item.id, replyText);
     stop.comments = normalizeComments([...(stop.comments || []), nextReply]);
-    await logActivity(`回复批注「${stop.title || "地点"}」`, { target: { type: "comment", commentId: item.id, scope: "stop", stopId: stop.id || "" } });
+    await logActivity(`?????${stop.title || "??"}?`, { target: { type: "comment", commentId: item.id, scope: "stop", stopId: stop.id || "" } });
     await syncStopSnapshotToPlanDoc(stop.id, reply ? "comment-index-stop-reply-snapshot" : "comment-index-stop-reply-fallback-snapshot");
-    if (wasCurrentStop) await saveCollaborativeTextChange(`回复批注「${stop.title || "地点"}」`);
-    else await saveCollaborativePlanChange(`回复批注「${stop.title || "地点"}」`);
+    if (wasCurrentStop) await saveCollaborativeTextChange(`?????${stop.title || "??"}?`);
+    else await saveCollaborativePlanChange(`?????${stop.title || "??"}?`);
   } else if (item.scope === "day") {
     const wasCurrentDay = currentDay()?.id === day.id;
     let reply = false;
     if (wasCurrentDay) reply = await addCollaborativeDayCommentReply(item.id, replyText);
     const nextReply = reply || createCommentReply(item.id, replyText);
     day.comments = normalizeComments([...(day.comments || []), nextReply]);
-    await logActivity(`回复当天批注「${day.title || day.label}」`, { target: { type: "comment", commentId: item.id, scope: "day", dayId: day.id || "" } });
+    await logActivity(`???????${day.title || day.label}?`, { target: { type: "comment", commentId: item.id, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, reply ? "comment-index-day-reply-snapshot" : "comment-index-day-reply-fallback-snapshot");
-    if (wasCurrentDay) await saveCollaborativeTextChange(`回复当天批注「${day.title || day.label}」`);
-    else await saveCollaborativePlanChange(`回复当天批注「${day.title || day.label}」`);
+    if (wasCurrentDay) await saveCollaborativeTextChange(`???????${day.title || day.label}?`);
+    else await saveCollaborativePlanChange(`???????${day.title || day.label}?`);
   } else if (item.scope === "block") {
     const blocks = normalizeDayBlocks(day.blocks || []);
     const block = blocks.find((entry) => entry.id === item.blockId);
@@ -7625,12 +7730,12 @@ async function replyFromCommentIndex(commentId = "", text = "") {
         ? { ...entry, comments: normalizeComments([...(entry.comments || []), nextReply]), updatedBy: getCollabName(), updatedAt: new Date().toISOString() }
         : entry
     )));
-    await logActivity(`回复块级批注「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: item.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
+    await logActivity(`???????${block.text.slice(0, 18)}?`, { target: { type: "comment", commentId: item.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
     if (!reply) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-reply-fallback");
-    await saveCollaborativePlanChange("已回复块级批注");
+    await saveCollaborativePlanChange("???????");
   }
   render();
-  dom.saveState.textContent = "已回复批注";
+  dom.saveState.textContent = "?????";
   return true;
 }
 
@@ -7666,7 +7771,7 @@ function focusCommentIndexItem(commentId = "") {
       focused = true;
     }
   }
-  dom.saveState.textContent = focused ? "已定位到批注" : "已切换到批注所在位置";
+  dom.saveState.textContent = focused ? "??????" : "??????????";
   return true;
 }
 
@@ -7675,8 +7780,8 @@ function renderEditorLockState() {
   const locked = Boolean(owner);
   dom.editorPanel?.classList.toggle("is-locked", locked);
   if (dom.editLockBanner) dom.editLockBanner.hidden = !locked;
-  if (dom.editLockText) dom.editLockText.textContent = locked ? `${owner.name || "其他成员"} 正在编辑「${currentStop()?.title || "当前地点"}」，此处已临时锁定。` : "";
-  if (dom.editorLockState) dom.editorLockState.textContent = locked ? "协作锁定" : "保存后立即更新";
+  if (dom.editLockText) dom.editLockText.textContent = locked ? `${owner.name || "????"} ?????${currentStop()?.title || "????"}??????????` : "";
+  if (dom.editorLockState) dom.editorLockState.textContent = locked ? "????" : "???????";
   [
     dom.stopForm,
   ].forEach((form) => {
@@ -7692,7 +7797,7 @@ function renderEditorLockState() {
     if (dom[domKey]) dom[domKey].disabled = isReadonlyMode;
   });
   if (locked && dom.noteCollabStatus && !isReadonlyMode) {
-    dom.noteCollabStatus.textContent = "移动、删除和回填操作已锁定，地点详情字段仍可多人实时协作";
+    dom.noteCollabStatus.textContent = "????????????????????????????";
   }
   [
     dom.amapLookupBtn,
@@ -7754,39 +7859,39 @@ function canEdit() {
   return !forcedReadonlyMode && !isReadonlyMode;
 }
 
-function requireEdit(actionLabel = "编辑") {
+function requireEdit(actionLabel = "??") {
   if (canEdit()) return true;
-  dom.saveState.textContent = editAccessRequired ? "需要编辑口令" : `只读模式不能${actionLabel}`;
+  dom.saveState.textContent = editAccessRequired ? "??????" : `??????${actionLabel}`;
   dom.collabStatus.textContent = editAccessRequired
-    ? "当前计划已启用编辑口令。请输入口令解锁后才能修改行程。"
-    : "当前是只读链接，可以查看计划和显示在线成员，但不能修改行程。";
+    ? "???????????????????????????"
+    : "??????????????????????????????";
   return false;
 }
 
 function initSupabaseClient() {
   const config = window.TRIPBOARD_CONFIG || {};
   if (!config.supabaseUrl || !config.supabaseAnonKey || !window.supabase?.createClient) {
-    dom.collabMode.textContent = "本地模式";
-    dom.collabStatus.textContent = "未配置 Supabase，当前计划只保存在这个浏览器。";
+    dom.collabMode.textContent = "????";
+    dom.collabStatus.textContent = "??? Supabase???????????????";
     return;
   }
   supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-  dom.collabMode.textContent = isReadonlyMode ? "只读查看" : tripId ? "云端协作" : "可创建共享";
-  dom.collabStatus.textContent = isReadonlyMode ? "当前是只读链接，可以查看计划和显示在线成员。" : tripId ? `已连接计划：${tripId}` : "已配置云端，可创建共享计划。";
+  dom.collabMode.textContent = isReadonlyMode ? "????" : tripId ? "????" : "?????";
+  dom.collabStatus.textContent = isReadonlyMode ? "??????????????????????" : tripId ? `??????${tripId}` : "??????????????";
 }
 
-async function pushRemoteState(label = "已同步云端", options = {}) {
+async function pushRemoteState(label = "?????", options = {}) {
   if (!supabaseClient || !tripId) return false;
   if (!canEdit()) {
-    dom.collabStatus.textContent = editAccessRequired ? "需要编辑口令，不能向云端写入计划。" : "当前是只读链接，不能向云端写入计划。";
+    dom.collabStatus.textContent = editAccessRequired ? "?????????????????" : "??????????????????";
     return false;
   }
   if (pendingConflict) {
     showConflictPanel(pendingConflict);
     return false;
   }
-  if (!options.skipPendingFlush) await flushPendingPlanUpdates("保存前重放离线协作更新");
-  await refreshLiveCollabStateBeforeRemoteSave("保存云端前已刷新协作快照");
+  if (!options.skipPendingFlush) await flushPendingPlanUpdates("???????????");
+  await refreshLiveCollabStateBeforeRemoteSave("????????????");
   const savingPendingIds = pendingPlanUpdateIds();
   const payload = {
     id: tripId,
@@ -7815,8 +7920,8 @@ async function pushRemoteState(label = "已同步云端", options = {}) {
         if (samePlanContent(state, remotePlan)) {
           lastRemoteUpdatedAt = remote.updated_at || lastRemoteUpdatedAt;
           lastSyncedState = clone(remotePlan);
-          dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
-          dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
+          dom.collabMode.textContent = isReadonlyMode ? "????" : "????";
+          dom.collabStatus.textContent = `${label}??????????????`;
           clearPendingPlanUpdatesById(savingPendingIds);
           return true;
         }
@@ -7843,16 +7948,16 @@ async function pushRemoteState(label = "已同步云端", options = {}) {
     pendingLocalRemoteUpdatedAt = "";
     const pendingCount = pendingPlanUpdates().length;
     dom.collabStatus.textContent = pendingCount
-      ? `云端同步失败：${error.message}。已保留 ${pendingCount} 条本地协作更新，恢复连接后会重试。`
-      : `云端同步失败：${error.message}`;
+      ? `???????${error.message}???? ${pendingCount} ?????????????????`
+      : `???????${error.message}`;
     return false;
   }
   lastRemoteUpdatedAt = data?.updated_at || payload.updated_at;
   lastSyncedState = clone(state);
   clearPendingPlanUpdatesById(savingPendingIds);
   hideConflictPanel();
-  dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
-  dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
+  dom.collabMode.textContent = isReadonlyMode ? "????" : "????";
+  dom.collabStatus.textContent = `${label}??????????????`;
   return true;
 }
 
@@ -7860,7 +7965,7 @@ async function fetchRemotePlan() {
   if (!supabaseClient || !tripId) return null;
   const { data, error } = await supabaseClient.from("trip_plans").select("data, updated_at, updated_by").eq("id", tripId).maybeSingle();
   if (error) {
-    dom.collabStatus.textContent = `读取共享计划失败：${error.message}`;
+    dom.collabStatus.textContent = `?????????${error.message}`;
     return { error };
   }
   return data;
@@ -7871,28 +7976,28 @@ async function loadRemoteState() {
   const data = await fetchRemotePlan();
   if (data?.data?.days?.length) {
     const remoteHadPlanYjs = Boolean(data.data.planYjs);
-    saveVersionSnapshot("载入云端前版本");
+    saveVersionSnapshot("???????");
     await applyRemotePlan(data.data, { updatedAt: data.updated_at || "" });
     if (!remoteHadPlanYjs && !isReadonlyMode) {
-      ensureRemotePlanYjsSnapshot("已为旧共享计划补齐协作快照").catch((error) => {
-        dom.collabStatus.textContent = `补齐旧计划协作快照失败：${error.message}`;
+      ensureRemotePlanYjsSnapshot("?????????????").catch((error) => {
+        dom.collabStatus.textContent = `????????????${error.message}`;
       });
     }
-    dom.saveState.textContent = `已载入共享计划`;
+    dom.saveState.textContent = `???????`;
     dom.collabStatus.textContent = isReadonlyMode
       ? data.updated_by
-        ? `只读查看，最近由 ${data.updated_by} 更新`
-        : "只读查看，已连接共享计划"
+        ? `???????? ${data.updated_by} ??`
+        : "????????????"
       : data.updated_by
-        ? `最近由 ${data.updated_by} 更新`
-        : `已连接共享计划`;
+        ? `??? ${data.updated_by} ??`
+        : `???????`;
     render();
-    await flushPendingPlanUpdates("载入共享计划后重放离线协作更新");
+    await flushPendingPlanUpdates("???????????????");
   } else if (!isReadonlyMode) {
-    await pushRemoteState("已创建共享计划");
+    await pushRemoteState("???????");
   } else {
-    dom.saveState.textContent = "只读模式";
-    dom.collabStatus.textContent = "这个只读链接暂时没有找到对应的共享计划，请向创建者确认链接。";
+    dom.saveState.textContent = "????";
+    dom.collabStatus.textContent = "??????????????????????????????";
   }
 }
 
@@ -7918,7 +8023,7 @@ function subscribeRemoteState() {
       (payload) => {
         const next = payload.new;
         handleRemotePlanUpdate(next).catch((error) => {
-          dom.collabStatus.textContent = `处理远端更新失败：${error.message}`;
+          dom.collabStatus.textContent = `?????????${error.message}`;
         });
       },
     )
@@ -7945,49 +8050,49 @@ function subscribeRemoteState() {
     .on("broadcast", { event: "stop-created" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteStopCreated(payload).catch((error) => {
-        dom.collabStatus.textContent = `应用新增地点协作快照失败：${error.message}`;
+        dom.collabStatus.textContent = `?????????????${error.message}`;
       });
     })
     .on("broadcast", { event: "stop-deleted" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteStopDeleted(payload).catch((error) => {
-        dom.collabStatus.textContent = `应用删除地点协作快照失败：${error.message}`;
+        dom.collabStatus.textContent = `?????????????${error.message}`;
       });
     })
     .on("broadcast", { event: "stops-reordered" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteStopsReordered(payload).catch((error) => {
-        dom.collabStatus.textContent = `应用地点排序协作快照失败：${error.message}`;
+        dom.collabStatus.textContent = `?????????????${error.message}`;
       });
     })
     .on("broadcast", { event: "day-updated" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteDayUpdated(payload).catch((error) => {
-        dom.collabStatus.textContent = `应用当天设置协作快照失败：${error.message}`;
+        dom.collabStatus.textContent = `?????????????${error.message}`;
       });
     })
     .on("broadcast", { event: "day-created" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteDayCreated(payload).catch((error) => {
-        dom.collabStatus.textContent = `应用新增日期协作快照失败：${error.message}`;
+        dom.collabStatus.textContent = `?????????????${error.message}`;
       });
     })
     .on("broadcast", { event: "day-deleted" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteDayDeleted(payload).catch((error) => {
-        dom.collabStatus.textContent = `应用删除日期协作快照失败：${error.message}`;
+        dom.collabStatus.textContent = `?????????????${error.message}`;
       });
     })
     .on("broadcast", { event: "days-reordered" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemoteDaysReordered(payload).catch((error) => {
-        dom.collabStatus.textContent = `应用日期排序协作快照失败：${error.message}`;
+        dom.collabStatus.textContent = `?????????????${error.message}`;
       });
     })
     .on("broadcast", { event: "plan-replaced" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
       applyRemotePlanReplaced(payload).catch((error) => {
-        dom.collabStatus.textContent = `应用整份计划协作快照失败：${error.message}`;
+        dom.collabStatus.textContent = `?????????????${error.message}`;
       });
     })
     .on("presence", { event: "sync" }, () => {
@@ -8010,11 +8115,11 @@ function subscribeRemoteState() {
     })
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "实时同步";
+        dom.collabMode.textContent = isReadonlyMode ? "????" : "????";
         bindCollabTextDoc();
         bindCollabDayTextDoc();
-        flushPendingPlanUpdates("实时通道恢复后重放离线协作更新").catch((error) => {
-          dom.collabStatus.textContent = `重放离线协作更新失败：${error.message}`;
+        flushPendingPlanUpdates("???????????????").catch((error) => {
+          dom.collabStatus.textContent = `???????????${error.message}`;
         });
         trackPresence();
       }
@@ -8037,14 +8142,14 @@ async function connectSharedTrip(id) {
   renderVersionHistory();
   subscribeRemoteState();
   if (!memberProfile) {
-    dom.collabStatus.textContent = "请填写姓名和身份，然后点击“加入协作”，其他成员就能看到你在线。";
+    dom.collabStatus.textContent = "????????????????????????????????";
   }
 }
 
 async function createSharedTrip() {
-  if (!requireEdit("创建共享计划")) return;
+  if (!requireEdit("??????")) return;
   if (!supabaseClient) {
-    dom.collabStatus.textContent = "请先配置 config.js 里的 Supabase URL 和 anon key。";
+    dom.collabStatus.textContent = "???? config.js ?? Supabase URL ? anon key?";
     return;
   }
   const id = crypto.randomUUID ? crypto.randomUUID() : uid();
@@ -8058,12 +8163,12 @@ async function createSharedTrip() {
   editAccessGranted = true;
   editAccessRequired = Boolean(state.editKeyHash);
   isReadonlyMode = false;
-  await pushRemoteState("已创建共享计划");
+  await pushRemoteState("???????");
   subscribeRemoteState();
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
   window.history.replaceState({}, "", url.toString());
-  dom.collabStatus.textContent = "共享计划已创建，可以复制链接给其他成员。";
+  dom.collabStatus.textContent = "????????????????????";
 }
 
 function icon(name) {
@@ -8107,18 +8212,18 @@ function stableNumber(input) {
 function defaultTransportRoute(day) {
   const text = day?.route || day?.title || "";
   const parts = text
-    .split(/[·→\-—]/)
+    .split(/[??\-?]/)
     .map((item) => item.trim())
     .filter(Boolean);
-  let from = parts[0] || state.origin || "出发城市";
-  let to = parts[1] || state.destination || "目的地";
-  if (from.startsWith("抵达")) {
-    to = from.replace(/^抵达/, "").trim() || state.destination || "目的地";
-    from = state.origin || "出发城市";
+  let from = parts[0] || state.origin || "????";
+  let to = parts[1] || state.destination || "???";
+  if (from.startsWith("??")) {
+    to = from.replace(/^??/, "").trim() || state.destination || "???";
+    from = state.origin || "????";
   }
-  if (/返程|返回/.test(text)) {
-    from = parts[0]?.replace(/返程|返回/g, "").trim() || state.destination || "目的地";
-    to = state.origin || "返回城市";
+  if (/??|??/.test(text)) {
+    from = parts[0]?.replace(/??|??/g, "").trim() || state.destination || "???";
+    to = state.origin || "????";
   }
   return { from, to };
 }
@@ -8156,7 +8261,7 @@ function buildTransportOptions(day, index) {
       arrive: addMinutesToTime(time, duration),
       duration,
       price,
-      source: "示例报价",
+      source: "????",
     };
   };
 
@@ -8208,40 +8313,40 @@ function serviceHeaders(token, endpoint = "") {
 function renderServiceStatus() {
   const connected = [
     serviceConfig.aiEndpoint && "AI",
-    serviceConfig.amapEndpoint && "高德地点",
-    serviceConfig.amapRouteEndpoint && "高德路线",
-    serviceConfig.amapJsKey && "高德地图",
-    serviceConfig.weatherEndpoint && "天气代理",
+    serviceConfig.amapEndpoint && "????",
+    serviceConfig.amapRouteEndpoint && "????",
+    serviceConfig.amapJsKey && "????",
+    serviceConfig.weatherEndpoint && "????",
   ].filter(Boolean);
-  dom.serviceConfigStatus.textContent = connected.length ? `已配置 ${connected.join(" / ")}` : "本地兜底";
+  dom.serviceConfigStatus.textContent = connected.length ? `??? ${connected.join(" / ")}` : "????";
   dom.serviceStatusText.textContent = connected.length
-    ? `已保存 ${connected.join("、")} 接口。密钥只放在后端代理；AI 或高德未配置密钥时会保留本地兜底能力。`
-    : "AI、高德需要后端代理保存密钥；天气未配置代理时使用 Open-Meteo 免费接口。";
+    ? `??? ${connected.join("?")} ?????????????AI ???????????????????`
+    : "AI???????????????????????? Open-Meteo ?????";
 }
 
 function weatherLabel(code) {
   const map = {
-    0: "晴",
-    1: "少云",
-    2: "多云",
-    3: "阴",
-    45: "雾",
-    48: "雾凇",
-    51: "小毛毛雨",
-    53: "毛毛雨",
-    55: "强毛毛雨",
-    61: "小雨",
-    63: "中雨",
-    65: "大雨",
-    71: "小雪",
-    73: "中雪",
-    75: "大雪",
-    80: "阵雨",
-    81: "强阵雨",
-    82: "暴雨",
-    95: "雷雨",
+    0: "?",
+    1: "??",
+    2: "??",
+    3: "?",
+    45: "?",
+    48: "??",
+    51: "????",
+    53: "???",
+    55: "????",
+    61: "??",
+    63: "??",
+    65: "??",
+    71: "??",
+    73: "??",
+    75: "??",
+    80: "??",
+    81: "???",
+    82: "??",
+    95: "??",
   };
-  return map[Number(code)] || "天气待确认";
+  return map[Number(code)] || "?????";
 }
 
 async function geocodeDestination() {
@@ -8275,16 +8380,16 @@ async function requestWeatherForecast() {
   }
 
   const place = await geocodeDestination();
-  if (!place) throw new Error("没有找到目的地坐标，请尝试填写更具体的城市名，或配置自己的天气代理。");
+  if (!place) throw new Error("??????????????????????????????????");
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=16`;
   const response = await fetch(url);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
   const days = (data.daily?.time || []).map((date, index) => ({
     date,
-    text: `${Math.round(data.daily.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily.temperature_2m_max?.[index] ?? 0)}°C ${weatherLabel(data.daily.weather_code?.[index])} · 降水${Math.round(data.daily.precipitation_probability_max?.[index] ?? 0)}%`,
+    text: `${Math.round(data.daily.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily.temperature_2m_max?.[index] ?? 0)}?C ${weatherLabel(data.daily.weather_code?.[index])} ? ??${Math.round(data.daily.precipitation_probability_max?.[index] ?? 0)}%`,
   }));
-  return { source: `Open-Meteo · ${place.name}`, days };
+  return { source: `Open-Meteo ? ${place.name}`, days };
 }
 
 function weatherForDay(forecastDays, day, index) {
@@ -8296,9 +8401,9 @@ function weatherForDay(forecastDays, day, index) {
 }
 
 async function syncWeather() {
-  if (!requireEdit("同步天气")) return;
-  saveVersionSnapshot("同步天气前版本");
-  dom.serviceStatusText.textContent = "正在同步天气...";
+  if (!requireEdit("????")) return;
+  saveVersionSnapshot("???????");
+  dom.serviceStatusText.textContent = "??????...";
   try {
     const forecast = await requestWeatherForecast();
     let applied = 0;
@@ -8310,16 +8415,16 @@ async function syncWeather() {
       weatherPatches.push({ id: day.id, weather: day.weather });
       applied += 1;
     });
-    logActivity(`同步天气 ${applied} 天`);
+    logActivity(`???? ${applied} ?`);
     if (applied) {
       await Promise.all(weatherPatches.map((patch) => patchDayMetaInDoc(patch.id, { weather: patch.weather }, "local-weather-sync-patch")));
       await syncPlanMetaToDoc("local-weather-sync-meta");
     }
-    await saveCollaborativePlanChange("已同步天气");
-    dom.serviceStatusText.textContent = `已同步 ${applied} 天天气，来源：${forecast.source || "天气接口"}。`;
+    await saveCollaborativePlanChange("?????");
+    dom.serviceStatusText.textContent = `??? ${applied} ???????${forecast.source || "????"}?`;
     render();
   } catch (error) {
-    dom.serviceStatusText.textContent = `天气同步失败：${error.message}`;
+    dom.serviceStatusText.textContent = `???????${error.message}`;
   }
 }
 
@@ -8339,7 +8444,7 @@ function normalizeTransportItem(item, index, fallbackRoute) {
     arrive,
     duration,
     price: Number(item.price || item.amount || item.lowestPrice || 0),
-    source: item.source || "外部接口",
+    source: item.source || "????",
     carrier: item.carrier || item.airline || "",
     stops: Number.isFinite(stops) ? Math.max(0, stops) : 0,
   };
@@ -8349,7 +8454,7 @@ function officialTransportLinks(route, day) {
   const date = day?.date || "";
   const from = encodeURIComponent(route.from || "");
   const to = encodeURIComponent(route.to || "");
-  const query = encodeURIComponent(`${route.from} 到 ${route.to} ${date} 机票 火车票`);
+  const query = encodeURIComponent(`${route.from} ? ${route.to} ${date} ?? ???`);
   return {
     ctrip: `https://www.ctrip.com/search2/?word=${query}`,
     trip: `https://www.trip.com/search?keyword=${query}`,
@@ -8410,7 +8515,7 @@ function setManualQuoteEditing(quote = null) {
     dom.transportTo.value = quote.to || dom.transportTo.value;
   }
   if (dom.manualQuoteSubmitBtn) {
-    dom.manualQuoteSubmitBtn.innerHTML = `${icon(quote ? "save" : "plus")}<span>${quote ? "更新报价" : "保存报价"}</span>`;
+    dom.manualQuoteSubmitBtn.innerHTML = `${icon(quote ? "save" : "plus")}<span>${quote ? "????" : "????"}</span>`;
   }
   if (dom.cancelQuoteEditBtn) dom.cancelQuoteEditBtn.hidden = !quote;
   refreshIcons();
@@ -8441,7 +8546,7 @@ function quoteDraftFromManualForm(existing = {}) {
     arrive: dom.manualQuoteArrive.value || "--:--",
     duration: durationFromTimes(dom.manualQuoteDepart.value, dom.manualQuoteArrive.value),
     price: numberValue(dom.manualQuotePrice.value),
-    source: existing.source || "手动保存",
+    source: existing.source || "????",
   };
 }
 
@@ -8476,7 +8581,7 @@ function setCandidateEditing(candidate = null) {
     } : null;
   }
   if (dom.addCandidateBtn) {
-    dom.addCandidateBtn.innerHTML = `${icon(candidate ? "save" : "bookmark-plus")}<span>${candidate ? "更新备选" : "加入备选池"}</span>`;
+    dom.addCandidateBtn.innerHTML = `${icon(candidate ? "save" : "bookmark-plus")}<span>${candidate ? "????" : "?????"}</span>`;
   }
   if (dom.cancelCandidateEditBtn) dom.cancelCandidateEditBtn.hidden = !candidate;
   refreshIcons();
@@ -8493,7 +8598,7 @@ function hideAmapCandidates(target = "both") {
 }
 
 function placeCoordinateText(place) {
-  return place?.lng && place?.lat ? `${place.lng}, ${place.lat}` : "坐标待确认";
+  return place?.lng && place?.lat ? `${place.lng}, ${place.lat}` : "?????";
 }
 
 function renderAmapCandidates(target, places = [], keyword = "") {
@@ -8501,13 +8606,13 @@ function renderAmapCandidates(target, places = [], keyword = "") {
   if (!container) return;
   if (!places.length) {
     container.hidden = false;
-    container.innerHTML = `<p>高德没有返回候选地点，可以换一个关键词或直接打开高德搜索。</p>`;
+    container.innerHTML = `<p>?????????????????????????????</p>`;
     return;
   }
   container.hidden = false;
   container.innerHTML = `
     <div class="amap-place-results-head">
-      <strong>高德候选地点</strong>
+      <strong>??????</strong>
       <span>${escapeHtml(keyword)}</span>
     </div>
     <div class="amap-place-list">
@@ -8515,9 +8620,9 @@ function renderAmapCandidates(target, places = [], keyword = "") {
         .map(
           (place, index) => `
             <button type="button" class="amap-place-option" data-amap-target="${target}" data-amap-place-index="${index}">
-              <strong>${escapeHtml(place.title || "候选地点")}</strong>
-              <span>${escapeHtml(place.address || place.city || "地址待确认")}</span>
-              <small>${escapeHtml([place.type, placeCoordinateText(place)].filter(Boolean).join(" · "))}</small>
+              <strong>${escapeHtml(place.title || "????")}</strong>
+              <span>${escapeHtml(place.address || place.city || "?????")}</span>
+              <small>${escapeHtml([place.type, placeCoordinateText(place)].filter(Boolean).join(" ? "))}</small>
             </button>
           `,
         )
@@ -8535,8 +8640,8 @@ function applyQuickAmapPlace(place, keyword = "") {
   if (keyword && !dom.quickAmapKeyword.value.trim()) dom.quickAmapKeyword.value = keyword;
   if (place.address) dom.quickAddress.value = place.address;
   dom.optimizeHint.textContent = place.lng && place.lat
-    ? `已选择高德候选：${place.title || keyword}（${placeCoordinateText(place)}）。加入当天或备选池时会带入坐标。`
-    : `已选择高德候选：${place.title || keyword}，但没有坐标。`;
+    ? `????????${place.title || keyword}?${placeCoordinateText(place)}?????????????????`
+    : `????????${place.title || keyword}???????`;
 }
 
 async function applyFieldAmapPlace(place, keyword = "") {
@@ -8552,7 +8657,7 @@ async function applyFieldAmapPlace(place, keyword = "") {
     syncCollabTextFieldToDoc("amapKeyword", dom.fieldAmapKeyword.value),
     syncCollabStructValuesToDoc({ lng: dom.fieldLng.value, lat: dom.fieldLat.value }, "local-amap-place-select"),
   ]);
-  dom.saveState.textContent = place.lng && place.lat ? `已选择高德候选：${place.title || keyword}` : `已选择高德候选，但坐标待确认：${place.title || keyword}`;
+  dom.saveState.textContent = place.lng && place.lat ? `????????${place.title || keyword}` : `???????????????${place.title || keyword}`;
 }
 
 function clearQuickPlaceForm({ keepCandidateEditing = false } = {}) {
@@ -8579,7 +8684,7 @@ async function saveProviderTransportQuotes(items = [], day = currentDay(), sourc
   const additions = incoming.filter((quote) => !existingIds.has(quote.id) && !existingKeys.has(transportOptionIdentity(quote)));
   if (!additions.length) return 0;
   if (await addCollaborativeTransportQuotes(additions, "local-provider-transport-quotes-batch")) {
-    persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
+    persistCurrentPlanFromDoc("?????????????");
     return additions.length;
   }
   state.transportQuotes = normalizeTransportQuotes([...additions, ...existing]).slice(0, 80);
@@ -8597,21 +8702,21 @@ function currentManualQuotes(day) {
 
 function normalizeImportCategory(value, provider = "") {
   const text = `${value || ""} ${provider || ""}`;
-  if (/住宿|酒店|民宿|入住|离店|房型/.test(text)) return "住宿";
-  if (/交通|航班|机票|动车|高铁|火车|车次|机场|车站/.test(text)) return "交通";
-  if (/景点|门票|入园|预约|景区/.test(text)) return "景点";
-  if (/餐饮|餐厅|美团|点评|团购|套餐|到店|排队/.test(text)) return "餐饮";
-  return ["住宿", "餐饮", "交通", "景点", "其他"].includes(value) ? value : "其他";
+  if (/??|??|??|??|??|??/.test(text)) return "??";
+  if (/??|??|??|??|??|??|??|??|??/.test(text)) return "??";
+  if (/??|??|??|??|??/.test(text)) return "??";
+  if (/??|??|??|??|??|??|??|??/.test(text)) return "??";
+  return ["??", "??", "??", "??", "??"].includes(value) ? value : "??";
 }
 
 function providerDefaults(provider = "") {
   const category = normalizeImportCategory("", provider);
   const defaults = {
-    住宿: { title: "住宿入住", time: "15:00", image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80" },
-    餐饮: { title: "餐厅预约", time: "18:30", image: images.food },
-    交通: { title: "交通订单", time: "09:00", image: images.train },
-    景点: { title: "景点预约", time: "10:00", image: images.museum },
-    其他: { title: "外部记录", time: "10:00", image: images.city },
+    ??: { title: "????", time: "15:00", image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80" },
+    ??: { title: "????", time: "18:30", image: images.food },
+    ??: { title: "????", time: "09:00", image: images.train },
+    ??: { title: "????", time: "10:00", image: images.museum },
+    ??: { title: "????", time: "10:00", image: images.city },
   };
   return { category, ...defaults[category] };
 }
@@ -8626,30 +8731,30 @@ function importDateOptionsText(dateValue) {
   const exactIndex = dateValue ? state.days.findIndex((day) => day.date === dateValue) : -1;
   const index = exactIndex >= 0 ? exactIndex : activeDay;
   const day = state.days[index];
-  const label = day?.date ? `${day.label} · ${formatDisplayDate(day.date)}` : currentDay()?.label || "当前天";
-  return dateValue && exactIndex < 0 ? `未匹配计划日期，将导入 ${label}` : label;
+  const label = day?.date ? `${day.label} ? ${formatDisplayDate(day.date)}` : currentDay()?.label || "???";
+  return dateValue && exactIndex < 0 ? `??????????? ${label}` : label;
 }
 
 function parseMultiOrigins(value) {
   return String(value || "")
-    .split(/[\n;；,，]+/)
+    .split(/[\n;?,?]+/)
     .map((entry) => entry.trim())
     .filter(Boolean)
     .slice(0, 6)
     .map((entry, index) => {
-      const parts = entry.split(/[:：]/);
+      const parts = entry.split(/[:?]/);
       if (parts.length > 1) {
-        return { name: parts[0].trim() || `成员${index + 1}`, from: parts.slice(1).join(":").trim() };
+        return { name: parts[0].trim() || `??${index + 1}`, from: parts.slice(1).join(":").trim() };
       }
-      return { name: `成员${index + 1}`, from: entry };
+      return { name: `??${index + 1}`, from: entry };
     })
     .filter((item) => item.from);
 }
 
 function transportDurationText(minutes) {
   const duration = Number(minutes || 0);
-  if (!duration) return "时长待确认";
-  return `约${Math.floor(duration / 60)}小时${duration % 60}分`;
+  if (!duration) return "?????";
+  return `?${Math.floor(duration / 60)}??${duration % 60}?`;
 }
 
 function bestFlightOption(items) {
@@ -8691,35 +8796,35 @@ function renderMultiOriginResults() {
     .at(-1);
   dom.multiOriginResults.innerHTML = `
     <div class="multi-origin-summary">
-      <strong>${successful.length}/${multiOriginComparisons.length} 人已匹配航班</strong>
-      <span>合计最低预算 ${money(total)} · 人均 ${money(average)}${earliestArrive ? ` · 抵达 ${earliestArrive}${latestArrive && latestArrive !== earliestArrive ? `-${latestArrive}` : ""}` : ""}</span>
+      <strong>${successful.length}/${multiOriginComparisons.length} ??????</strong>
+      <span>?????? ${money(total)} ? ?? ${money(average)}${earliestArrive ? ` ? ?? ${earliestArrive}${latestArrive && latestArrive !== earliestArrive ? `-${latestArrive}` : ""}` : ""}</span>
     </div>
     ${multiOriginComparisons
       .map((item) => {
         if (item.loading) {
           return `
             <article class="multi-origin-item is-loading">
-              <strong>${escapeHtml(item.name)} · ${escapeHtml(item.from)}</strong>
-              <span>正在查询 ${escapeHtml(item.from)} → ${escapeHtml(item.to)} 的航班报价...</span>
+              <strong>${escapeHtml(item.name)} ? ${escapeHtml(item.from)}</strong>
+              <span>???? ${escapeHtml(item.from)} ? ${escapeHtml(item.to)} ?????...</span>
             </article>
           `;
         }
         if (!item.best) {
           return `
             <article class="multi-origin-item is-empty">
-              <strong>${escapeHtml(item.name)} · ${escapeHtml(item.from)}</strong>
-              <span>${escapeHtml(item.error || "没有匹配航班，可调整机场码或日期。")}</span>
+              <strong>${escapeHtml(item.name)} ? ${escapeHtml(item.from)}</strong>
+              <span>${escapeHtml(item.error || "?????????????????")}</span>
             </article>
           `;
         }
         const score = compareScore(item.best);
-        const tag = score === bestScore ? "推荐" : score <= bestScore * 1.25 ? "备选" : "成本偏高";
-        const carrier = item.best.carrier ? ` · ${escapeHtml(item.best.carrier)}` : "";
+        const tag = score === bestScore ? "??" : score <= bestScore * 1.25 ? "??" : "????";
+        const carrier = item.best.carrier ? ` ? ${escapeHtml(item.best.carrier)}` : "";
         return `
           <article class="multi-origin-item">
             <div>
-              <strong>${escapeHtml(item.name)} · ${escapeHtml(item.from)} → ${escapeHtml(item.to)}</strong>
-              <span>${escapeHtml(item.best.code)} · ${escapeHtml(item.best.depart)} - ${escapeHtml(item.best.arrive)} · ${transportDurationText(item.best.duration)} · ${item.best.stops || 0}次经停${carrier}</span>
+              <strong>${escapeHtml(item.name)} ? ${escapeHtml(item.from)} ? ${escapeHtml(item.to)}</strong>
+              <span>${escapeHtml(item.best.code)} ? ${escapeHtml(item.best.depart)} - ${escapeHtml(item.best.arrive)} ? ${transportDurationText(item.best.duration)} ? ${item.best.stops || 0}???${carrier}</span>
             </div>
             <em>${money(item.best.price)}</em>
             <b>${tag}</b>
@@ -8733,14 +8838,14 @@ function renderMultiOriginResults() {
 function parseExternalOrderText(text, provider = pendingProvider) {
   const source = String(text || "");
   const currentYear = new Date().getFullYear();
-  const amountMatch = source.match(/(?:¥|￥|金额|房费|总价|合计|实付|支付|付款)[^\d]{0,8}(\d+(?:\.\d+)?)/);
-  const timeMatch = source.match(/(?:\b|[^0-9])([01]?\d|2[0-3])[:：]([0-5]\d)(?:\b|[^0-9])/);
-  const fullDateMatch = source.match(/(20\d{2})[年/\-.](\d{1,2})[月/\-.](\d{1,2})日?/);
-  const dateMatch = source.match(/(\d{1,2})月(\d{1,2})日/);
-  const dateTimeMatch = source.match(/(\d{1,2})月(\d{1,2})日[^0-9]{0,8}([01]?\d|2[0-3])[:：]([0-5]\d)/);
-  const addressMatch = source.match(/(?:地址|地点|位置|入住地址|到店地址|集合点)[:：\s]*(.+?)(?:\n|$)/);
-  const titleMatch = source.match(/(?:商户|酒店|民宿|餐厅|名称|订单|项目|景点)[:：\s]*(.+?)(?:\n|$)/);
-  const orderMatch = source.match(/(?:订单号|订单编号|券码|确认号|预订号)[:：\s]*([A-Za-z0-9-]{5,})/);
+  const amountMatch = source.match(/(?:?|?|??|??|??|??|??|??|??)[^\d]{0,8}(\d+(?:\.\d+)?)/);
+  const timeMatch = source.match(/(?:\b|[^0-9])([01]?\d|2[0-3])[:?]([0-5]\d)(?:\b|[^0-9])/);
+  const fullDateMatch = source.match(/(20\d{2})[?/\-.](\d{1,2})[?/\-.](\d{1,2})??/);
+  const dateMatch = source.match(/(\d{1,2})?(\d{1,2})?/);
+  const dateTimeMatch = source.match(/(\d{1,2})?(\d{1,2})?[^0-9]{0,8}([01]?\d|2[0-3])[:?]([0-5]\d)/);
+  const addressMatch = source.match(/(?:??|??|??|????|????|???)[:?\s]*(.+?)(?:\n|$)/);
+  const titleMatch = source.match(/(?:??|??|??|??|??|??|??|??)[:?\s]*(.+?)(?:\n|$)/);
+  const orderMatch = source.match(/(?:???|????|??|???|???)[:?\s]*([A-Za-z0-9-]{5,})/);
   const urlMatch = source.match(/https?:\/\/[^\s]+/);
   const category = normalizeImportCategory(source, provider);
   const defaults = providerDefaults(provider || category);
@@ -8763,11 +8868,11 @@ function parseExternalOrderText(text, provider = pendingProvider) {
     sourceUrl: urlMatch?.[0] || "",
     note: source.slice(0, 900),
     confidence: 0.45,
-    warnings: ["本地规则解析结果，请核对后导入。"],
+    warnings: ["????????????????"],
   };
 }
 
-function applyParsedImport(parsed = {}, source = "本地解析") {
+function applyParsedImport(parsed = {}, source = "????") {
   const category = normalizeImportCategory(parsed.category, pendingProvider);
   const defaults = providerDefaults(category);
   dom.importCategory.value = category;
@@ -8797,16 +8902,16 @@ function renderImportPreview(parsed) {
   dom.importPreview.hidden = false;
   dom.importPreview.innerHTML = `
     <div class="import-preview-head">
-      <strong>${escapeHtml(parsed.source || "解析结果")}</strong>
-      <span>${confidence ? `可信度 ${confidence}%` : "请人工核对"}</span>
+      <strong>${escapeHtml(parsed.source || "????")}</strong>
+      <span>${confidence ? `??? ${confidence}%` : "?????"}</span>
     </div>
     <dl>
-      <div><dt>类别</dt><dd>${escapeHtml(parsed.category || dom.importCategory.value || "其他")}</dd></div>
-      <div><dt>日期</dt><dd>${escapeHtml(parsed.date || dom.importDate.value || "按当前天")}</dd></div>
-      <div><dt>名称</dt><dd>${escapeHtml(parsed.title || dom.importName.value || "外部记录")}</dd></div>
-      <div><dt>金额</dt><dd>${money(parsed.amount ?? parsed.budget ?? dom.importBudget.value)}</dd></div>
-      <div><dt>地址</dt><dd>${escapeHtml(parsed.address || dom.importAddress.value || "待确认")}</dd></div>
-      <div><dt>导入到</dt><dd>${escapeHtml(importDateOptionsText(parsed.date || dom.importDate.value))}</dd></div>
+      <div><dt>??</dt><dd>${escapeHtml(parsed.category || dom.importCategory.value || "??")}</dd></div>
+      <div><dt>??</dt><dd>${escapeHtml(parsed.date || dom.importDate.value || "????")}</dd></div>
+      <div><dt>??</dt><dd>${escapeHtml(parsed.title || dom.importName.value || "????")}</dd></div>
+      <div><dt>??</dt><dd>${money(parsed.amount ?? parsed.budget ?? dom.importBudget.value)}</dd></div>
+      <div><dt>??</dt><dd>${escapeHtml(parsed.address || dom.importAddress.value || "???")}</dd></div>
+      <div><dt>???</dt><dd>${escapeHtml(importDateOptionsText(parsed.date || dom.importDate.value))}</dd></div>
     </dl>
     ${warnings.length ? `<ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
   `;
@@ -8814,9 +8919,9 @@ function renderImportPreview(parsed) {
 
 async function requestExternalOrderParse() {
   const text = dom.importNote.value.trim();
-  if (!text) throw new Error("请先粘贴订单短信、邮件、分享文本或截图识别出的文字。");
+  if (!text) throw new Error("??????????????????????????");
   if (!externalImportConfig.endpoint) {
-    return { source: "本地规则", parsed: parseExternalOrderText(text, pendingProvider) };
+    return { source: "????", parsed: parseExternalOrderText(text, pendingProvider) };
   }
   const response = await fetchWithTimeout(externalImportConfig.endpoint, {
     method: "POST",
@@ -8833,7 +8938,7 @@ async function requestExternalOrderParse() {
   if (!response.ok || data.ok === false) {
     throw new Error(data.message || data.error || `HTTP ${response.status}`);
   }
-  return { source: data.source || "AI 解析", parsed: data.parsed || data };
+  return { source: data.source || "AI ??", parsed: data.parsed || data };
 }
 
 function matchesTransportFilter(option) {
@@ -8872,24 +8977,24 @@ function renderTransport() {
 
   dom.flightAvgPrice.textContent = money(averagePrice(options, "flight"));
   dom.trainAvgPrice.textContent = money(averagePrice(options, "train"));
-  const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
+  const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /??/.test(item.source || ""));
   dom.transportProviderStatus.textContent = manualQuotes.length
     ? tripId && collabPlanDoc
-      ? "协作报价"
-      : "手动报价"
+      ? "????"
+      : "????"
     : transportProviderItems.length
     ? isDemoProxy
-      ? "代理示例"
-      : "真实接口"
-    : "本地示例";
-  dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} · ${route.from} 到 ${route.to}，${
+      ? "????"
+      : "????"
+    : "????";
+  dom.transportDayHint.textContent = `${day?.date ? formatDisplayDate(day.date) : day?.label} ? ${route.from} ? ${route.to}?${
     manualQuotes.length
-      ? `已保存 ${manualQuotes.length} 条手动报价；也可以继续打开官方页面查询。`
+      ? `??? ${manualQuotes.length} ????????????????????`
       : transportProviderItems.length
       ? isDemoProxy
-        ? "后端已连通，但当前仍是代理示例数据。"
-        : "当前显示后端真实接口返回的报价。"
-      : "当前为本地生成的可筛选示例报价。"
+        ? "??????????????????"
+        : "????????????????"
+      : "????????????????"
   }`;
   if (editingTransportQuoteId && !manualQuoteIds.has(editingTransportQuoteId)) {
     setManualQuoteEditing(null);
@@ -8901,18 +9006,18 @@ function renderTransport() {
           <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}" data-quote="${escapeHtml(item.id || "")}">
             <span class="transport-icon">${icon(item.type === "flight" ? "plane" : "train-front")}</span>
             <div>
-              <strong>${escapeHtml(item.code)} · ${escapeHtml(item.from)} → ${escapeHtml(item.to)}</strong>
-              <span>${escapeHtml(item.depart)} - ${escapeHtml(item.arrive)} · 约${Math.floor(item.duration / 60)}小时${item.duration % 60}分 · ${escapeHtml(item.source)}</span>
+              <strong>${escapeHtml(item.code)} ? ${escapeHtml(item.from)} ? ${escapeHtml(item.to)}</strong>
+              <span>${escapeHtml(item.depart)} - ${escapeHtml(item.arrive)} ? ?${Math.floor(item.duration / 60)}??${item.duration % 60}? ? ${escapeHtml(item.source)}</span>
             </div>
             <em>${money(item.price)}</em>
             ${manualQuoteIds.has(item.id) ? `<span class="transport-actions">
-              <button type="button" class="icon-btn subtle" data-edit-quote="${escapeHtml(item.id)}" aria-label="编辑报价">${icon("pencil")}</button>
-              <button type="button" class="icon-btn subtle danger-icon" data-delete-quote="${escapeHtml(item.id)}" aria-label="删除报价">${icon("trash-2")}</button>
+              <button type="button" class="icon-btn subtle" data-edit-quote="${escapeHtml(item.id)}" aria-label="????">${icon("pencil")}</button>
+              <button type="button" class="icon-btn subtle danger-icon" data-delete-quote="${escapeHtml(item.id)}" aria-label="????">${icon("trash-2")}</button>
             </span>` : ""}
           </article>
         `,
       )
-      .join("") || `<p class="empty-state">这个时间段暂时没有匹配班次，可以放宽时间或切换类型。</p>`;
+      .join("") || `<p class="empty-state">??????????????????????????</p>`;
 }
 
 function setCtripStatus(message, iconName = "info") {
@@ -8940,7 +9045,7 @@ function saveCtripConfig() {
     token: dom.ctripTokenInput.value.trim(),
   };
   localStorage.setItem(CTRIP_CONFIG_KEY, JSON.stringify(ctripConfig));
-  dom.syncBadge.textContent = ctripConfig.endpoint ? "已配置接口" : "可手动导入";
+  dom.syncBadge.textContent = ctripConfig.endpoint ? "?????" : "?????";
 }
 
 function ctripHeaders() {
@@ -8971,15 +9076,15 @@ async function fetchTransportQuotes(payload) {
 async function requestCtripTransport({ testOnly = false } = {}) {
   saveCtripConfig();
   if (!ctripConfig.endpoint) {
-    setCtripStatus("请先填写后端代理接口地址。SearchApi API Key 只应保存在后端环境变量里。", "alert-circle");
+    setCtripStatus("?????????????SearchApi API Key ?????????????", "alert-circle");
     return null;
   }
   const payload = { ...getCtripPayload(), testOnly };
-  setCtripStatus(testOnly ? "正在测试 Google Flights 航班代理连接..." : "正在通过 Google Flights 同步当天航班报价...", "loader");
+  setCtripStatus(testOnly ? "???? Google Flights ??????..." : "???? Google Flights ????????...", "loader");
   try {
     return await fetchTransportQuotes(payload);
   } catch (error) {
-    setCtripStatus(`连接失败：${error.message}。请确认 Google Flights / SearchApi 代理函数已经部署到 Supabase，且函数允许当前网页跨域访问；如果接口在本地，公开页面无法直接访问你的本机服务。`, "alert-triangle");
+    setCtripStatus(`?????${error.message}???? Google Flights / SearchApi ????????? Supabase????????????????????????????????????????`, "alert-triangle");
     return null;
   }
 }
@@ -8987,14 +9092,14 @@ async function requestCtripTransport({ testOnly = false } = {}) {
 async function testCtripConnection() {
   const data = await requestCtripTransport({ testOnly: true });
   if (!data) return;
-  setCtripStatus(data.message || "连接成功。现在可以点击“同步当天航班”拉取报价。", data.ok === false ? "alert-circle" : "check-circle-2");
-  dom.syncBadge.textContent = data.ok === false ? "待配置密钥" : "接口可用";
+  setCtripStatus(data.message || "????????????????????????", data.ok === false ? "alert-circle" : "check-circle-2");
+  dom.syncBadge.textContent = data.ok === false ? "?????" : "????";
 }
 
 async function syncCtripTransport() {
-  if (!requireEdit("同步交通报价")) return;
+  if (!requireEdit("??????")) return;
   if (dom.transportType.value === "train") {
-    setCtripStatus("当前个人接口只提供航班报价。动车/高铁请用 12306 查询后手动保存报价，或以后接入有授权的火车票 API。", "train-front");
+    setCtripStatus("????????????????/???? 12306 ?????????????????????? API?", "train-front");
     return;
   }
   const data = await requestCtripTransport();
@@ -9004,7 +9109,7 @@ async function syncCtripTransport() {
   const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
   if (!rawItems.length) {
     transportProviderItems = [];
-    setCtripStatus(data.message || "Google Flights 已响应，但没有返回匹配航班。请检查日期、城市/机场三字码和时间段。", "alert-circle");
+    setCtripStatus(data.message || "Google Flights ??????????????????????/??????????", "alert-circle");
     renderTransport();
     return;
   }
@@ -9012,28 +9117,28 @@ async function syncCtripTransport() {
   transportProviderSource = data.source || "";
   const savedCount = await saveProviderTransportQuotes(transportProviderItems, day, transportProviderSource || "Google Flights");
   transportFilterApplied = true;
-  const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
-  setCtripStatus(isDemoProxy ? `后端代理已连通，返回 ${transportProviderItems.length} 条示例交通数据，并保存 ${savedCount} 条到协作报价。` : `已同步 ${transportProviderItems.length} 条 Google Flights 航班报价，并保存 ${savedCount} 条到共享计划。`, isDemoProxy ? "info" : "check-circle-2");
-  dom.syncBadge.textContent = isDemoProxy ? "代理示例" : "Google Flights";
-  logActivity(`同步 Google Flights 航班报价 ${transportProviderItems.length} 条，保存 ${savedCount} 条`, { target: transportQuoteActivityTarget("", day.id || "", { action: "provider-sync" }) });
-  await saveCollaborativePlanChange("已同步 Google Flights 报价");
+  const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /??/.test(item.source || ""));
+  setCtripStatus(isDemoProxy ? `?????????? ${transportProviderItems.length} ??????????? ${savedCount} ???????` : `??? ${transportProviderItems.length} ? Google Flights ???????? ${savedCount} ???????`, isDemoProxy ? "info" : "check-circle-2");
+  dom.syncBadge.textContent = isDemoProxy ? "????" : "Google Flights";
+  logActivity(`?? Google Flights ???? ${transportProviderItems.length} ???? ${savedCount} ?`, { target: transportQuoteActivityTarget("", day.id || "", { action: "provider-sync" }) });
+  await saveCollaborativePlanChange("??? Google Flights ??");
   render();
 }
 
 async function compareMultiOrigins() {
   saveCtripConfig();
   if (!ctripConfig.endpoint) {
-    setCtripStatus("请先保存 Google Flights / SearchApi 后端代理接口地址，再比较多人出发地。", "alert-circle");
+    setCtripStatus("???? Google Flights / SearchApi ??????????????????", "alert-circle");
     return;
   }
   if (dom.transportType.value === "train") {
-    setCtripStatus("多人出发地比较目前使用 Google Flights 航班数据。动车/高铁仍需要 12306 查询后手动保存。", "train-front");
+    setCtripStatus("??????????? Google Flights ???????/????? 12306 ????????", "train-front");
     return;
   }
   const origins = parseMultiOrigins(dom.multiOriginInput.value);
   if (!origins.length) {
     dom.multiOriginInput.focus();
-    setCtripStatus("请先填写多人出发地，例如：林: SHA; 王: PEK; 周: CAN。", "alert-circle");
+    setCtripStatus("??????????????: SHA; ?: PEK; ?: CAN?", "alert-circle");
     return;
   }
   const day = currentDay();
@@ -9041,7 +9146,7 @@ async function compareMultiOrigins() {
   const to = dom.transportTo.value.trim() || route.to;
   if (!to) {
     dom.transportTo.focus();
-    setCtripStatus("请先填写共同到达地，例如：兰州 LHW。", "alert-circle");
+    setCtripStatus("??????????????? LHW?", "alert-circle");
     return;
   }
   const payloadBase = {
@@ -9056,12 +9161,12 @@ async function compareMultiOrigins() {
   renderMultiOriginResults();
   refreshIcons();
   dom.compareOriginsBtn.disabled = true;
-  setCtripStatus(`正在比较 ${origins.length} 个出发地；每个出发地会消耗 1 次航班查询。`, "loader");
+  setCtripStatus(`???? ${origins.length} ????????????? 1 ??????`, "loader");
   const results = [];
   try {
     for (const [index, origin] of origins.entries()) {
       try {
-        setCtripStatus(`正在查询 ${origin.name}：${origin.from} → ${to}（${index + 1}/${origins.length}）`, "loader");
+        setCtripStatus(`???? ${origin.name}?${origin.from} ? ${to}?${index + 1}/${origins.length}?`, "loader");
         const data = await fetchTransportQuotes({ ...payloadBase, from: origin.from });
         const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
         const items = rawItems.map((item, itemIndex) => normalizeTransportItem(item, itemIndex, { from: origin.from, to }));
@@ -9091,19 +9196,19 @@ async function compareMultiOrigins() {
       .filter((item) => item.best)
       .map((item) => ({
         ...item.best,
-        source: `${item.source || "Google Flights"} · ${item.name}`,
+        source: `${item.source || "Google Flights"} ? ${item.name}`,
       }));
-    const savedCount = await saveProviderTransportQuotes(bestQuotes, day, "Google Flights 多出发地");
+    const savedCount = await saveProviderTransportQuotes(bestQuotes, day, "Google Flights ????");
     renderMultiOriginResults();
     renderTransport();
     refreshIcons();
     const matched = results.filter((item) => item.best).length;
     const total = results.reduce((sum, item) => sum + Number(item.best?.price || 0), 0);
-    logActivity(`比较多人出发地航班 ${matched}/${results.length} 人，保存 ${savedCount} 条推荐报价`, { target: transportQuoteActivityTarget("", day.id || "", { action: "multi-origin-sync" }) });
-    await saveCollaborativePlanChange("已保存多人出发地航班比较");
-    setCtripStatus(`已完成多人出发地比较：${matched}/${results.length} 人匹配到航班，最低合计 ${money(total)}；已保存 ${savedCount} 条推荐报价到共享计划。`, matched ? "check-circle-2" : "alert-circle");
+    logActivity(`????????? ${matched}/${results.length} ???? ${savedCount} ?????`, { target: transportQuoteActivityTarget("", day.id || "", { action: "multi-origin-sync" }) });
+    await saveCollaborativePlanChange("????????????");
+    setCtripStatus(`???????????${matched}/${results.length} ??????????? ${money(total)}???? ${savedCount} ???????????`, matched ? "check-circle-2" : "alert-circle");
   } catch (error) {
-    setCtripStatus(`多人出发地比较保存失败：${error.message}。已保留当前页面结果，可稍后重试。`, "alert-triangle");
+    setCtripStatus(`????????????${error.message}?????????????????`, "alert-triangle");
   } finally {
     dom.compareOriginsBtn.disabled = false;
   }
@@ -9127,7 +9232,7 @@ function payerBudget() {
     day.stops.forEach((stop) => {
       const paid = numberValue(stop.paid);
       if (!paid) return;
-      const payer = String(stop.payer || "未指定").trim() || "未指定";
+      const payer = String(stop.payer || "???").trim() || "???";
       groups[payer] = (groups[payer] || 0) + paid;
     });
   });
@@ -9149,7 +9254,7 @@ function settlementSuggestions() {
       .filter(Boolean),
   );
   while (participantNames.size < people) {
-    participantNames.add(`成员${participantNames.size + 1}`);
+    participantNames.add(`??${participantNames.size + 1}`);
   }
   const balances = [...participantNames].map((name) => ({
     name,
@@ -9173,20 +9278,20 @@ function settlementSuggestions() {
   return {
     perPerson,
     transfers,
-    missingPayer: numberValue(paidBy["未指定"]),
+    missingPayer: numberValue(paidBy["???"]),
   };
 }
 
 function categoryBudget() {
-  const groups = { 交通: 0, 餐饮: 0, 门票: 0, 住宿: 0 };
+  const groups = { ??: 0, ??: 0, ??: 0, ??: 0 };
   state.days.forEach((day) => {
     day.stops.forEach((stop) => {
       const title = `${stop.title}${stop.type}${stop.tags.join("")}`;
       const value = numberValue(stop.budget);
-      if (/酒店|民宿|住宿|入住/.test(title)) groups.住宿 += value;
-      else if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(title)) groups.餐饮 += value;
-      else if (/交通|高铁|Transit|车|机场|返程/.test(title)) groups.交通 += value;
-      else groups.门票 += value;
+      if (/??|??|??|??/.test(title)) groups.?? += value;
+      else if (/?|?|?|??|Cafe|Dinner|Lunch|Market/.test(title)) groups.?? += value;
+      else if (/??|??|Transit|?|??|??/.test(title)) groups.?? += value;
+      else groups.?? += value;
     });
   });
   return groups;
@@ -9201,7 +9306,7 @@ function renderShell() {
   const percent = Math.min(100, Math.round((total / limit) * 100));
   dom.tripName.textContent = state.name;
   dom.templateName.textContent = state.name;
-  dom.tripDateRange.textContent = state.dateRange || "自定义日期";
+  dom.tripDateRange.textContent = state.dateRange || "?????";
   dom.tripCover.style.setProperty("--trip-cover", `url("${state.cover || images.city}")`);
   document.querySelector(".template-card").style.setProperty("--template-cover", `url("${state.cover || images.city}")`);
   dom.budgetTotal.textContent = `${money(total)} / ${money(limit)}`;
@@ -9213,21 +9318,21 @@ function renderShell() {
   dom.partySizeInput.value = people;
   dom.budgetLimitInput.value = limit;
   const payerRows = Object.entries(payerBudget())
-    .map(([payer, value]) => `<span>${payer} 已付 ${money(value)}</span>`)
+    .map(([payer, value]) => `<span>${payer} ?? ${money(value)}</span>`)
     .join("");
   const settlement = settlementSuggestions();
   const transferRows = settlement.transfers
     .slice(0, 6)
-    .map((item) => `<span>${escapeHtml(item.from)} 转给 ${escapeHtml(item.to)} ${money(item.amount)}</span>`)
+    .map((item) => `<span>${escapeHtml(item.from)} ?? ${escapeHtml(item.to)} ${money(item.amount)}</span>`)
     .join("");
   dom.budgetSettlement.innerHTML = `
-    <span>已付 ${money(paid)}</span>
-    <span>待付 ${money(Math.max(0, total - paid))}</span>
-    <span>人均 ${money(Math.round(total / people))}</span>
-    ${payerRows || "<span>暂无付款记录</span>"}
-    <strong>AA 结算建议</strong>
-    ${transferRows || "<span>当前无需转账或付款人信息不足</span>"}
-    ${settlement.missingPayer ? `<span>未指定付款人 ${money(settlement.missingPayer)}，建议先补充付款人</span>` : ""}
+    <span>?? ${money(paid)}</span>
+    <span>?? ${money(Math.max(0, total - paid))}</span>
+    <span>?? ${money(Math.round(total / people))}</span>
+    ${payerRows || "<span>??????</span>"}
+    <strong>AA ????</strong>
+    ${transferRows || "<span>??????????????</span>"}
+    ${settlement.missingPayer ? `<span>?????? ${money(settlement.missingPayer)}?????????</span>` : ""}
   `;
 }
 
@@ -9249,11 +9354,11 @@ function renderDaySummary() {
   const day = currentDay();
   const dayBudget = day.stops.reduce((sum, stop) => sum + Number(stop.budget || 0), 0);
   dom.dayTitle.textContent = day.title;
-  dom.routeLabel.textContent = `${day.label} · ${day.route}`;
+  dom.routeLabel.textContent = `${day.label} ? ${day.route}`;
   dom.dayPills.innerHTML = [
-    ["cloud-sun", day.weather || "天气待确认"],
-    ["train-front", day.transport || "交通待确认"],
-    ["wallet-cards", `当日 ${money(dayBudget)}`],
+    ["cloud-sun", day.weather || "?????"],
+    ["train-front", day.transport || "?????"],
+    ["wallet-cards", `?? ${money(dayBudget)}`],
   ]
     .map(([name, text]) => `<span class="status-pill">${icon(name)}${text}</span>`)
     .join("");
@@ -9271,12 +9376,12 @@ function renderDayEditor() {
     dom.fieldDayWeather.value = day.weather || "";
     dom.fieldDayTransport.value = day.transport || "";
   }
-  dom.dayEditorStatus.textContent = isReadonlyMode ? "只读" : tripId ? "实时协作" : "本地保存";
+  dom.dayEditorStatus.textContent = isReadonlyMode ? "??" : tripId ? "????" : "????";
   dom.moveDayUpBtn.disabled = isReadonlyMode || activeDay === 0;
   dom.moveDayDownBtn.disabled = isReadonlyMode || activeDay >= state.days.length - 1;
   dom.deleteDayBtn.disabled = isReadonlyMode || state.days.length <= 1;
   renderDayFieldCommentMarks(day);
-  if (dom.dayCommentTitle) dom.dayCommentTitle.textContent = day.title || day.label || "当前日期";
+  if (dom.dayCommentTitle) dom.dayCommentTitle.textContent = day.title || day.label || "????";
 }
 
 function dayEditorDraftValues(day = currentDay()) {
@@ -9288,9 +9393,9 @@ function dayEditorDraftValues(day = currentDay()) {
   return {
     date: dom.fieldDayDate.value || day.date || "",
     title: textValue("title", "fieldDayTitle", day.title || day.label) || day.label,
-    route: textValue("route", "fieldDayRoute", "待填写路线") || "待填写路线",
-    weather: textValue("weather", "fieldDayWeather", "天气待确认") || "天气待确认",
-    transport: textValue("transport", "fieldDayTransport", "交通待规划") || "交通待规划",
+    route: textValue("route", "fieldDayRoute", "?????") || "?????",
+    weather: textValue("weather", "fieldDayWeather", "?????") || "?????",
+    transport: textValue("transport", "fieldDayTransport", "?????") || "?????",
   };
 }
 
@@ -9359,7 +9464,7 @@ function renderDetail() {
   dom.placePhoto.style.setProperty("--photo", `url("${stop.image || images.city}")`);
   dom.placeType.textContent = stop.type || "Place";
   dom.placeTitle.textContent = stop.title;
-  dom.placeAddress.textContent = stop.address || "地址待确认";
+  dom.placeAddress.textContent = stop.address || "?????";
   dom.placeNote.textContent = stop.note || "";
   dom.favoriteBtn.classList.toggle("selected", Boolean(stop.favorite));
   dom.mustVote.classList.toggle("is-active", Boolean(stop.userVoted));
@@ -9384,7 +9489,7 @@ function renderDetail() {
   }
   const detailKeyword = dom.fieldAmapKeyword.value || stop.title;
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
-  dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
+  dom.fieldAmapLink.textContent = `??????${detailKeyword}`;
 
   renderStopComments(stop);
 }
@@ -9402,8 +9507,8 @@ function renderCandidates() {
           <span class="candidate-title">${escapeHtml(stop.title)}</span>
           <span class="candidate-price">${money(stop.budget)}</span>
           ${editable ? `<span class="candidate-actions">
-            <button type="button" class="icon-btn subtle" data-edit-candidate="${escapeHtml(stop.id)}" aria-label="编辑备选">${icon("pencil")}</button>
-            <button type="button" class="icon-btn subtle danger-icon" data-delete-candidate="${escapeHtml(stop.id)}" aria-label="移除备选">${icon("trash-2")}</button>
+            <button type="button" class="icon-btn subtle" data-edit-candidate="${escapeHtml(stop.id)}" aria-label="????">${icon("pencil")}</button>
+            <button type="button" class="icon-btn subtle danger-icon" data-delete-candidate="${escapeHtml(stop.id)}" aria-label="????">${icon("trash-2")}</button>
           </span>` : ""}
         </article>
       `,
@@ -9429,25 +9534,25 @@ function renderActivities() {
   const visibleList = list.filter((item) => activityFilter === "all" || item.type === activityFilter);
   dom.activityList.innerHTML = visibleList
     .map((item) => {
-      const entry = typeof item === "string" ? { text: item, at: "刚刚" } : item;
+      const entry = typeof item === "string" ? { text: item, at: "??" } : item;
       const type = entry.type || inferActivityType(entry.text || "");
       const target = activityTargetForType(type);
       const detailTarget = entry.target ? encodeURIComponent(JSON.stringify(entry.target)) : "";
-      return `<button type="button" class="activity-item" data-activity-type="${escapeHtml(type)}" data-activity-target="${escapeHtml(target)}" data-activity-detail="${escapeHtml(detailTarget)}"><span class="avatar a1">${escapeHtml((ACTIVITY_TYPE_LABELS[type] || "记").slice(0, 1))}</span><p><span class="activity-type">${escapeHtml(ACTIVITY_TYPE_LABELS[type] || "记录")}</span>${escapeHtml(entry.text)}<br><small>${escapeHtml(entry.at || "")}${entry.createdBy ? ` · ${escapeHtml(entry.createdBy)}` : ""}</small></p></button>`;
+      return `<button type="button" class="activity-item" data-activity-type="${escapeHtml(type)}" data-activity-target="${escapeHtml(target)}" data-activity-detail="${escapeHtml(detailTarget)}"><span class="avatar a1">${escapeHtml((ACTIVITY_TYPE_LABELS[type] || "?").slice(0, 1))}</span><p><span class="activity-type">${escapeHtml(ACTIVITY_TYPE_LABELS[type] || "??")}</span>${escapeHtml(entry.text)}<br><small>${escapeHtml(entry.at || "")}${entry.createdBy ? ` ? ${escapeHtml(entry.createdBy)}` : ""}</small></p></button>`;
     })
-    .join("") || `<div class="member-empty">${activityFilter === "all" ? "还没有操作记录。" : "当前类型暂无记录。"}</div>`;
+    .join("") || `<div class="member-empty">${activityFilter === "all" ? "????????" : "?????????"}</div>`;
 }
 
 function focusActivityTarget(targetSelector = "") {
   const target = targetSelector ? document.querySelector(targetSelector) : null;
   if (!target) {
-    dom.saveState.textContent = "暂时无法定位这条记录";
+    dom.saveState.textContent = "??????????";
     return false;
   }
   target.scrollIntoView({ block: "center", behavior: "smooth" });
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  dom.saveState.textContent = "已定位到相关区域";
+  dom.saveState.textContent = "????????";
   return true;
 }
 
@@ -9463,7 +9568,7 @@ function parseActivityDetail(value = "") {
 function focusActivityDetail(detail = null) {
   if (!detail || typeof detail !== "object") return false;
   if (detail.commentId && focusCommentIndexItem(detail.commentId)) {
-    dom.saveState.textContent = "已定位到活动对应批注";
+    dom.saveState.textContent = "??????????";
     return true;
   }
   if (detail.commentId && detail.deleted && focusDeletedCommentActivityTarget(detail)) return true;
@@ -9543,7 +9648,7 @@ function focusDayActivityTarget(detail = null) {
   target.scrollIntoView({ block: "center", behavior: "smooth" });
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  dom.saveState.textContent = detail.deleted ? "日期已删除，已定位到相邻日期" : "已定位到活动对应日期";
+  dom.saveState.textContent = detail.deleted ? "??????????????" : "??????????";
   return true;
 }
 
@@ -9566,7 +9671,7 @@ function focusStopActivityTarget(detail = null) {
   target.scrollIntoView({ block: "center", behavior: "smooth" });
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  dom.saveState.textContent = stopIndex >= 0 ? "已定位到活动对应地点" : "地点已不存在，已定位到原日期时间线";
+  dom.saveState.textContent = stopIndex >= 0 ? "??????????" : "?????????????????";
   return true;
 }
 
@@ -9580,7 +9685,7 @@ function focusCandidateActivityTarget(detail = null) {
   target.scrollIntoView({ block: "center", behavior: "smooth" });
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  dom.saveState.textContent = candidate ? "已定位到活动对应备选地点" : "备选已不存在，已定位到备选池";
+  dom.saveState.textContent = candidate ? "????????????" : "??????????????";
   return true;
 }
 
@@ -9600,7 +9705,7 @@ function focusTransportQuoteActivityTarget(detail = null) {
   target.scrollIntoView({ block: "center", behavior: "smooth" });
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  dom.saveState.textContent = quote ? "已定位到活动对应交通报价" : "报价已不存在，已定位到交通面板";
+  dom.saveState.textContent = quote ? "????????????" : "???????????????";
   return true;
 }
 
@@ -9613,7 +9718,7 @@ function focusBudgetSettingActivityTarget(detail = null) {
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
   fieldTarget?.focus();
-  dom.saveState.textContent = "已定位到活动对应预算设置";
+  dom.saveState.textContent = "????????????";
   return true;
 }
 
@@ -9633,14 +9738,14 @@ function focusPlanMetaActivityTarget(detail = null) {
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
   fieldTarget?.focus();
-  dom.saveState.textContent = "已定位到活动对应计划基础信息";
+  dom.saveState.textContent = "??????????????";
   return true;
 }
 
 function focusDeletedCommentActivityTarget(detail = null) {
   if (!detail || typeof detail !== "object") return false;
   if (detail.scope === "block" && focusDayBlockActivityTarget({ type: "dayBlock", dayId: detail.dayId || "", blockId: detail.blockId || "", deletedComment: true })) {
-    dom.saveState.textContent = "批注已删除，已定位到原协作块";
+    dom.saveState.textContent = "??????????????";
     return true;
   }
   const dayIndex = state.days.findIndex((day) => (detail.dayId && day.id === detail.dayId) || (detail.stopId && (day.stops || []).some((stop) => stop.id === detail.stopId)));
@@ -9659,7 +9764,7 @@ function focusDeletedCommentActivityTarget(detail = null) {
   target.scrollIntoView({ block: "center", behavior: "smooth" });
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  dom.saveState.textContent = detail.scope === "day" ? "批注已删除，已定位到当天批注总览" : "评论已删除，已定位到原地点评论区";
+  dom.saveState.textContent = detail.scope === "day" ? "????????????????" : "????????????????";
   return true;
 }
 
@@ -9692,18 +9797,18 @@ function focusDayBlockActivityTarget(detail = null) {
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
   const input = block?.querySelector("[data-edit-day-block]");
   input?.focus();
-  dom.saveState.textContent = block ? "已定位到活动对应协作块" : "协作块已不存在，已定位到当天协作块区域";
+  dom.saveState.textContent = block ? "???????????" : "???????????????????";
   return true;
 }
 
 function renderGuideResult() {
   const days = guideDayCount();
   const range = dateRangeText(guideState.startDate, guideState.endDate);
-  dom.guideResult.textContent = `${guideState.origin}出发，${guideState.destination}${range}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
+  dom.guideResult.textContent = `${guideState.origin}???${guideState.destination}${range}??${days}??${guideState.pace}?????${guideState.interests.join(" / ")}?${guideState.budget}???`;
   dom.originInput.value = guideState.origin;
   dom.startDateInput.value = guideState.startDate;
   dom.endDateInput.value = guideState.endDate;
-  dom.tripLengthHint.textContent = `共 ${days} 天，按出发日到返程日生成。最多支持 30 天。`;
+  dom.tripLengthHint.textContent = `? ${days} ????????????????? 30 ??`;
 }
 
 function render() {
@@ -9754,30 +9859,30 @@ function clearCurrentAmapRoute() {
 function makeBlankDay(index = state.days.length) {
   const baseDate = currentDay()?.date || state.endDate || state.startDate || formatIsoDate(new Date());
   const nextDate = parseIsoDate(baseDate) ? formatIsoDate(addDays(parseIsoDate(baseDate), 1)) : "";
-  const destination = state.destination || guideState.destination || "目的地";
+  const destination = state.destination || guideState.destination || "???";
   return {
     id: uid(),
     label: `D${index + 1}`,
     date: nextDate,
-    title: nextDate ? formatDatedTitle(nextDate, `第${index + 1}天`, index) : `第${index + 1}天`,
-    route: "待填写路线",
-    weather: "天气待确认",
-    transport: "交通待规划",
+    title: nextDate ? formatDatedTitle(nextDate, `?${index + 1}?`, index) : `?${index + 1}?`,
+    route: "?????",
+    weather: "?????",
+    transport: "?????",
     blocks: [
       normalizeDayBlock({
         type: "todo",
-        text: "补充当天关键预订、集合点或分工",
+        text: "???????????????",
         createdBy: getCollabName(),
       }),
     ].filter(Boolean),
     stops: [
       makeStop({
         time: "10:00",
-        title: "待填写地点",
+        title: "?????",
         type: "Draft",
         address: destination,
-        note: "新增日期后，可在右侧继续补充地点、预算和备注。",
-        tags: ["新日期", "待填写"],
+        note: "???????????????????????",
+        tags: ["???", "???"],
         amapKeyword: destination,
         image: state.cover || images.city,
       }),
@@ -9795,8 +9900,8 @@ function quickPlaceDraft(extra = {}) {
     title: name,
     type: extra.type || "Scenic",
     address: dom.quickAddress.value.trim() || locatedPlace?.address || keyword,
-    note: extra.note || `从快速录入加入。高德关键词：${keyword}`,
-    tags: extra.tags || ["自定义", "待优化"],
+    note: extra.note || `??????????????${keyword}`,
+    tags: extra.tags || ["???", "???"],
     budget: Number(dom.quickBudget.value || 0),
     amapKeyword: keyword,
     lng: locatedPlace?.lng || "",
@@ -9842,7 +9947,7 @@ document.addEventListener("click", (event) => {
   if (!place) return;
   if (target === "field") {
     applyFieldAmapPlace(place, dom.fieldAmapKeyword.value.trim()).catch((error) => {
-      dom.saveState.textContent = `高德候选回填失败：${error.message}`;
+      dom.saveState.textContent = `?????????${error.message}`;
     });
   } else {
     applyQuickAmapPlace(place, dom.quickAmapKeyword.value.trim());
@@ -9854,7 +9959,7 @@ dom.dayForm.addEventListener("submit", async (event) => {
   let updatedDay = null;
   const dayId = currentDay()?.id || "";
   const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
-  const changed = mutate("保存当天设置", () => {
+  const changed = mutate("??????", () => {
     updatedDay = applyDayEditorDraftToState(dayDraft);
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(dayId, { action: "settings" }) });
   if (updatedDay) {
@@ -9864,7 +9969,7 @@ dom.dayForm.addEventListener("submit", async (event) => {
       await patchDayMetaInDoc(dayId, dayPatch, "local-day-update-patch");
     }
     await syncPlanMetaToDoc("local-day-date-meta");
-    await saveCollaborativeTextChange("保存当天设置");
+    await saveCollaborativeTextChange("??????");
     broadcastDayUpdated(updatedDay);
     render();
   } else if (changed) {
@@ -9873,20 +9978,20 @@ dom.dayForm.addEventListener("submit", async (event) => {
 });
 
 async function syncDayEditorDraftChange({ silent = false } = {}) {
-  if (!requireEdit("同步当天设置")) return;
-  if (!silent) saveVersionSnapshot("同步当天设置前版本");
+  if (!requireEdit("??????")) return;
+  if (!silent) saveVersionSnapshot("?????????");
   const dayId = currentDay()?.id || "";
   const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
   const updatedDay = applyDayEditorDraftToState(dayDraft);
   if (!updatedDay) return;
-  if (!silent) logActivity("同步当天设置", { target: dayActivityTarget(dayId, { action: "settings" }) });
+  if (!silent) logActivity("??????", { target: dayActivityTarget(dayId, { action: "settings" }) });
   if (Object.prototype.hasOwnProperty.call(dayPatch, "date")) {
     await syncDayMetasToDoc("local-day-date-field-change");
   } else {
     await patchDayMetaInDoc(dayId, dayPatch, "local-day-field-change-patch");
   }
   await syncPlanMetaToDoc("local-day-field-change-meta");
-  await saveCollaborativeTextChange(silent ? "当天设置正在协作同步" : "已同步当天设置");
+  await saveCollaborativeTextChange(silent ? "??????????" : "???????");
   broadcastDayUpdated(updatedDay);
   if (silent) {
     renderShell();
@@ -9931,7 +10036,7 @@ COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
 dom.addDayBtn.addEventListener("click", async () => {
   let createdDay = null;
   let createdIndex = 0;
-  if (!mutate("新增一天", () => {
+  if (!mutate("????", () => {
     createdIndex = activeDay + 1;
     createdDay = makeBlankDay(createdIndex);
     state.days.splice(createdIndex, 0, createdDay);
@@ -9946,7 +10051,7 @@ dom.addDayBtn.addEventListener("click", async () => {
     }
     await syncStopListToDoc(createdDay.id, "local-day-create-stops");
     await syncPlanMetaToDoc("local-day-create-meta");
-    await saveCollaborativePlanChange("新增一天");
+    await saveCollaborativePlanChange("????");
     broadcastDayCreated(createdDay, createdIndex);
     render();
   }
@@ -9954,12 +10059,12 @@ dom.addDayBtn.addEventListener("click", async () => {
 
 dom.deleteDayBtn.addEventListener("click", async () => {
   if (state.days.length <= 1) {
-    dom.saveState.textContent = "计划至少保留一天";
+    dom.saveState.textContent = "????????";
     return;
   }
   const deletedDay = clone(currentDay());
   const deletedDayIndex = activeDay;
-  const label = `删除「${deletedDay.title || deletedDay.label}」`;
+  const label = `???${deletedDay.title || deletedDay.label}?`;
   if (!mutate(label, () => {
     state.days.splice(activeDay, 1);
     activeDay = Math.max(0, Math.min(activeDay, state.days.length - 1));
@@ -9981,7 +10086,7 @@ dom.moveDayUpBtn.addEventListener("click", async () => {
   if (activeDay <= 0) return;
   let changed = false;
   const movingDayId = currentDay()?.id || "";
-  if (!mutate("上移当天", () => {
+  if (!mutate("????", () => {
     [state.days[activeDay - 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay - 1]];
     activeDay -= 1;
     activeStop = 0;
@@ -9993,7 +10098,7 @@ dom.moveDayUpBtn.addEventListener("click", async () => {
       await syncDayMetasToDoc("local-day-reorder-fallback");
     }
     await syncPlanMetaToDoc("local-day-reorder-meta");
-    await saveCollaborativePlanChange("上移当天");
+    await saveCollaborativePlanChange("????");
     broadcastDaysReordered();
     render();
   }
@@ -10003,7 +10108,7 @@ dom.moveDayDownBtn.addEventListener("click", async () => {
   if (activeDay >= state.days.length - 1) return;
   let changed = false;
   const movingDayId = currentDay()?.id || "";
-  if (!mutate("下移当天", () => {
+  if (!mutate("????", () => {
     [state.days[activeDay + 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay + 1]];
     activeDay += 1;
     activeStop = 0;
@@ -10015,7 +10120,7 @@ dom.moveDayDownBtn.addEventListener("click", async () => {
       await syncDayMetasToDoc("local-day-reorder-fallback");
     }
     await syncPlanMetaToDoc("local-day-reorder-meta");
-    await saveCollaborativePlanChange("下移当天");
+    await saveCollaborativePlanChange("????");
     broadcastDaysReordered();
     render();
   }
@@ -10026,13 +10131,13 @@ dom.stopForm.addEventListener("submit", async (event) => {
   let dayId = currentDay()?.id || "";
   let savedStopId = currentStop()?.id || "";
   const initialStopId = savedStopId;
-  const label = `保存「${dom.fieldTitle.value || "地点"}」`;
+  const label = `???${dom.fieldTitle.value || "??"}?`;
   if (!mutate(label, () => {
     const stop = currentStop();
     const collabValue = (field, domKey) => (collabTextStopId === stop.id && collabTextFields[field] ? collabTextFields[field].toString() : dom[domKey].value.trim());
     const structValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : null;
     const structValue = (field, fallback) => structValues && Object.prototype.hasOwnProperty.call(structValues, field) ? structValues[field] : fallback();
-    stop.title = collabValue("title", "fieldTitle") || "未命名地点";
+    stop.title = collabValue("title", "fieldTitle") || "?????";
     stop.type = collabValue("type", "fieldType") || "Place";
     stop.budget = structValue("budget", () => numberValue(dom.fieldBudget.value));
     stop.paid = structValue("paid", () => numberValue(dom.fieldPaid.value));
@@ -10110,13 +10215,13 @@ COLLAB_PLAN_TEXT_PRESENCE_FIELDS.forEach((meta) => {
 dom.addStopBtn.addEventListener("click", async () => {
   let createdStop = null;
   let createdDayId = "";
-  if (!mutate("新增地点", () => {
+  if (!mutate("????", () => {
     const day = currentDay();
     createdStop = makeStop({
       time: "18:00",
-      title: "新地点",
-      note: "在右侧编辑名称、地址、预算和备注。",
-      tags: ["草稿"],
+      title: "???",
+      note: "?????????????????",
+      tags: ["??"],
       budget: 0,
       x: 70,
       y: 32,
@@ -10128,7 +10233,7 @@ dom.addStopBtn.addEventListener("click", async () => {
   }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, createdStop?.id || "", { action: "create" }) })) return;
   if (createdStop) {
     await addStopToDoc(createdDayId, createdStop, "local-stop-create");
-    await saveCollaborativePlanChange("新增地点");
+    await saveCollaborativePlanChange("????");
     broadcastStopCreated(createdDayId, createdStop);
     render();
   }
@@ -10141,7 +10246,7 @@ dom.quickAddForm.addEventListener("submit", async (event) => {
   const name = draft.title;
   let createdStop = null;
   let createdDayId = "";
-  const label = `加入景点「${name}」`;
+  const label = `?????${name}?`;
   if (!mutate(label, () => {
     const day = currentDay();
     createdStop = {
@@ -10165,15 +10270,15 @@ dom.quickAddForm.addEventListener("submit", async (event) => {
 
 dom.addCandidateBtn.addEventListener("click", async () => {
   const draft = quickPlaceDraft({
-    note: "从快速录入加入备选池，可稍后安排到任意一天。",
-    tags: ["备选", "自定义"],
+    note: "??????????????????????",
+    tags: ["??", "???"],
   });
-  if (!draft || !requireEdit("加入备选池")) return;
+  if (!draft || !requireEdit("?????")) return;
   if (editingCandidateId) {
     const existing = state.candidates.find((item) => item.id === editingCandidateId);
     if (!existing) {
       setCandidateEditing(null);
-      dom.saveState.textContent = "这条备选已被其他成员移除，请重新选择。";
+      dom.saveState.textContent = "???????????????????";
       return;
     }
     const patch = {
@@ -10190,37 +10295,37 @@ dom.addCandidateBtn.addEventListener("click", async () => {
       image: draft.image,
     };
     if (await updateCandidateInDoc(editingCandidateId, patch)) {
-      persistCurrentPlanFromDoc("备选池协作内容已实时同步");
-      await logActivity(`更新备选池「${draft.title}」`, { target: candidateActivityTarget(editingCandidateId, { action: "update" }) });
+      persistCurrentPlanFromDoc("????????????");
+      await logActivity(`??????${draft.title}?`, { target: candidateActivityTarget(editingCandidateId, { action: "update" }) });
       clearQuickPlaceForm();
-      await saveCollaborativePlanChange(`更新备选「${draft.title}」`);
-      dom.saveState.textContent = `已更新备选「${draft.title}」`;
+      await saveCollaborativePlanChange(`?????${draft.title}?`);
+      dom.saveState.textContent = `??????${draft.title}?`;
       refreshRealtimePlanViews();
       return;
     }
-    mutate(`更新备选「${draft.title}」`, () => {
+    mutate(`?????${draft.title}?`, () => {
       state.candidates = mergedCandidatesWithPatch("update", patch, editingCandidateId);
       clearQuickPlaceForm();
     }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(editingCandidateId, { action: "update" }) });
     await syncCandidatesToDoc("local-candidate-update-fallback");
-    await saveCollaborativePlanChange(`更新备选「${draft.title}」`);
+    await saveCollaborativePlanChange(`?????${draft.title}?`);
     return;
   }
   if (await addCollaborativeCandidate(draft)) {
-    persistCurrentPlanFromDoc("备选池协作内容已实时同步");
-    await logActivity(`加入备选池「${draft.title}」`, { target: candidateActivityTarget(draft.id, { action: "create" }) });
+    persistCurrentPlanFromDoc("????????????");
+    await logActivity(`??????${draft.title}?`, { target: candidateActivityTarget(draft.id, { action: "create" }) });
     clearQuickPlaceForm();
-    await saveCollaborativePlanChange(`加入备选池「${draft.title}」`);
-    dom.saveState.textContent = `已加入备选池「${draft.title}」`;
+    await saveCollaborativePlanChange(`??????${draft.title}?`);
+    dom.saveState.textContent = `???????${draft.title}?`;
     refreshRealtimePlanViews();
     return;
   }
-  mutate(`加入备选池「${draft.title}」`, () => {
+  mutate(`??????${draft.title}?`, () => {
     state.candidates = mergedCandidatesWithPatch("add", draft);
     clearQuickPlaceForm();
   }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(draft.id, { action: "create" }) });
   await syncCandidatesToDoc("local-candidate-fallback");
-  await saveCollaborativePlanChange(`加入备选池「${draft.title}」`);
+  await saveCollaborativePlanChange(`??????${draft.title}?`);
 });
 
 dom.openAmapBtn.addEventListener("click", async () => {
@@ -10228,12 +10333,12 @@ dom.openAmapBtn.addEventListener("click", async () => {
     dom.quickAmapKeyword.value.trim() ||
     `${state.destination || ""} ${dom.quickPlaceName.value.trim()}`.trim() ||
     state.destination ||
-    "景点";
+    "??";
   dom.quickAmapLink.href = amapSearchUrl(keyword);
-  dom.quickAmapLink.textContent = `打开高德搜索：${keyword}`;
+  dom.quickAmapLink.textContent = `???????${keyword}`;
   if (!serviceConfig.amapEndpoint) {
     hideAmapCandidates("quick");
-    dom.optimizeHint.textContent = `已生成高德链接：${keyword}。配置高德代理后可自动回填地址和经纬度。`;
+    dom.optimizeHint.textContent = `????????${keyword}????????????????????`;
     return;
   }
   try {
@@ -10242,11 +10347,11 @@ dom.openAmapBtn.addEventListener("click", async () => {
     renderAmapCandidates("quick", places || [], keyword);
     if (firstPlace) applyQuickAmapPlace(firstPlace, keyword);
     dom.optimizeHint.textContent = firstPlace?.lng && firstPlace?.lat
-      ? `高德返回 ${places.length} 个候选，已先采用「${firstPlace.title}」（${placeCoordinateText(firstPlace)}）。可在候选列表里切换。`
-      : `高德已响应，但没有返回可用坐标；已保留搜索链接。`;
+      ? `???? ${places.length} ?????????${firstPlace.title}??${placeCoordinateText(firstPlace)}????????????`
+      : `????????????????????????`;
   } catch (error) {
     hideAmapCandidates("quick");
-    dom.optimizeHint.textContent = `高德代理调用失败：${error.message}。已保留高德搜索链接。`;
+    dom.optimizeHint.textContent = `?????????${error.message}???????????`;
   }
 });
 
@@ -10254,10 +10359,10 @@ dom.amapLookupBtn.addEventListener("click", async () => {
   const stop = currentStop();
   const keyword = dom.fieldAmapKeyword.value.trim() || `${state.destination || ""} ${stop.title}`.trim();
   dom.fieldAmapLink.href = amapSearchUrl(keyword);
-  dom.fieldAmapLink.textContent = `打开高德搜索：${keyword}`;
+  dom.fieldAmapLink.textContent = `???????${keyword}`;
   if (!serviceConfig.amapEndpoint) {
     hideAmapCandidates("field");
-    dom.saveState.textContent = `已生成高德链接：${keyword}`;
+    dom.saveState.textContent = `????????${keyword}`;
     return;
   }
   try {
@@ -10266,28 +10371,28 @@ dom.amapLookupBtn.addEventListener("click", async () => {
     renderAmapCandidates("field", places || [], keyword);
     if (firstPlace) await applyFieldAmapPlace(firstPlace, keyword);
     dom.saveState.textContent = firstPlace?.lng && firstPlace?.lat
-      ? `高德返回 ${places.length} 个候选，已先回填「${firstPlace.title}」；可在候选列表里切换。`
-      : `高德已响应，但没有返回可用坐标。`;
+      ? `???? ${places.length} ?????????${firstPlace.title}????????????`
+      : `????????????????`;
   } catch (error) {
     hideAmapCandidates("field");
-    dom.saveState.textContent = `高德代理调用失败：${error.message}`;
+    dom.saveState.textContent = `?????????${error.message}`;
   }
 });
 
 async function planAmapRouteForCurrentDay({ retry = false } = {}) {
-  if (!requireEdit("高德规划路线")) return;
+  if (!requireEdit("??????")) return;
   const day = currentDay();
   if (day.stops.length < 2) {
-    dom.optimizeHint.textContent = "至少需要 2 个地点才能用高德规划路线。";
+    dom.optimizeHint.textContent = "???? 2 ?????????????";
     return;
   }
   const mode = retry && lastAmapRouteRequest?.mode ? lastAmapRouteRequest.mode : dom.amapRouteMode.value;
   const strategy = retry && lastAmapRouteRequest?.strategy ? lastAmapRouteRequest.strategy : dom.amapRouteStrategy.value;
   lastAmapRouteRequest = { dayId: day.id, mode, strategy };
-  if (!retry) saveVersionSnapshot("高德规划路线前版本");
+  if (!retry) saveVersionSnapshot("?????????");
   dom.amapRouteBtn.disabled = true;
   if (dom.amapRouteRetryBtn) dom.amapRouteRetryBtn.disabled = true;
-  dom.optimizeHint.textContent = retry ? "正在重试高德路线规划..." : "正在请求高德路线规划...";
+  dom.optimizeHint.textContent = retry ? "??????????..." : "??????????...";
   try {
     const result = await requestAmapRoute(day, mode, strategy);
     const resolvedStops = Array.isArray(result.stops) ? result.stops : [];
@@ -10300,7 +10405,7 @@ async function planAmapRouteForCurrentDay({ retry = false } = {}) {
       if (resolved.amapKeyword && !stop.amapKeyword) stop.amapKeyword = resolved.amapKeyword;
     });
     day.amapRoute = {
-      source: result.source || "高德路线规划",
+      source: result.source || "??????",
       mode: result.mode || mode,
       strategy: result.strategy || strategy,
       distance: Number(result.distance || 0),
@@ -10309,24 +10414,24 @@ async function planAmapRouteForCurrentDay({ retry = false } = {}) {
       warnings: Array.isArray(result.warnings) ? result.warnings : [],
       updatedAt: new Date().toISOString(),
     };
-    logActivity("高德规划当天路线");
+    logActivity("????????");
     if (!(await patchDayMetaInDoc(day.id, { amapRoute: day.amapRoute }, "local-amap-route-day-patch"))) {
       await syncDayMetasToDoc("local-amap-route-day-fallback");
     }
     if (!(await reorderStopListInDoc(day.id, day.stops, "local-amap-route-stops", { patchFields: ["address", "lng", "lat", "amapKeyword"] }))) {
       await syncStopListToDoc(day.id, "local-amap-route-stops-fallback");
     }
-    await saveCollaborativePlanChange("已用高德规划路线");
+    await saveCollaborativePlanChange("????????");
     render();
-    dom.optimizeHint.textContent = `高德已规划 ${day.amapRoute.legs.length} 段路线：${formatDistanceText(day.amapRoute.distance)} · ${formatDurationText(day.amapRoute.duration)}。`;
+    dom.optimizeHint.textContent = `????? ${day.amapRoute.legs.length} ????${formatDistanceText(day.amapRoute.distance)} ? ${formatDurationText(day.amapRoute.duration)}?`;
     if (dom.amapRouteRetryBtn) dom.amapRouteRetryBtn.hidden = true;
   } catch (error) {
-    dom.optimizeHint.textContent = `高德路线规划失败：${error.message}`;
+    dom.optimizeHint.textContent = `?????????${error.message}`;
     renderAmapRouteReport({
-      source: "高德路线规划失败",
+      source: "????????",
       mode,
       strategy,
-      warnings: [error.message, "请检查 Supabase 函数是否部署、AMAP_WEB_SERVICE_KEY 是否配置，以及地点是否能搜索到坐标。"],
+      warnings: [error.message, "??? Supabase ???????AMAP_WEB_SERVICE_KEY ??????????????????"],
     });
     if (dom.amapRouteRetryBtn) dom.amapRouteRetryBtn.hidden = false;
   } finally {
@@ -10347,11 +10452,11 @@ dom.amapRouteRetryBtn?.addEventListener("click", () => {
 dom.deleteStopBtn.addEventListener("click", async () => {
   const day = currentDay();
   if (day.stops.length <= 1) {
-    dom.saveState.textContent = "每天至少保留一个地点";
+    dom.saveState.textContent = "??????????";
     return;
   }
   const deletedStop = clone(currentStop());
-  const label = `删除「${deletedStop.title}」`;
+  const label = `???${deletedStop.title}?`;
   if (!mutate(label, () => {
     day.stops.splice(activeStop, 1);
     activeStop = Math.max(0, activeStop - 1);
@@ -10368,7 +10473,7 @@ dom.moveUpBtn.addEventListener("click", async () => {
   let dayId = "";
   let nextStops = [];
   const movingStopId = currentStop()?.id || "";
-  if (!mutate("上移地点", () => {
+  if (!mutate("????", () => {
     const day = currentDay();
     const stops = day.stops;
     [stops[activeStop - 1], stops[activeStop]] = [stops[activeStop], stops[activeStop - 1]];
@@ -10380,7 +10485,7 @@ dom.moveUpBtn.addEventListener("click", async () => {
   if (!(await reorderStopListInDoc(dayId, nextStops, "local-stop-reorder"))) {
     await syncStopListToDoc(dayId, "local-stop-reorder-fallback");
   }
-  await saveCollaborativePlanChange("上移地点");
+  await saveCollaborativePlanChange("????");
   broadcastStopsReordered(dayId, nextStops);
   render();
 });
@@ -10391,7 +10496,7 @@ dom.moveDownBtn.addEventListener("click", async () => {
   let dayId = "";
   let nextStops = [];
   const movingStopId = currentStop()?.id || "";
-  if (!mutate("下移地点", () => {
+  if (!mutate("????", () => {
     const day = currentDay();
     const dayStops = day.stops;
     [dayStops[activeStop + 1], dayStops[activeStop]] = [dayStops[activeStop], dayStops[activeStop + 1]];
@@ -10403,7 +10508,7 @@ dom.moveDownBtn.addEventListener("click", async () => {
   if (!(await reorderStopListInDoc(dayId, nextStops, "local-stop-reorder"))) {
     await syncStopListToDoc(dayId, "local-stop-reorder-fallback");
   }
-  await saveCollaborativePlanChange("下移地点");
+  await saveCollaborativePlanChange("????");
   broadcastStopsReordered(dayId, nextStops);
   render();
 });
@@ -10437,17 +10542,17 @@ function renderAiRouteReport(result, day, optimizedStops) {
     dom.aiRouteReport.innerHTML = "";
     return;
   }
-  const sourceLabel = result?.fallback ? "本地兜底" : result?.source || (serviceConfig.aiEndpoint ? "AI 代理" : "本地距离排序");
-  const note = result?.note || "已应用新的地点顺序。";
-  const reason = result?.reason || (result?.fallback ? "模型密钥未配置或调用失败，已按地点坐标和地图位置做最近邻排序。" : "");
+  const sourceLabel = result?.fallback ? "????" : result?.source || (serviceConfig.aiEndpoint ? "AI ??" : "??????");
+  const note = result?.note || "??????????";
+  const reason = result?.reason || (result?.fallback ? "???????????????????????????????" : "");
   const segments = Array.isArray(result?.segments) ? result.segments.slice(0, 6) : [];
   const warnings = Array.isArray(result?.warnings) ? result.warnings.slice(0, 4) : [];
-  const order = (optimizedStops || day.stops || []).map((stop, index) => `${index + 1}. ${escapeHtml(stop.title)}`).join(" → ");
+  const order = (optimizedStops || day.stops || []).map((stop, index) => `${index + 1}. ${escapeHtml(stop.title)}`).join(" ? ");
   dom.aiRouteReport.hidden = false;
   dom.aiRouteReport.innerHTML = `
     <div class="ai-route-report-head">
       <strong>${escapeHtml(sourceLabel)}</strong>
-      <span>${escapeHtml(day.date ? formatDisplayDate(day.date) : day.label || "当天")}</span>
+      <span>${escapeHtml(day.date ? formatDisplayDate(day.date) : day.label || "??")}</span>
     </div>
     <p>${escapeHtml(note)}</p>
     ${reason ? `<p>${escapeHtml(reason)}</p>` : ""}
@@ -10458,7 +10563,7 @@ function renderAiRouteReport(result, day, optimizedStops) {
             ${segments
               .map(
                 (segment) => `
-                  <span>${escapeHtml(segment.from || "")} → ${escapeHtml(segment.to || "")}${segment.transport ? ` · ${escapeHtml(segment.transport)}` : ""}${segment.minutes ? ` · 约${Number(segment.minutes)}分钟` : ""}${segment.note ? ` · ${escapeHtml(segment.note)}` : ""}</span>
+                  <span>${escapeHtml(segment.from || "")} ? ${escapeHtml(segment.to || "")}${segment.transport ? ` ? ${escapeHtml(segment.transport)}` : ""}${segment.minutes ? ` ? ?${Number(segment.minutes)}??` : ""}${segment.note ? ` ? ${escapeHtml(segment.note)}` : ""}</span>
                 `,
               )
               .join("")}
@@ -10483,16 +10588,16 @@ function renderAmapRouteReport(result) {
   const legs = Array.isArray(result.legs) ? result.legs : [];
   const warnings = Array.isArray(result.warnings) ? result.warnings : [];
   const modeText = {
-    walking: "步行",
-    driving: "驾车",
-    transit: "公交/地铁",
-  }[result.mode] || "路线";
+    walking: "??",
+    driving: "??",
+    transit: "??/??",
+  }[result.mode] || "??";
   const strategyText = amapRouteStrategyLabel(result.strategy, result.mode);
   dom.amapRouteReport.hidden = false;
   dom.amapRouteReport.innerHTML = `
     <div class="amap-route-summary">
-      <strong>${escapeHtml(result.source || "高德路线规划")}</strong>
-      <span>${escapeHtml([modeText, strategyText, formatDistanceText(result.distance), formatDurationText(result.duration)].filter(Boolean).join(" · "))}</span>
+      <strong>${escapeHtml(result.source || "??????")}</strong>
+      <span>${escapeHtml([modeText, strategyText, formatDistanceText(result.distance), formatDurationText(result.duration)].filter(Boolean).join(" ? "))}</span>
     </div>
     ${
       legs.length
@@ -10501,28 +10606,28 @@ function renderAmapRouteReport(result) {
               .map(
                 (leg, index) => `
                   <div class="amap-route-leg">
-                    <strong>${index + 1}. ${escapeHtml(leg.from || "")} → ${escapeHtml(leg.to || "")}</strong>
-                    <span>${formatDistanceText(leg.distance)} · ${formatDurationText(leg.duration)}${leg.cost ? ` · 约${money(leg.cost)}` : ""}</span>
+                    <strong>${index + 1}. ${escapeHtml(leg.from || "")} ? ${escapeHtml(leg.to || "")}</strong>
+                    <span>${formatDistanceText(leg.distance)} ? ${formatDurationText(leg.duration)}${leg.cost ? ` ? ?${money(leg.cost)}` : ""}</span>
                     ${leg.instruction ? `<span>${escapeHtml(leg.instruction)}</span>` : ""}
                   </div>
                 `,
               )
               .join("")}
           </div>`
-        : `<p>高德已响应，但没有返回可展示的分段路线。</p>`
+        : `<p>????????????????????</p>`
     }
-    ${warnings.length ? `<p>${warnings.map((warning) => escapeHtml(warning)).join("；")}</p>` : ""}
+    ${warnings.length ? `<p>${warnings.map((warning) => escapeHtml(warning)).join("?")}</p>` : ""}
   `;
 }
 
 function amapRouteStrategyLabel(strategy, mode = "") {
   const common = {
-    default: "默认路线",
-    fastest: "时间优先",
-    avoid_tolls: "少收费",
-    avoid_congestion: "躲避拥堵",
-    least_walking: "少步行",
-    least_transfer: "少换乘",
+    default: "????",
+    fastest: "????",
+    avoid_tolls: "???",
+    avoid_congestion: "????",
+    least_walking: "???",
+    least_transfer: "???",
   };
   if (!strategy || strategy === "default") return common.default;
   if (mode === "walking" && strategy !== "default") return "";
@@ -10531,13 +10636,13 @@ function amapRouteStrategyLabel(strategy, mode = "") {
 
 function formatDistanceText(value) {
   const meters = Number(value || 0);
-  if (!meters) return "距离待确认";
+  if (!meters) return "?????";
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
 }
 
 function formatDurationText(value) {
   const seconds = Number(value || 0);
-  if (!seconds) return "时长待确认";
+  if (!seconds) return "?????";
   const minutes = Math.max(1, Math.round(seconds / 60));
   if (minutes < 60) return `${minutes} min`;
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
@@ -10579,9 +10684,9 @@ async function requestAiRoute(day) {
     if (Array.isArray(data.fallbackOrder) && data.fallbackOrder.length) {
       return {
         order: data.fallbackOrder,
-        note: data.note || data.error || "AI 未配置，已使用后端本地兜底顺序。",
+        note: data.note || data.error || "AI ????????????????",
         reason: data.error || "",
-        source: data.source || "AI 代理兜底",
+        source: data.source || "AI ????",
         fallback: true,
       };
     }
@@ -10590,25 +10695,25 @@ async function requestAiRoute(day) {
   const order = Array.isArray(data.order) ? data.order : Array.isArray(data.stopIds) ? data.stopIds : [];
   return {
     order,
-    note: data.note || data.reason || "AI 已返回优化顺序",
+    note: data.note || data.reason || "AI ???????",
     reason: data.reason || "",
     segments: Array.isArray(data.segments) ? data.segments : [],
     warnings: Array.isArray(data.warnings) ? data.warnings : [],
-    source: data.source || "AI 代理",
+    source: data.source || "AI ??",
   };
 }
 
 async function optimizeCurrentDayRoute() {
   const day = currentDay();
   if (day.stops.length < 3) {
-    dom.optimizeHint.textContent = "当前天少于 3 个地点，暂时不需要优化路径。";
+    dom.optimizeHint.textContent = "????? 3 ??????????????";
     return;
   }
 
-  if (!requireEdit("优化路径")) return;
-  saveVersionSnapshot("优化路径前版本");
+  if (!requireEdit("????")) return;
+  saveVersionSnapshot("???????");
   try {
-    dom.optimizeHint.textContent = serviceConfig.aiEndpoint ? "正在请求 AI 路径代理..." : "未配置 AI 代理，使用本地距离排序。";
+    dom.optimizeHint.textContent = serviceConfig.aiEndpoint ? "???? AI ????..." : "??? AI ????????????";
     renderAiRouteReport(null);
     const aiResult = await requestAiRoute(day);
     let optimized = null;
@@ -10626,44 +10731,44 @@ async function optimizeCurrentDayRoute() {
       optimized = localOptimizeStops(day.stops);
       routeResult = routeResult || {
         fallback: true,
-        source: "本地距离排序",
-        note: "未配置 AI 代理，已按地点坐标/地图位置做最近邻排序。",
-        reason: "本地兜底只考虑坐标距离，不会判断营业时间、排队、实时交通和天气。",
-        warnings: ["本地兜底结果适合作为初稿，建议人工核对交通和开放时间。"],
+        source: "??????",
+        note: "??? AI ?????????/???????????",
+        reason: "????????????????????????????????",
+        warnings: ["???????????????????????????"],
       };
     }
     day.stops = optimized.map((stop, index) => ({
       ...stop,
       tags: Array.from(
         new Set([
-          ...(stop.tags || []).filter((tag) => !["待优化", "已优化", "AI优化", "兜底优化"].includes(tag)),
-          index === 0 ? "起点" : routeResult?.fallback ? "兜底优化" : serviceConfig.aiEndpoint ? "AI优化" : "已优化",
+          ...(stop.tags || []).filter((tag) => !["???", "???", "AI??", "????"].includes(tag)),
+          index === 0 ? "??" : routeResult?.fallback ? "????" : serviceConfig.aiEndpoint ? "AI??" : "???",
         ]),
       ),
     }));
     day.amapRoute = null;
     activeStop = 0;
-    logActivity(serviceConfig.aiEndpoint ? "AI 优化当天路径" : "本地优化当天路径");
+    logActivity(serviceConfig.aiEndpoint ? "AI ??????" : "????????");
     const reorderOrigin = serviceConfig.aiEndpoint ? "local-ai-route-reorder" : "local-fallback-route-reorder";
     if (!(await reorderStopListInDoc(day.id, day.stops, reorderOrigin, { patchFields: ["tags"] }))) {
       await syncStopListToDoc(day.id, `${reorderOrigin}-fallback`);
     }
-    await saveCollaborativePlanChange(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
+    await saveCollaborativePlanChange(serviceConfig.aiEndpoint ? "?? AI ????" : "??????????");
     broadcastStopsReordered(day.id, day.stops);
     dom.optimizeHint.textContent = serviceConfig.aiEndpoint
-      ? `${routeResult?.fallback ? "AI 代理未配置，已兜底优化" : "AI 已优化"} ${day.stops.length} 个地点：${routeResult?.note || "已应用返回顺序"}`
-      : `已按 ${day.stops.length} 个地点的坐标/地图位置做本地距离排序；配置 AI 代理后可考虑营业时间、交通方式、天气和体力。`;
+      ? `${routeResult?.fallback ? "AI ???????????" : "AI ???"} ${day.stops.length} ????${routeResult?.note || "???????"}`
+      : `?? ${day.stops.length} ??????/?????????????? AI ??????????????????????`;
     renderAiRouteReport(routeResult, day, day.stops);
     render();
   } catch (error) {
-    dom.optimizeHint.textContent = `AI 代理调用失败：${error.message}。已保留原顺序，可检查后端地址或令牌。`;
+    dom.optimizeHint.textContent = `AI ???????${error.message}???????????????????`;
     renderAiRouteReport(
       {
         fallback: true,
-        source: "调用失败",
-        note: "AI 代理调用失败，未改动当前顺序。",
+        source: "????",
+        note: "AI ???????????????",
         reason: error.message,
-        warnings: ["请检查 Supabase 函数是否部署、OPENAI_API_KEY 是否配置、代理地址和访问令牌是否正确。"],
+        warnings: ["??? Supabase ???????OPENAI_API_KEY ???????????????????"],
       },
       day,
       day.stops,
@@ -10674,25 +10779,25 @@ async function optimizeCurrentDayRoute() {
 dom.optimizeRouteBtn.addEventListener("click", optimizeCurrentDayRoute);
 
 dom.saveServiceConfigBtn.addEventListener("click", () => {
-  if (!requireEdit("保存接口配置")) return;
+  if (!requireEdit("??????")) return;
   saveServiceConfig();
-  dom.saveState.textContent = "接口配置已保存到当前浏览器";
+  dom.saveState.textContent = "?????????????";
 });
 
 dom.syncWeatherBtn.addEventListener("click", syncWeather);
 
 dom.mustVote.addEventListener("click", async () => {
-  if (!requireEdit("更新必去投票")) return;
+  if (!requireEdit("??????")) return;
   const stop = currentStop();
   const actorId = collabActorId();
   const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
   const nextVoteValues = toggleVoteValues(currentValues, actorId);
   if (await syncCollabStructValuesToDoc(nextVoteValues, "local-vote-toggle")) {
     await syncStopSnapshotToPlanDoc(stop.id, "local-vote-toggle-snapshot");
-    await saveCollaborativeTextChange("更新必去投票");
+    await saveCollaborativeTextChange("??????");
     return;
   }
-  if (!mutate("更新必去投票", () => {
+  if (!mutate("??????", () => {
     const fallbackStop = currentStop();
     const fallbackValues = toggleVoteValues(fallbackStop, actorId);
     fallbackStop.voters = fallbackValues.voters;
@@ -10700,24 +10805,24 @@ dom.mustVote.addEventListener("click", async () => {
     fallbackStop.votes = fallbackValues.votes;
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-vote-toggle-fallback");
-  await saveCollaborativeTextChange("更新必去投票");
+  await saveCollaborativeTextChange("??????");
   render();
 });
 
 dom.favoriteBtn.addEventListener("click", async () => {
-  if (!requireEdit("更新收藏")) return;
+  if (!requireEdit("????")) return;
   const stop = currentStop();
   const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
   if (await syncCollabStructValuesToDoc({ favorite: !Boolean(currentValues.favorite) }, "local-favorite-toggle")) {
     await syncStopSnapshotToPlanDoc(stop.id, "local-favorite-toggle-snapshot");
-    await saveCollaborativeTextChange("更新收藏");
+    await saveCollaborativeTextChange("????");
     return;
   }
-  if (!mutate("更新收藏", () => {
+  if (!mutate("????", () => {
     currentStop().favorite = !currentStop().favorite;
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-favorite-toggle-fallback");
-  await saveCollaborativeTextChange("更新收藏");
+  await saveCollaborativeTextChange("????");
   render();
 });
 
@@ -10733,26 +10838,26 @@ dom.commentForm.addEventListener("submit", async (event) => {
       stop.comments = normalizeComments([...(stop.comments || []), reply]);
       replyingCommentId = "";
       dom.commentInput.value = "";
-      dom.commentInput.placeholder = "添加同行意见或提醒";
+      dom.commentInput.placeholder = "?????????";
       renderStopComments(stop);
       dom.commentCount.textContent = stop.comments.length;
-      await logActivity(`回复评论「${stop.title}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: stop.id || "" } });
+      await logActivity(`?????${stop.title}?`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: stop.id || "" } });
       await syncStopSnapshotToPlanDoc(stop.id, "local-comment-reply-snapshot");
-      await saveCollaborativeTextChange(`回复评论「${stop.title}」`);
-      dom.saveState.textContent = `已回复「${stop.title}」的评论`;
+      await saveCollaborativeTextChange(`?????${stop.title}?`);
+      dom.saveState.textContent = `????${stop.title}????`;
       return;
     }
     const fallbackTitle = currentStop().title;
     const fallbackReply = createCommentReply(parentId, text);
-    if (!mutate(`回复评论「${fallbackTitle}」`, () => {
+    if (!mutate(`?????${fallbackTitle}?`, () => {
       currentStop().comments = normalizeComments([...(currentStop().comments || []), fallbackReply]);
       replyingCommentId = "";
       dom.commentInput.value = "";
-      dom.commentInput.placeholder = "添加同行意见或提醒";
+      dom.commentInput.placeholder = "?????????";
     }, { save: false, render: false })) return;
     await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-reply-fallback-snapshot");
-    await logActivity(`回复评论「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: currentStop().id || "" } });
-    await saveCollaborativeTextChange(`回复评论「${fallbackTitle}」`);
+    await logActivity(`?????${fallbackTitle}?`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: currentStop().id || "" } });
+    await saveCollaborativeTextChange(`?????${fallbackTitle}?`);
     render();
     return;
   }
@@ -10764,21 +10869,21 @@ dom.commentForm.addEventListener("submit", async (event) => {
     dom.commentInput.value = "";
     renderStopComments(stop);
     dom.commentCount.textContent = stop.comments.length;
-    await logActivity(`评论「${stop.title}」`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "stop", stopId: stop.id || "" } });
+    await logActivity(`???${stop.title}?`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "stop", stopId: stop.id || "" } });
     await syncStopSnapshotToPlanDoc(stop.id, "local-comment-snapshot");
-    await saveCollaborativeTextChange(`评论「${stop.title}」`);
-    dom.saveState.textContent = `已评论「${stop.title}」`;
+    await saveCollaborativeTextChange(`???${stop.title}?`);
+    dom.saveState.textContent = `????${stop.title}?`;
     return;
   }
   const fallbackTitle = currentStop().title;
   const fallbackComment = { id: uid(), author: getCollabName(), text, at: new Date().toISOString(), ...(anchor ? { anchor } : {}) };
-  if (!mutate(`评论「${fallbackTitle}」`, () => {
+  if (!mutate(`???${fallbackTitle}?`, () => {
     currentStop().comments = [...(currentStop().comments || []), fallbackComment];
     dom.commentInput.value = "";
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-fallback-snapshot");
-  await logActivity(`评论「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "stop", stopId: currentStop().id || "" } });
-  await saveCollaborativeTextChange(`评论「${fallbackTitle}」`);
+  await logActivity(`???${fallbackTitle}?`, { target: { type: "comment", commentId: fallbackComment.id, scope: "stop", stopId: currentStop().id || "" } });
+  await saveCollaborativeTextChange(`???${fallbackTitle}?`);
   render();
 });
 
@@ -10795,7 +10900,7 @@ dom.commentList.addEventListener("click", async (event) => {
     event.preventDefault();
     const comment = (currentStop()?.comments || []).find((item) => item.id === anchorButton.dataset.commentAnchor);
     if (comment?.anchor && focusCommentAnchor(comment.anchor)) {
-      dom.saveState.textContent = "已定位到评论锚点";
+      dom.saveState.textContent = "????????";
     }
     return;
   }
@@ -10803,9 +10908,9 @@ dom.commentList.addEventListener("click", async (event) => {
   if (replyButton) {
     event.preventDefault();
     const comment = normalizeComments(currentStop()?.comments || []).find((item) => item.id === replyButton.dataset.replyComment && !item.parentId);
-    if (!comment || !requireEdit("回复评论")) return;
+    if (!comment || !requireEdit("????")) return;
     replyingCommentId = comment.id;
-    dom.commentInput.placeholder = `回复 ${comment.author || "协作者"}...`;
+    dom.commentInput.placeholder = `?? ${comment.author || "???"}...`;
     dom.commentInput.focus();
     renderCommentAnchorHint();
     return;
@@ -10816,24 +10921,24 @@ dom.commentList.addEventListener("click", async (event) => {
     const commentId = resolveButton.dataset.toggleCommentResolved;
     const stop = currentStop();
     const comment = normalizeComments(stop.comments || []).find((item) => item.id === commentId && !item.parentId);
-    if (!comment || !requireEdit(comment.resolved ? "重新打开评论" : "标记评论已解决")) return;
+    if (!comment || !requireEdit(comment.resolved ? "??????" : "???????")) return;
     const nextPatch = resolvedCommentPatch(comment.resolved);
     const updated = await updateCollaborativeComment(commentId, nextPatch);
     if (updated) {
       stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, nextPatch);
       renderStopComments(stop);
-      await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
+      await logActivity(`${comment.resolved ? "????" : "??"}???${stop.title}?`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
       await syncStopSnapshotToPlanDoc(stop.id, "local-comment-resolve-snapshot");
-      await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
-      dom.saveState.textContent = comment.resolved ? "已重新打开评论" : "已标记评论解决";
+      await saveCollaborativeTextChange(`${comment.resolved ? "????" : "??"}???${stop.title}?`);
+      dom.saveState.textContent = comment.resolved ? "???????" : "???????";
       return;
     }
-    if (!mutate(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, () => {
+    if (!mutate(`${comment.resolved ? "????" : "??"}???${stop.title}?`, () => {
       currentStop().comments = commentsWithUpdatedComment(currentStop().comments || [], commentId, nextPatch);
     }, { save: false, render: false })) return;
     await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-resolve-fallback-snapshot");
-    await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "" } });
-    await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
+    await logActivity(`${comment.resolved ? "????" : "??"}???${stop.title}?`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "" } });
+    await saveCollaborativeTextChange(`${comment.resolved ? "????" : "??"}???${stop.title}?`);
     render();
     return;
   }
@@ -10843,31 +10948,31 @@ dom.commentList.addEventListener("click", async (event) => {
   const commentId = deleteButton.dataset.deleteComment;
   const stop = currentStop();
   const comment = (stop.comments || []).find((item) => item.id === commentId);
-  if (!comment || !requireEdit("删除评论")) return;
+  if (!comment || !requireEdit("????")) return;
   if (await deleteCollaborativeComment(commentId)) {
     stop.comments = commentsWithoutThread(stop.comments || [], commentId);
     if (replyingCommentId === commentId || !stop.comments.some((item) => item.id === replyingCommentId)) {
       replyingCommentId = "";
-      dom.commentInput.placeholder = "添加同行意见或提醒";
+      dom.commentInput.placeholder = "?????????";
     }
     renderStopComments(stop);
     dom.commentCount.textContent = stop.comments.length;
-    await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "", deleted: true } });
+    await logActivity(`?????${stop.title}?`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "", deleted: true } });
     await syncStopSnapshotToPlanDoc(stop.id, "local-comment-delete-snapshot");
-    await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
-    dom.saveState.textContent = `已删除「${stop.title}」的评论`;
+    await saveCollaborativeTextChange(`?????${stop.title}?`);
+    dom.saveState.textContent = `????${stop.title}????`;
     return;
   }
-  if (!mutate(`删除评论「${stop.title}」`, () => {
+  if (!mutate(`?????${stop.title}?`, () => {
     currentStop().comments = commentsWithoutThread(currentStop().comments || [], commentId);
     if (replyingCommentId === commentId || !currentStop().comments.some((item) => item.id === replyingCommentId)) {
       replyingCommentId = "";
-      dom.commentInput.placeholder = "添加同行意见或提醒";
+      dom.commentInput.placeholder = "?????????";
     }
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot");
-  await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "", deleted: true } });
-  await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
+  await logActivity(`?????${stop.title}?`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "", deleted: true } });
+  await saveCollaborativeTextChange(`?????${stop.title}?`);
   render();
 });
 
@@ -10883,25 +10988,25 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
       day.comments = normalizeComments([...(day.comments || []), reply]);
       dayReplyingCommentId = "";
       dom.dayCommentInput.value = "";
-      dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+      dom.dayCommentInput.placeholder = "??????????????????";
       renderDayComments(day);
-      await logActivity(`回复当天批注「${day.title}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: day.id || "" } });
+      await logActivity(`???????${day.title}?`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: day.id || "" } });
       await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-reply-snapshot");
-      await saveCollaborativeTextChange(`回复当天批注「${day.title}」`);
-      dom.saveState.textContent = `已回复「${day.title}」的当天批注`;
+      await saveCollaborativeTextChange(`???????${day.title}?`);
+      dom.saveState.textContent = `????${day.title}??????`;
       return;
     }
     const fallbackTitle = currentDay().title;
     const fallbackReply = createCommentReply(parentId, text);
-    if (!mutate(`回复当天批注「${fallbackTitle}」`, () => {
+    if (!mutate(`???????${fallbackTitle}?`, () => {
       currentDay().comments = normalizeComments([...(currentDay().comments || []), fallbackReply]);
       dayReplyingCommentId = "";
       dom.dayCommentInput.value = "";
-      dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+      dom.dayCommentInput.placeholder = "??????????????????";
     }, { requireUnlocked: false, save: false, render: false })) return;
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-reply-fallback-snapshot");
-    await logActivity(`回复当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: currentDay().id || "" } });
-    await saveCollaborativeTextChange(`回复当天批注「${fallbackTitle}」`);
+    await logActivity(`???????${fallbackTitle}?`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: currentDay().id || "" } });
+    await saveCollaborativeTextChange(`???????${fallbackTitle}?`);
     render();
     return;
   }
@@ -10912,21 +11017,21 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
     day.comments = normalizeComments([...(day.comments || []), collaborativeComment]);
     dom.dayCommentInput.value = "";
     renderDayComments(day);
-    await logActivity(`当天批注「${day.title}」`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "day", dayId: day.id || "" } });
+    await logActivity(`?????${day.title}?`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-snapshot");
-    await saveCollaborativeTextChange(`当天批注「${day.title}」`);
-    dom.saveState.textContent = `已批注「${day.title}」`;
+    await saveCollaborativeTextChange(`?????${day.title}?`);
+    dom.saveState.textContent = `????${day.title}?`;
     return;
   }
   const fallbackTitle = currentDay().title;
   const fallbackComment = { id: uid(), author: getCollabName(), text, at: new Date().toISOString(), ...(anchor ? { anchor } : {}) };
-  if (!mutate(`当天批注「${fallbackTitle}」`, () => {
+  if (!mutate(`?????${fallbackTitle}?`, () => {
     currentDay().comments = normalizeComments([...(currentDay().comments || []), fallbackComment]);
     dom.dayCommentInput.value = "";
   }, { requireUnlocked: false, save: false, render: false })) return;
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-fallback-snapshot");
-  await logActivity(`当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "day", dayId: currentDay().id || "" } });
-  await saveCollaborativeTextChange(`当天批注「${fallbackTitle}」`);
+  await logActivity(`?????${fallbackTitle}?`, { target: { type: "comment", commentId: fallbackComment.id, scope: "day", dayId: currentDay().id || "" } });
+  await saveCollaborativeTextChange(`?????${fallbackTitle}?`);
   render();
 });
 
@@ -10943,7 +11048,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     event.preventDefault();
     const comment = (currentDay()?.comments || []).find((item) => item.id === anchorButton.dataset.dayCommentAnchor);
     if (comment?.anchor && focusCommentAnchor(comment.anchor)) {
-      dom.saveState.textContent = "已定位到当天批注锚点";
+      dom.saveState.textContent = "??????????";
     }
     return;
   }
@@ -10951,9 +11056,9 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
   if (replyButton) {
     event.preventDefault();
     const comment = normalizeComments(currentDay()?.comments || []).find((item) => item.id === replyButton.dataset.replyDayComment && !item.parentId);
-    if (!comment || !requireEdit("回复当天批注")) return;
+    if (!comment || !requireEdit("??????")) return;
     dayReplyingCommentId = comment.id;
-    dom.dayCommentInput.placeholder = `回复 ${comment.author || "协作者"}...`;
+    dom.dayCommentInput.placeholder = `?? ${comment.author || "???"}...`;
     dom.dayCommentInput.focus();
     renderDayCommentAnchorHint();
     return;
@@ -10964,24 +11069,24 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     const commentId = resolveButton.dataset.toggleDayCommentResolved;
     const day = currentDay();
     const comment = normalizeComments(day.comments || []).find((item) => item.id === commentId && !item.parentId);
-    if (!comment || !requireEdit(comment.resolved ? "重新打开当天批注" : "标记当天批注已解决")) return;
+    if (!comment || !requireEdit(comment.resolved ? "????????" : "?????????")) return;
     const nextPatch = resolvedCommentPatch(comment.resolved);
     const updated = await updateCollaborativeDayComment(commentId, nextPatch);
     if (updated) {
       day.comments = commentsWithUpdatedComment(day.comments || [], commentId, nextPatch);
       renderDayComments(day);
-      await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
+      await logActivity(`${comment.resolved ? "????" : "??"}?????${day.title}?`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
       await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-resolve-snapshot");
-      await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
-      dom.saveState.textContent = comment.resolved ? "已重新打开当天批注" : "已标记当天批注解决";
+      await saveCollaborativeTextChange(`${comment.resolved ? "????" : "??"}?????${day.title}?`);
+      dom.saveState.textContent = comment.resolved ? "?????????" : "?????????";
       return;
     }
-    if (!mutate(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, () => {
+    if (!mutate(`${comment.resolved ? "????" : "??"}?????${day.title}?`, () => {
       currentDay().comments = commentsWithUpdatedComment(currentDay().comments || [], commentId, nextPatch);
     }, { requireUnlocked: false, save: false, render: false })) return;
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-resolve-fallback-snapshot");
-    await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "" } });
-    await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
+    await logActivity(`${comment.resolved ? "????" : "??"}?????${day.title}?`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "" } });
+    await saveCollaborativeTextChange(`${comment.resolved ? "????" : "??"}?????${day.title}?`);
     render();
     return;
   }
@@ -10991,30 +11096,30 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
   const commentId = deleteButton.dataset.deleteDayComment;
   const day = currentDay();
   const comment = (day.comments || []).find((item) => item.id === commentId);
-  if (!comment || !requireEdit("删除当天批注")) return;
+  if (!comment || !requireEdit("??????")) return;
   if (await deleteCollaborativeDayComment(commentId)) {
     day.comments = commentsWithoutThread(day.comments || [], commentId);
     if (dayReplyingCommentId === commentId || !day.comments.some((item) => item.id === dayReplyingCommentId)) {
       dayReplyingCommentId = "";
-      dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+      dom.dayCommentInput.placeholder = "??????????????????";
     }
     renderDayComments(day);
-    await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "", deleted: true } });
+    await logActivity(`???????${day.title}?`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "", deleted: true } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-delete-snapshot");
-    await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
-    dom.saveState.textContent = `已删除「${day.title}」的当天批注`;
+    await saveCollaborativeTextChange(`???????${day.title}?`);
+    dom.saveState.textContent = `????${day.title}??????`;
     return;
   }
-  if (!mutate(`删除当天批注「${day.title}」`, () => {
+  if (!mutate(`???????${day.title}?`, () => {
     currentDay().comments = commentsWithoutThread(currentDay().comments || [], commentId);
     if (dayReplyingCommentId === commentId || !currentDay().comments.some((item) => item.id === dayReplyingCommentId)) {
       dayReplyingCommentId = "";
-      dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
+      dom.dayCommentInput.placeholder = "??????????????????";
     }
   }, { requireUnlocked: false, save: false, render: false })) return;
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-delete-fallback-snapshot");
-  await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "", deleted: true } });
-  await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
+  await logActivity(`???????${day.title}?`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "", deleted: true } });
+  await saveCollaborativeTextChange(`???????${day.title}?`);
   render();
 });
 
@@ -11022,7 +11127,7 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const day = currentDay();
   const text = dom.dayBlockInput.value.trim();
-  if (!day || !text || !requireEdit("添加协作块")) return;
+  if (!day || !text || !requireEdit("?????")) return;
   const block = normalizeDayBlock({
     id: uid(),
     type: dom.dayBlockType.value || "todo",
@@ -11037,18 +11142,18 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
     day.blocks = normalizeDayBlocks([...(day.blocks || []), addedBlock]);
     dom.dayBlockInput.value = "";
     renderDayBlocks(day);
-    await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(day.id, addedBlock.id) });
-    await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
-    dom.saveState.textContent = "已添加协作块";
+    await logActivity(`??????${day.title}?`, { target: dayBlockActivityTarget(day.id, addedBlock.id) });
+    await saveCollaborativePlanChange(`??????${day.title}?`);
+    dom.saveState.textContent = "??????";
     return;
   }
-  if (!mutate(`添加协作块「${day.title}」`, () => {
+  if (!mutate(`??????${day.title}?`, () => {
     currentDay().blocks = normalizeDayBlocks([...(currentDay().blocks || []), block]);
     dom.dayBlockInput.value = "";
   }, { requireUnlocked: false, save: false, render: false })) return;
   await syncDayBlocksToDoc(currentDay().id, "local-day-block-add-fallback");
-  await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(currentDay().id, block.id) });
-  await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
+  await logActivity(`??????${day.title}?`, { target: dayBlockActivityTarget(currentDay().id, block.id) });
+  await saveCollaborativePlanChange(`??????${day.title}?`);
   render();
 });
 
@@ -11056,10 +11161,17 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
   const selectBlockInput = event.target.closest("[data-select-day-block]");
   if (selectBlockInput) {
     const blockId = selectBlockInput.dataset.selectDayBlock || "";
-    if (blockId && selectBlockInput.checked) selectedDayBlockIds.add(blockId);
-    else selectedDayBlockIds.delete(blockId);
+    const blocks = normalizeDayBlocks(currentDay()?.blocks || []);
+    if (blockId && event.shiftKey && lastSelectedDayBlockId && setDayBlockRangeSelection(blocks, lastSelectedDayBlockId, blockId, selectBlockInput.checked)) {
+      // Range selection handled by helper.
+    } else if (blockId && selectBlockInput.checked) {
+      selectedDayBlockIds.add(blockId);
+    } else {
+      selectedDayBlockIds.delete(blockId);
+    }
+    if (blockId) lastSelectedDayBlockId = blockId;
     renderDayBlocks(currentDay());
-    dom.saveState.textContent = selectedDayBlockIds.size ? `已选择 ${selectedDayBlockIds.size} 个协作块` : "已取消协作块选择";
+    dom.saveState.textContent = selectedDayBlockIds.size ? `??? ${selectedDayBlockIds.size} ????` : "????????";
     return;
   }
   const typeSelect = event.target.closest("[data-day-block-type]");
@@ -11070,7 +11182,7 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
   const nextType = DAY_BLOCK_TYPES.includes(typeSelect.value) ? typeSelect.value : "todo";
   if (!day || !block) return;
   if (nextType === block.type) return;
-  if (!requireEdit("切换协作块类型")) {
+  if (!requireEdit("???????")) {
     typeSelect.value = block.type || "todo";
     return;
   }
@@ -11078,25 +11190,25 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
   schedulePresenceTrack(0);
   const patch = { type: nextType };
   if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-type-change")) {
-    noteRemoteBlockEditors(blockId, "切换类型");
+    noteRemoteBlockEditors(blockId, "????");
     day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
     renderDayBlocks(day);
-    await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
-    await saveCollaborativePlanChange("已切换协作块类型");
+    await logActivity(`??????${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
+    await saveCollaborativePlanChange("????????");
     focusDayBlockInput(blockId);
     return;
   }
-  if (!mutate("切换协作块类型", () => {
+  if (!mutate("???????", () => {
     currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
   }, { requireUnlocked: false, save: false, render: false })) {
     typeSelect.value = block.type || "todo";
     return;
   }
   await syncDayBlocksToDoc(day.id, "local-day-block-type-change-fallback");
-  noteRemoteBlockEditors(blockId, "切换类型");
+  noteRemoteBlockEditors(blockId, "????");
   renderDayBlocks(currentDay());
-  await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
-  await saveCollaborativePlanChange("已切换协作块类型");
+  await logActivity(`??????${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
+  await saveCollaborativePlanChange("????????");
   focusDayBlockInput(blockId);
 });
 
@@ -11107,10 +11219,16 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
   if (bulkButton) {
     event.preventDefault();
     const action = bulkButton.dataset.dayBlockBulk || "";
+    if (action === "all") {
+      selectAllDayBlocks(normalizeDayBlocks(day.blocks || []));
+      renderDayBlocks(day);
+      dom.saveState.textContent = `??? ${selectedDayBlockIds.size} ????`;
+      return;
+    }
     if (action === "clear") {
       clearSelectedDayBlocks();
       renderDayBlocks(day);
-      dom.saveState.textContent = "已取消协作块选择";
+      dom.saveState.textContent = "????????";
       return;
     }
     if (!selectedDayBlockIds.size) return;
@@ -11120,6 +11238,14 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     }
     if (action === "delete") {
       await deleteSelectedDayBlocks(day);
+      return;
+    }
+    if (action === "done" || action === "open") {
+      await setSelectedDayBlockDone(day, action === "done");
+      return;
+    }
+    if (action === "indent" || action === "outdent") {
+      await indentSelectedDayBlocks(day, action === "indent" ? 1 : -1);
       return;
     }
     if (DAY_BLOCK_TYPES.includes(action)) {
@@ -11147,7 +11273,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === blockAnchorButton.dataset.blockCommentAnchor);
     if (comment?.anchor && focusCommentAnchor(comment.anchor)) {
-      dom.saveState.textContent = "已定位到块级批注锚点";
+      dom.saveState.textContent = "??????????";
     }
     return;
   }
@@ -11168,10 +11294,10 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!blockId) return;
     if (collapsedDayBlockIds.has(blockId)) {
       collapsedDayBlockIds.delete(blockId);
-      dom.saveState.textContent = "已展开协作块";
+      dom.saveState.textContent = "??????";
     } else {
       collapsedDayBlockIds.add(blockId);
-      dom.saveState.textContent = "已折叠协作块";
+      dom.saveState.textContent = "??????";
     }
     saveCollapsedDayBlocks();
     renderDayBlocks(day);
@@ -11183,24 +11309,24 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     event.preventDefault();
     const blockId = toggleButton.dataset.toggleDayBlock;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
-    if (!block || !requireEdit("更新协作块")) return;
+    if (!block || !requireEdit("?????")) return;
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     const nextDone = !block.done;
-    noteRemoteBlockEditors(blockId, nextDone ? "标记完成" : "重新打开");
+    noteRemoteBlockEditors(blockId, nextDone ? "????" : "????");
     if (await updateDayBlockInDoc(day.id, blockId, { done: nextDone }, "local-day-block-toggle")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
-      await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "toggle" }) });
-      await saveCollaborativePlanChange("已更新协作块");
+      await logActivity(`${nextDone ? "??" : "????"}????${block.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(day.id, blockId, { action: "toggle" }) });
+      await saveCollaborativePlanChange("??????");
       return;
     }
-    if (!mutate("更新协作块", () => {
+    if (!mutate("?????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback");
-    await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "toggle" }) });
-    await saveCollaborativePlanChange("已更新协作块");
+    await logActivity(`${nextDone ? "??" : "????"}????${block.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "toggle" }) });
+    await saveCollaborativePlanChange("??????");
     render();
     return;
   }
@@ -11210,7 +11336,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const commentId = replyBlockCommentButton.dataset.replyBlockComment;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId && !comment.parentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId && !item.parentId);
-    if (!block || !comment || !requireEdit("回复块级评论")) return;
+    if (!block || !comment || !requireEdit("??????")) return;
     activeBlockPresenceId = block.id;
     schedulePresenceTrack(0);
     blockReplyingCommentId = comment.id;
@@ -11225,23 +11351,23 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const commentId = resolveBlockCommentButton.dataset.toggleBlockCommentResolved;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId && !comment.parentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId && !item.parentId);
-    if (!block || !comment || !requireEdit("更新块级评论")) return;
+    if (!block || !comment || !requireEdit("??????")) return;
     activeBlockPresenceId = block.id;
     schedulePresenceTrack(0);
     const patch = resolvedCommentPatch(comment.resolved);
     if (await updateDayBlockCommentInDoc(day.id, block.id, commentId, patch, "local-day-block-comment-resolve")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
-      await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
-      await saveCollaborativePlanChange("已更新块级评论");
+      await logActivity(`${comment.resolved ? "????" : "??"}?????${block.text.slice(0, 18)}?`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
+      await saveCollaborativePlanChange("???????");
       return;
     }
-    if (!mutate("更新块级评论", () => {
+    if (!mutate("??????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch) } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-resolve-fallback");
-    await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
-    await saveCollaborativePlanChange("已更新块级评论");
+    await logActivity(`${comment.resolved ? "????" : "??"}?????${block.text.slice(0, 18)}?`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
+    await saveCollaborativePlanChange("???????");
     render();
     return;
   }
@@ -11251,23 +11377,23 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const commentId = deleteBlockCommentButton.dataset.deleteBlockComment;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId);
-    if (!block || !comment || !requireEdit("删除块级评论")) return;
+    if (!block || !comment || !requireEdit("??????")) return;
     activeBlockPresenceId = block.id;
     schedulePresenceTrack(0);
     if (await deleteDayBlockCommentFromDoc(day.id, block.id, commentId, "local-day-block-comment-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       if (blockReplyingCommentId === commentId || !normalizeComments(currentDay()?.blocks?.find((item) => item.id === block.id)?.comments || []).some((item) => item.id === blockReplyingCommentId)) blockReplyingCommentId = "";
       renderDayBlocks(day);
-      await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "", deleted: true } });
-      await saveCollaborativePlanChange("已删除块级评论");
+      await logActivity(`???????${block.text.slice(0, 18)}?`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "", deleted: true } });
+      await saveCollaborativePlanChange("???????");
       return;
     }
-    if (!mutate("删除块级评论", () => {
+    if (!mutate("??????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId) } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-delete-fallback");
-    await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "", deleted: true } });
-    await saveCollaborativePlanChange("已删除块级评论");
+    await logActivity(`???????${block.text.slice(0, 18)}?`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "", deleted: true } });
+    await saveCollaborativePlanChange("???????");
     render();
     return;
   }
@@ -11277,26 +11403,26 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const blockId = moveButton.dataset.moveDayBlock;
     const direction = moveButton.dataset.direction === "up" ? "up" : "down";
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
-    if (!block || !requireEdit("排序协作块")) return;
+    if (!block || !requireEdit("?????")) return;
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
-    noteRemoteBlockEditors(blockId, "排序");
+    noteRemoteBlockEditors(blockId, "??");
     if (await moveDayBlockInDoc(day.id, blockId, direction, "local-day-block-reorder")) {
       day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
         updatedBy: getCollabName(),
         updatedAt: new Date().toISOString(),
       });
       renderDayBlocks(day);
-      await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "move", direction }) });
-      await saveCollaborativePlanChange("已排序协作块");
+      await logActivity(`??????${block.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(day.id, blockId, { action: "move", direction }) });
+      await saveCollaborativePlanChange("??????");
       return;
     }
-    if (!mutate("排序协作块", () => {
+    if (!mutate("?????", () => {
       currentDay().blocks = moveDayBlockList(currentDay().blocks || [], blockId, direction);
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-reorder-fallback");
-    await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "move", direction }) });
-    await saveCollaborativePlanChange("已排序协作块");
+    await logActivity(`??????${block.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "move", direction }) });
+    await saveCollaborativePlanChange("??????");
     render();
     return;
   }
@@ -11307,12 +11433,12 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const blocks = normalizeDayBlocks(day.blocks || []);
     const sourceIndex = blocks.findIndex((item) => item.id === sourceBlockId);
     const sourceBlock = sourceIndex >= 0 ? blocks[sourceIndex] : null;
-    if (!sourceBlock || !requireEdit("复制协作块")) return;
-    noteRemoteBlockEditors(sourceBlockId, "复制");
+    if (!sourceBlock || !requireEdit("?????")) return;
+    noteRemoteBlockEditors(sourceBlockId, "??");
     const duplicateBlock = normalizeDayBlock({
       ...sourceBlock,
       id: uid(),
-      text: sourceBlock.text ? `${sourceBlock.text} 副本` : dayBlockTypeLabel(sourceBlock.type),
+      text: sourceBlock.text ? `${sourceBlock.text} ??` : dayBlockTypeLabel(sourceBlock.type),
       textYjs: "",
       comments: [],
       done: false,
@@ -11331,19 +11457,19 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       day.blocks = insertDayBlockList(day.blocks || [], addedBlock, insertIndex);
       renderDayBlocks(day);
       focusDayBlockInput(addedBlock.id);
-      await logActivity(`复制协作块「${sourceBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: "duplicate", sourceBlockId }) });
-      await saveCollaborativePlanChange("已复制协作块");
+      await logActivity(`??????${sourceBlock.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: "duplicate", sourceBlockId }) });
+      await saveCollaborativePlanChange("??????");
       focusDayBlockInput(addedBlock.id);
       return;
     }
-    if (!mutate("复制协作块", () => {
+    if (!mutate("?????", () => {
       currentDay().blocks = insertDayBlockList(currentDay().blocks || [], duplicateBlock, insertIndex);
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-duplicate-fallback");
     renderDayBlocks(currentDay());
     focusDayBlockInput(duplicateBlock.id);
-    await logActivity(`复制协作块「${sourceBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, duplicateBlock.id, { action: "duplicate", sourceBlockId }) });
-    await saveCollaborativePlanChange("已复制协作块");
+    await logActivity(`??????${sourceBlock.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(day.id, duplicateBlock.id, { action: "duplicate", sourceBlockId }) });
+    await saveCollaborativePlanChange("??????");
     focusDayBlockInput(duplicateBlock.id);
     return;
   }
@@ -11352,23 +11478,23 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     event.preventDefault();
     const blockId = deleteButton.dataset.deleteDayBlock;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
-    if (!block || !requireEdit("删除协作块")) return;
+    if (!block || !requireEdit("?????")) return;
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
-    noteRemoteBlockEditors(blockId, "删除");
+    noteRemoteBlockEditors(blockId, "??");
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       renderDayBlocks(day);
-      await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { deleted: true }) });
-      await saveCollaborativePlanChange("已删除协作块");
+      await logActivity(`??????${block.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(day.id, blockId, { deleted: true }) });
+      await saveCollaborativePlanChange("??????");
       return;
     }
-    if (!mutate("删除协作块", () => {
+    if (!mutate("?????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).filter((item) => item.id !== blockId));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-delete-fallback");
-    await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { deleted: true }) });
-    await saveCollaborativePlanChange("已删除协作块");
+    await logActivity(`??????${block.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(currentDay().id, blockId, { deleted: true }) });
+    await saveCollaborativePlanChange("??????");
     render();
   }
 });
@@ -11382,7 +11508,7 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
   const input = form.querySelector("[data-block-comment-input]");
   const text = input?.value?.trim() || "";
   const block = normalizeDayBlocks(day?.blocks || []).find((item) => item.id === blockId);
-  if (!day || !block || !text || !requireEdit(blockReplyingCommentId ? "回复块级评论" : "添加块级评论")) return;
+  if (!day || !block || !text || !requireEdit(blockReplyingCommentId ? "??????" : "??????")) return;
   activeBlockPresenceId = block.id;
   schedulePresenceTrack(0);
   const parentId = blockReplyingCommentId && normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId)
@@ -11399,8 +11525,8 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     if (input) input.value = "";
     blockReplyingCommentId = "";
     renderDayBlocks(day);
-    await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || collaborativeComment.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
-    await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
+    await logActivity(`${parentId ? "??" : "??"}????${block.text.slice(0, 18)}?`, { target: { type: "comment", commentId: parentId || collaborativeComment.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
+    await saveCollaborativePlanChange(parentId ? "???????" : "???????");
     return;
   }
   const fallbackAnchor = parentId ? null : normalizeCommentAnchor(anchor);
@@ -11413,7 +11539,7 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     ...(fallbackAnchor ? { anchor: fallbackAnchor } : {}),
   });
   if (!fallbackComment) return;
-  if (!mutate(parentId ? "回复块级评论" : "添加块级评论", () => {
+  if (!mutate(parentId ? "??????" : "??????", () => {
     currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (
       item.id === block.id
         ? { ...item, comments: normalizeComments([...(item.comments || []), fallbackComment]) }
@@ -11423,8 +11549,8 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     blockReplyingCommentId = "";
   }, { requireUnlocked: false, save: false, render: false })) return;
   await syncDayBlocksToDoc(currentDay().id, parentId ? "local-day-block-comment-reply-fallback" : "local-day-block-comment-add-fallback");
-  await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || fallbackComment.id, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
-  await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
+  await logActivity(`${parentId ? "??" : "??"}????${block.text.slice(0, 18)}?`, { target: { type: "comment", commentId: parentId || fallbackComment.id, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
+  await saveCollaborativePlanChange(parentId ? "???????" : "???????");
   render();
 });
 
@@ -11492,7 +11618,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
   const day = currentDay();
   const targetElement = event.target.closest?.("[data-day-block]");
   const targetBlockId = targetElement?.dataset.dayBlock || "";
-  if (!day || !targetBlockId || targetBlockId === draggingDayBlockId || !requireEdit("拖拽排序协作块")) {
+  if (!day || !targetBlockId || targetBlockId === draggingDayBlockId || !requireEdit("???????")) {
     clearDayBlockDragState();
     return;
   }
@@ -11506,7 +11632,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
   }
   const draggedId = draggingDayBlockId;
   activeBlockPresenceId = draggedId;
-  noteRemoteBlockEditors(draggedId, "拖拽排序");
+  noteRemoteBlockEditors(draggedId, "????");
   if (await reorderDayBlockInDoc(day.id, draggedId, targetIndex, "local-day-block-drag-reorder")) {
     day.blocks = reorderDayBlockList(day.blocks || [], draggedId, targetIndex, {
       updatedBy: getCollabName(),
@@ -11514,11 +11640,11 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
     });
     clearDayBlockDragState();
     renderDayBlocks(day);
-    await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, draggedId, { action: "drag", targetIndex }) });
-    await saveCollaborativePlanChange("已拖拽排序协作块");
+    await logActivity(`????????${draggedBlock.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(day.id, draggedId, { action: "drag", targetIndex }) });
+    await saveCollaborativePlanChange("????????");
     return;
   }
-  if (!mutate("拖拽排序协作块", () => {
+  if (!mutate("???????", () => {
     currentDay().blocks = reorderDayBlockList(currentDay().blocks || [], draggedId, targetIndex);
   }, { requireUnlocked: false, save: false, render: false })) {
     clearDayBlockDragState();
@@ -11526,8 +11652,8 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
   }
   await syncDayBlocksToDoc(currentDay().id, "local-day-block-drag-reorder-fallback");
   clearDayBlockDragState();
-  await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, draggedId, { action: "drag", targetIndex }) });
-  await saveCollaborativePlanChange("已拖拽排序协作块");
+  await logActivity(`????????${draggedBlock.text.slice(0, 18)}?`, { target: dayBlockActivityTarget(currentDay().id, draggedId, { action: "drag", targetIndex }) });
+  await saveCollaborativePlanChange("????????");
   render();
 });
 
@@ -11547,7 +11673,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   if (!day || !block) return;
   if (event.key === "Tab") {
     event.preventDefault();
-    if (!requireEdit(event.shiftKey ? "减少协作块缩进" : "增加协作块缩进")) return;
+    if (!requireEdit(event.shiftKey ? "???????" : "???????")) return;
     const nextLevel = Math.max(0, Math.min((Number(block.level) || 0) + (event.shiftKey ? -1 : 1), 3));
     if (nextLevel === (Number(block.level) || 0)) return;
     activeBlockPresenceId = blockId;
@@ -11556,19 +11682,19 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
       focusDayBlockInput(blockId);
-      await logActivity(`${event.shiftKey ? "减少" : "增加"}协作块缩进`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
-      await saveCollaborativePlanChange("已调整协作块缩进");
+      await logActivity(`${event.shiftKey ? "??" : "??"}?????`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
+      await saveCollaborativePlanChange("????????");
       focusDayBlockInput(blockId);
       return;
     }
-    if (!mutate(event.shiftKey ? "减少协作块缩进" : "增加协作块缩进", () => {
+    if (!mutate(event.shiftKey ? "???????" : "???????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-indent-fallback");
     renderDayBlocks(currentDay());
     focusDayBlockInput(blockId);
-    await logActivity(`${event.shiftKey ? "减少" : "增加"}协作块缩进`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
-    await saveCollaborativePlanChange("已调整协作块缩进");
+    await logActivity(`${event.shiftKey ? "??" : "??"}?????`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
+    await saveCollaborativePlanChange("????????");
     focusDayBlockInput(blockId);
     return;
   }
@@ -11576,9 +11702,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   if (slashType && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();
     clearTimeout(dayBlockEditTimer);
-    if (!requireEdit("切换协作块类型")) return;
+    if (!requireEdit("???????")) return;
     activeBlockPresenceId = blockId;
-    noteRemoteBlockEditors(blockId, "使用斜杠命令");
+    noteRemoteBlockEditors(blockId, "??????");
     const patch = { type: slashType, text: "", textYjs: "" };
     const updatedSlashBlock = await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-slash-command");
     if (updatedSlashBlock) {
@@ -11586,19 +11712,19 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...visiblePatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
       focusDayBlockInput(blockId);
-      await logActivity(`切换协作块为${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
-      await saveCollaborativePlanChange("已切换协作块类型");
+      await logActivity(`??????${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
+      await saveCollaborativePlanChange("????????");
       focusDayBlockInput(blockId);
       return;
     }
-    if (!mutate("切换协作块类型", () => {
+    if (!mutate("???????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-slash-command-fallback");
     renderDayBlocks(currentDay());
     focusDayBlockInput(blockId);
-    await logActivity(`切换协作块为${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
-    await saveCollaborativePlanChange("已切换协作块类型");
+    await logActivity(`??????${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
+    await saveCollaborativePlanChange("????????");
     focusDayBlockInput(blockId);
     return;
   }
@@ -11606,9 +11732,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   if (shortcutType && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();
     clearTimeout(dayBlockEditTimer);
-    if (!requireEdit("使用快捷标记切换协作块类型")) return;
+    if (!requireEdit("?????????????")) return;
     activeBlockPresenceId = blockId;
-    noteRemoteBlockEditors(blockId, "使用快捷标记");
+    noteRemoteBlockEditors(blockId, "??????");
     const patch = { type: shortcutType, text: "", textYjs: "" };
     const updatedShortcutBlock = await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-markdown-shortcut");
     if (updatedShortcutBlock) {
@@ -11616,19 +11742,19 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...visiblePatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       renderDayBlocks(day);
       focusDayBlockInput(blockId);
-      await logActivity(`用快捷标记切换协作块为${dayBlockTypeLabel(shortcutType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "markdown-shortcut", blockType: shortcutType }) });
-      await saveCollaborativePlanChange("已用快捷标记切换协作块类型");
+      await logActivity(`???????????${dayBlockTypeLabel(shortcutType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "markdown-shortcut", blockType: shortcutType }) });
+      await saveCollaborativePlanChange("?????????????");
       focusDayBlockInput(blockId);
       return;
     }
-    if (!mutate("使用快捷标记切换协作块类型", () => {
+    if (!mutate("?????????????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-markdown-shortcut-fallback");
     renderDayBlocks(currentDay());
     focusDayBlockInput(blockId);
-    await logActivity(`用快捷标记切换协作块为${dayBlockTypeLabel(shortcutType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "markdown-shortcut", blockType: shortcutType }) });
-    await saveCollaborativePlanChange("已用快捷标记切换协作块类型");
+    await logActivity(`???????????${dayBlockTypeLabel(shortcutType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "markdown-shortcut", blockType: shortcutType }) });
+    await saveCollaborativePlanChange("?????????????");
     focusDayBlockInput(blockId);
     return;
   }
@@ -11646,9 +11772,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       createdBy: getCollabName(),
       createdAt: new Date().toISOString(),
     });
-    if (!newBlock || !requireEdit(afterText ? "拆分协作块" : "新增协作块")) return;
+    if (!newBlock || !requireEdit(afterText ? "?????" : "?????")) return;
     activeBlockPresenceId = newBlock.id;
-    noteRemoteBlockEditors(blockId, afterText ? "拆分" : "新增下方块");
+    noteRemoteBlockEditors(blockId, afterText ? "??" : "?????");
     const insertIndex = blockIndex + 1;
     const splitPatch = { text: beforeText, textYjs: "" };
     let textUpdateResult = true;
@@ -11666,12 +11792,12 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       day.blocks = insertDayBlockList(withSplitText, addedBlock, insertIndex);
       renderDayBlocks(day);
       focusDayBlockInput(addedBlock.id);
-      await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
-      await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
+      await logActivity(afterText ? "????????" : "????????", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
+      await saveCollaborativePlanChange(afterText ? "?????????" : "?????????");
       focusDayBlockInput(addedBlock.id);
       return;
     }
-    if (!mutate(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", () => {
+    if (!mutate(afterText ? "????????" : "????????", () => {
       const splitBlocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (
         item.id === blockId ? { ...item, ...splitPatch } : item
       )));
@@ -11680,43 +11806,43 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-add-fallback");
     renderDayBlocks(currentDay());
     focusDayBlockInput(newBlock.id);
-    await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
-    await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
+    await logActivity(afterText ? "????????" : "????????", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
+    await saveCollaborativePlanChange(afterText ? "?????????" : "?????????");
     focusDayBlockInput(newBlock.id);
     return;
   }
   if (event.key === "Backspace" && !event.isComposing && !input.value.trim() && blocks.length > 1) {
     event.preventDefault();
     const previousBlockId = blocks[Math.max(0, blockIndex - 1)]?.id || blocks[blockIndex + 1]?.id || "";
-    if (!requireEdit("删除空白协作块")) return;
+    if (!requireEdit("???????")) return;
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-delete-empty")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       activeBlockPresenceId = previousBlockId;
       renderDayBlocks(day);
       focusDayBlockInput(previousBlockId);
-      await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
-      await saveCollaborativePlanChange("已删除空白协作块");
+      await logActivity("???????", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
+      await saveCollaborativePlanChange("????????");
       focusDayBlockInput(previousBlockId);
       return;
     }
-    if (!mutate("删除空白协作块", () => {
+    if (!mutate("???????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).filter((item) => item.id !== blockId));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-delete-empty-fallback");
     activeBlockPresenceId = previousBlockId;
     renderDayBlocks(currentDay());
     focusDayBlockInput(previousBlockId);
-    await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
-    await saveCollaborativePlanChange("已删除空白协作块");
+    await logActivity("???????", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
+    await saveCollaborativePlanChange("????????");
     focusDayBlockInput(previousBlockId);
     return;
   }
   if (event.key === "Backspace" && !event.isComposing && input.selectionStart === 0 && input.selectionEnd === 0 && blockIndex > 0 && input.value.trim()) {
     event.preventDefault();
     const previousBlock = blocks[blockIndex - 1];
-    if (!previousBlock || !requireEdit("合并协作块")) return;
-    noteRemoteBlockEditors(blockId, "合并");
-    noteRemoteBlockEditors(previousBlock.id, "合并");
+    if (!previousBlock || !requireEdit("?????")) return;
+    noteRemoteBlockEditors(blockId, "??");
+    noteRemoteBlockEditors(previousBlock.id, "??");
     const mergedText = `${previousBlock.text || ""}${previousBlock.text ? " " : ""}${input.value.trim()}`.trim();
     const mergedComments = normalizeComments([...(previousBlock.comments || []), ...(block.comments || [])]);
     const previousPatch = { text: mergedText, textYjs: "", comments: mergedComments, level: previousBlock.level || 0 };
@@ -11730,12 +11856,12 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       activeBlockPresenceId = previousBlock.id;
       renderDayBlocks(day);
       focusDayBlockInput(previousBlock.id);
-      await logActivity("用键盘合并协作块", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
-      await saveCollaborativePlanChange("已用键盘合并协作块");
+      await logActivity("????????", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
+      await saveCollaborativePlanChange("?????????");
       focusDayBlockInput(previousBlock.id);
       return;
     }
-    if (!mutate("用键盘合并协作块", () => {
+    if (!mutate("????????", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || [])
         .map((item) => (item.id === previousBlock.id ? { ...item, ...previousPatch } : item))
         .filter((item) => item.id !== blockId));
@@ -11744,8 +11870,8 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     activeBlockPresenceId = previousBlock.id;
     renderDayBlocks(currentDay());
     focusDayBlockInput(previousBlock.id);
-    await logActivity("用键盘合并协作块", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
-    await saveCollaborativePlanChange("已用键盘合并协作块");
+    await logActivity("????????", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
+    await saveCollaborativePlanChange("?????????");
     focusDayBlockInput(previousBlock.id);
   }
 });
@@ -11766,17 +11892,17 @@ dom.dayBlockList?.addEventListener("input", (event) => {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
       const metaElement = blockElement?.querySelector(".day-block-meta");
-      if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;
-      await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
-      await saveCollaborativePlanChange("协作块已更新");
+      if (metaElement) metaElement.textContent = `???${getCollabName()}`;
+      await logActivity(`??????${text.slice(0, 18)}?`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
+      await saveCollaborativePlanChange("??????");
       return;
     }
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!block) return;
     day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text } : item)));
     await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback");
-    await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
-    await saveCollaborativePlanChange("协作块已更新");
+    await logActivity(`??????${text.slice(0, 18)}?`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
+    await saveCollaborativePlanChange("??????");
   }, 650);
 });
 
@@ -11809,16 +11935,16 @@ document.addEventListener("click", (event) => {
         thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
         thread.classList.add("is-focused");
         setTimeout(() => thread.classList.remove("is-focused"), 1300);
-        dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的块级批注`;
+        dom.saveState.textContent = `????${commentAnchorLabel(comment.anchor)}?????`;
       }
     } else if (scope === "day") {
       dayCommentFilter = comment.resolved ? "resolved" : "open";
       renderDayComments(currentDay());
-      if (focusDayCommentThread(comment.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的当天批注`;
+      if (focusDayCommentThread(comment.id)) dom.saveState.textContent = `????${commentAnchorLabel(comment.anchor)}?????`;
     } else {
       commentFilter = comment.resolved ? "resolved" : "open";
       renderStopComments(currentStop());
-      if (focusCommentThread(comment.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(comment.anchor)}的批注`;
+      if (focusCommentThread(comment.id)) dom.saveState.textContent = `????${commentAnchorLabel(comment.anchor)}???`;
     }
     return;
   }
@@ -11836,11 +11962,11 @@ document.addEventListener("click", (event) => {
   if (scope === "day") {
     dayCommentFilter = firstOpen ? "open" : "all";
     renderDayComments(currentDay());
-    if (focusDayCommentThread(target.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(target.anchor)}的当天批注`;
+    if (focusDayCommentThread(target.id)) dom.saveState.textContent = `????${commentAnchorLabel(target.anchor)}?????`;
   } else {
     commentFilter = firstOpen ? "open" : "all";
     renderStopComments(currentStop());
-    if (focusCommentThread(target.id)) dom.saveState.textContent = `已定位到${commentAnchorLabel(target.anchor)}的批注`;
+    if (focusCommentThread(target.id)) dom.saveState.textContent = `????${commentAnchorLabel(target.anchor)}???`;
   }
 });
 
@@ -11851,7 +11977,7 @@ dom.commentFocusBtn.addEventListener("click", () => {
 dom.cancelCandidateEditBtn?.addEventListener("click", () => {
   clearQuickPlaceForm();
   renderCandidates();
-  dom.saveState.textContent = "已取消编辑备选地点";
+  dom.saveState.textContent = "?????????";
 });
 
 dom.candidateGrid.addEventListener("click", async (event) => {
@@ -11860,11 +11986,11 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
     const candidate = state.candidates.find((item) => item.id === editButton.dataset.editCandidate);
-    if (!candidate || !requireEdit("编辑备选地点")) return;
+    if (!candidate || !requireEdit("??????")) return;
     setCandidateEditing(candidate);
     renderCandidates();
     dom.quickPlaceName.focus();
-    dom.saveState.textContent = `正在编辑备选「${candidate.title}」`;
+    dom.saveState.textContent = `???????${candidate.title}?`;
     return;
   }
   const deleteButton = event.target.closest("[data-delete-candidate]");
@@ -11873,29 +11999,29 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     event.stopPropagation();
     const candidateId = deleteButton.dataset.deleteCandidate;
     const candidate = state.candidates.find((item) => item.id === candidateId);
-    if (!candidate || !requireEdit("移除备选地点")) return;
+    if (!candidate || !requireEdit("??????")) return;
     if (await deleteCandidateFromDoc(candidateId)) {
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
-      await logActivity(`移除备选「${candidate.title}」`, { target: candidateActivityTarget(candidateId, { deleted: true, action: "delete" }) });
-      await saveCollaborativePlanChange(`移除备选「${candidate.title}」`);
-      dom.saveState.textContent = `已移除备选「${candidate.title}」`;
+      await logActivity(`?????${candidate.title}?`, { target: candidateActivityTarget(candidateId, { deleted: true, action: "delete" }) });
+      await saveCollaborativePlanChange(`?????${candidate.title}?`);
+      dom.saveState.textContent = `??????${candidate.title}?`;
       return;
     }
-    mutate(`移除备选「${candidate.title}」`, () => {
+    mutate(`?????${candidate.title}?`, () => {
       state.candidates = mergedCandidatesWithPatch("delete", null, candidateId);
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
     }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(candidateId, { deleted: true, action: "delete" }) });
     await syncCandidatesToDoc("local-candidate-delete-fallback");
-    await saveCollaborativePlanChange(`移除备选「${candidate.title}」`);
+    await saveCollaborativePlanChange(`?????${candidate.title}?`);
     return;
   }
   const button = event.target.closest("[data-candidate]");
   if (!button) return;
-  if (!requireEdit("加入备选地点")) return;
+  if (!requireEdit("??????")) return;
   const candidate = clone(state.candidates[Number(button.dataset.candidate)]);
   candidate.id = uid();
   let createdDayId = "";
-  const label = `加入备选「${candidate.title}」`;
+  const label = `?????${candidate.title}?`;
   if (!mutate(label, () => {
     const day = currentDay();
     createdDayId = day.id;
@@ -11972,11 +12098,11 @@ dom.transportList.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
     const quote = (state.transportQuotes || []).find((item) => item.id === editButton.dataset.editQuote);
-    if (!quote || !requireEdit("编辑交通报价")) return;
+    if (!quote || !requireEdit("??????")) return;
     setManualQuoteEditing(quote);
     renderTransport();
     dom.manualQuoteCode.focus();
-    dom.saveState.textContent = `正在编辑报价「${quote.code}」`;
+    dom.saveState.textContent = `???????${quote.code}?`;
     return;
   }
   const deleteButton = event.target.closest("[data-delete-quote]");
@@ -11985,28 +12111,28 @@ dom.transportList.addEventListener("click", async (event) => {
   event.stopPropagation();
   const quoteId = deleteButton.dataset.deleteQuote;
   const quote = (state.transportQuotes || []).find((item) => item.id === quoteId);
-  if (!quote || !requireEdit("删除交通报价")) return;
+  if (!quote || !requireEdit("??????")) return;
   if (await deleteTransportQuoteFromDoc(quoteId)) {
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
-    await logActivity(`删除报价「${quote.code}」`, { target: transportQuoteActivityTarget(quoteId, quote.dayId || "", { deleted: true, action: "delete" }) });
-    await saveCollaborativePlanChange(`删除报价「${quote.code}」`);
-    dom.saveState.textContent = `已删除报价「${quote.code}」`;
+    await logActivity(`?????${quote.code}?`, { target: transportQuoteActivityTarget(quoteId, quote.dayId || "", { deleted: true, action: "delete" }) });
+    await saveCollaborativePlanChange(`?????${quote.code}?`);
+    dom.saveState.textContent = `??????${quote.code}?`;
     return;
   }
-  mutate(`删除报价「${quote.code}」`, () => {
+  mutate(`?????${quote.code}?`, () => {
     state.transportQuotes = mergedTransportQuotesWithPatch("delete", null, quoteId);
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
   }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(quoteId, quote.dayId || "", { deleted: true, action: "delete" }) });
   await syncTransportQuotesToDoc("local-transport-quote-delete-fallback");
-  await saveCollaborativePlanChange(`删除报价「${quote.code}」`);
+  await saveCollaborativePlanChange(`?????${quote.code}?`);
 });
 
 dom.cancelQuoteEditBtn?.addEventListener("click", () => {
   clearManualQuoteForm();
   renderTransport();
-  dom.saveState.textContent = "已取消编辑交通报价";
+  dom.saveState.textContent = "?????????";
 });
 
 dom.manualQuoteForm.addEventListener("submit", async (event) => {
@@ -12019,81 +12145,81 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
   if (editingTransportQuoteId) {
     if (!existingQuote) {
       clearManualQuoteForm();
-      dom.saveState.textContent = "这条报价已被其他成员删除，请重新保存。";
+      dom.saveState.textContent = "???????????????????";
       return;
     }
     if (await updateTransportQuoteInDoc(editingTransportQuoteId, quote)) {
-      persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
-      await logActivity(`更新交通报价「${code}」`, { target: transportQuoteActivityTarget(editingTransportQuoteId, quote.dayId || "", { action: "update" }) });
+      persistCurrentPlanFromDoc("?????????????");
+      await logActivity(`???????${code}?`, { target: transportQuoteActivityTarget(editingTransportQuoteId, quote.dayId || "", { action: "update" }) });
       transportFilterApplied = true;
       clearManualQuoteForm();
-      await saveCollaborativePlanChange(`更新交通报价「${code}」`);
-      dom.saveState.textContent = `已更新交通报价「${code}」`;
+      await saveCollaborativePlanChange(`???????${code}?`);
+      dom.saveState.textContent = `????????${code}?`;
       refreshRealtimePlanViews();
       return;
     }
-    mutate(`更新交通报价「${code}」`, () => {
+    mutate(`???????${code}?`, () => {
       state.transportQuotes = mergedTransportQuotesWithPatch("update", manualQuotePatchFromForm(), editingTransportQuoteId);
       transportFilterApplied = true;
       clearManualQuoteForm();
     }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(editingTransportQuoteId, quote.dayId || "", { action: "update" }) });
     await syncTransportQuotesToDoc("local-transport-quote-update-fallback");
-    await saveCollaborativePlanChange(`更新交通报价「${code}」`);
+    await saveCollaborativePlanChange(`???????${code}?`);
     return;
   }
   if (await addCollaborativeTransportQuote(quote)) {
-    persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
-    await logActivity(`保存交通报价「${code}」`, { target: transportQuoteActivityTarget(quote.id, quote.dayId || "", { action: "create" }) });
+    persistCurrentPlanFromDoc("?????????????");
+    await logActivity(`???????${code}?`, { target: transportQuoteActivityTarget(quote.id, quote.dayId || "", { action: "create" }) });
     transportFilterApplied = true;
     clearManualQuoteForm();
-    await saveCollaborativePlanChange(`保存交通报价「${code}」`);
-    dom.saveState.textContent = `已保存交通报价「${code}」`;
+    await saveCollaborativePlanChange(`???????${code}?`);
+    dom.saveState.textContent = `????????${code}?`;
     refreshRealtimePlanViews();
     return;
   }
-  mutate(`保存交通报价「${code}」`, () => {
+  mutate(`???????${code}?`, () => {
     state.transportQuotes = mergedTransportQuotesWithPatch("add", quote).slice(0, 40);
     transportFilterApplied = true;
     clearManualQuoteForm();
   }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(quote.id, quote.dayId || "", { action: "create" }) });
   await syncTransportQuotesToDoc("local-transport-quote-fallback");
-  await saveCollaborativePlanChange(`保存交通报价「${code}」`);
+  await saveCollaborativePlanChange(`???????${code}?`);
 });
 
 dom.partySizeInput.addEventListener("change", async () => {
-  if (!requireEdit("更新同行人数")) return;
+  if (!requireEdit("??????")) return;
   if (await syncPlanSettingToDoc("partySize", dom.partySizeInput.value)) {
-    persistCurrentPlanFromDoc("预算设置协作内容已实时同步");
-    await logActivity("更新同行人数", { target: budgetSettingActivityTarget("partySize", { action: "update" }) });
-    await saveCollaborativePlanChange("更新同行人数");
+    persistCurrentPlanFromDoc("?????????????");
+    await logActivity("??????", { target: budgetSettingActivityTarget("partySize", { action: "update" }) });
+    await saveCollaborativePlanChange("??????");
     return;
   }
-  mutate("更新同行人数", () => {
+  mutate("??????", () => {
     state.partySize = partySize();
   }, { requireUnlocked: false, save: false, activityTarget: budgetSettingActivityTarget("partySize", { action: "update" }) });
   await syncPlanMetaToDoc("local-party-size-fallback");
-  await saveCollaborativePlanChange("更新同行人数");
+  await saveCollaborativePlanChange("??????");
 });
 
 dom.budgetLimitInput.addEventListener("change", async () => {
-  if (!requireEdit("更新预算上限")) return;
+  if (!requireEdit("??????")) return;
   if (await syncPlanSettingToDoc("budgetLimit", dom.budgetLimitInput.value)) {
-    persistCurrentPlanFromDoc("预算设置协作内容已实时同步");
-    await logActivity("更新预算上限", { target: budgetSettingActivityTarget("budgetLimit", { action: "update" }) });
-    await saveCollaborativePlanChange("更新预算上限");
+    persistCurrentPlanFromDoc("?????????????");
+    await logActivity("??????", { target: budgetSettingActivityTarget("budgetLimit", { action: "update" }) });
+    await saveCollaborativePlanChange("??????");
     return;
   }
-  mutate("更新预算上限", () => {
+  mutate("??????", () => {
     state.budgetLimit = numberValue(dom.budgetLimitInput.value);
   }, { requireUnlocked: false, save: false, activityTarget: budgetSettingActivityTarget("budgetLimit", { action: "update" }) });
   await syncPlanMetaToDoc("local-budget-limit-fallback");
-  await saveCollaborativePlanChange("更新预算上限");
+  await saveCollaborativePlanChange("??????");
 });
 
 async function syncPlanMetaFieldInput(field, value, label) {
   if (!canEdit() || isReadonlyMode) return;
   if (await syncPlanSettingToDoc(field, value)) {
-    persistCurrentPlanFromDoc("计划基础信息协作内容已实时同步");
+    persistCurrentPlanFromDoc("???????????????");
     await logActivity(label, { target: planMetaActivityTarget(field, { action: "update" }) });
     await saveCollaborativePlanChange(label);
     return;
@@ -12130,7 +12256,7 @@ async function syncPlanMetaPatchInput(patch = {}, label, targetField = "") {
         collabSettingsMap.set(field, clone(value));
       });
     }, "local-plan-meta-patch");
-    persistCurrentPlanFromDoc("计划基础信息协作内容已实时同步");
+    persistCurrentPlanFromDoc("???????????????");
   } else {
     entries.forEach(([field, value]) => {
       state[field] = clone(value);
@@ -12147,7 +12273,7 @@ function schedulePlanMetaInputSync(field, value, label) {
     delete planMetaInputSyncTimers[field];
     syncPlanMetaFieldInput(field, value, label).catch((error) => {
       console.warn("Plan meta field sync failed", error);
-      dom.saveState.textContent = `${label}同步失败：${error.message}`;
+      dom.saveState.textContent = `${label}?????${error.message}`;
     });
   }, 650);
 }
@@ -12158,27 +12284,27 @@ function schedulePlanMetaPatchInputSync(timerKey, patch, label, targetField = ""
     delete planMetaInputSyncTimers[timerKey];
     syncPlanMetaPatchInput(patch, label, targetField).catch((error) => {
       console.warn("Plan meta patch sync failed", error);
-      dom.saveState.textContent = `${label}同步失败：${error.message}`;
+      dom.saveState.textContent = `${label}?????${error.message}`;
     });
   }, 650);
 }
 
 dom.destinationInput.addEventListener("input", () => {
-  const destination = dom.destinationInput.value.trim() || "自定义";
+  const destination = dom.destinationInput.value.trim() || "???";
   guideState.destination = destination;
   state.destination = destination;
   renderGuideResult();
   renderShell();
-  schedulePlanMetaInputSync("destination", destination, "更新目的地");
+  schedulePlanMetaInputSync("destination", destination, "?????");
 });
 
 dom.originInput.addEventListener("input", () => {
-  const origin = dom.originInput.value.trim() || "出发城市";
+  const origin = dom.originInput.value.trim() || "????";
   guideState.origin = origin;
   state.origin = origin;
   dom.transportFrom.value = guideState.origin;
   renderGuideResult();
-  schedulePlanMetaInputSync("origin", origin, "更新出发地");
+  schedulePlanMetaInputSync("origin", origin, "?????");
 });
 
 function handleGuideDateInput(event) {
@@ -12187,7 +12313,7 @@ function handleGuideDateInput(event) {
   state.endDate = patch.endDate;
   state.dateRange = patch.dateRange;
   renderShell();
-  schedulePlanMetaPatchInputSync("dateRange", patch, "更新日期范围", event?.target === dom.endDateInput ? "endDate" : "startDate");
+  schedulePlanMetaPatchInputSync("dateRange", patch, "??????", event?.target === dom.endDateInput ? "endDate" : "startDate");
 }
 
 dom.startDateInput.addEventListener("input", handleGuideDateInput);
@@ -12199,30 +12325,30 @@ function closeCreateChoice() {
 }
 
 async function createRecommendedPlan() {
-  if (!requireEdit("生成推荐计划")) return;
-  const destination = dom.destinationInput.value.trim() || "甘肃";
-  const origin = dom.originInput.value.trim() || "上海";
+  if (!requireEdit("??????")) return;
+  const destination = dom.destinationInput.value.trim() || "??";
+  const origin = dom.originInput.value.trim() || "??";
   guideState.destination = destination;
   guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
-  if (!mutate(`生成${destination}${days}天计划`, () => {
-    if (destination.includes("甘肃")) {
+  if (!mutate(`??${destination}${days}???`, () => {
+    if (destination.includes("??")) {
       state = buildGansuPlan(days, guideState);
     } else {
       state = buildBlankPlan(destination, days, guideState);
-      state.name = `${destination} ${days} 日同行计划`;
+      state.name = `${destination} ${days} ?????`;
       state.destination = destination;
-      state.activities = [`生成${destination}计划模板`];
+      state.activities = [`??${destination}????`];
       state.days.forEach((day, index) => {
-        day.route = index === 0 ? `抵达${destination} · 入住与周边探索` : `${destination}自由探索 · 备选景点`;
-        day.transport = index === 0 ? "机票/动车 + 市内交通" : "市内交通";
+        day.route = index === 0 ? `??${destination} ? ???????` : `${destination}???? ? ????`;
+        day.transport = index === 0 ? "??/?? + ????" : "????";
       });
     }
     applyPlanDates(state, guideState.startDate, guideState.endDate);
-    state.name = `${destination} ${days} 日同行计划`;
+    state.name = `${destination} ${days} ?????`;
     state.origin = origin;
-    state.activities = [`${origin}出发`, ...(state.activities || [])].slice(0, 6);
+    state.activities = [`${origin}??`, ...(state.activities || [])].slice(0, 6);
     activeDay = 0;
     activeStop = 0;
     dom.transportFrom.value = origin;
@@ -12231,21 +12357,21 @@ async function createRecommendedPlan() {
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
   await replacePlanCollabDoc("local-recommended-plan");
-  await saveCollaborativePlanChange("已生成推荐计划");
-  await broadcastPlanReplaced("生成推荐计划");
+  await saveCollaborativePlanChange("???????");
+  await broadcastPlanReplaced("??????");
   render();
   closeCreateChoice();
 }
 
 async function createBlankTemplate() {
-  if (!requireEdit("生成空白模板")) return;
-  const destination = dom.destinationInput.value.trim() || "自定义目的地";
-  const origin = dom.originInput.value.trim() || "上海";
+  if (!requireEdit("??????")) return;
+  const destination = dom.destinationInput.value.trim() || "??????";
+  const origin = dom.originInput.value.trim() || "??";
   guideState.destination = destination;
   guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
-  if (!mutate(`创建${destination}${days}天空白模板`, () => {
+  if (!mutate(`??${destination}${days}?????`, () => {
     state = buildBlankPlan(destination, days, guideState);
     applyPlanDates(state, guideState.startDate, guideState.endDate);
     state.origin = origin;
@@ -12257,22 +12383,22 @@ async function createBlankTemplate() {
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
   await replacePlanCollabDoc("local-blank-plan");
-  await saveCollaborativePlanChange("已生成空白模板");
-  await broadcastPlanReplaced("生成空白模板");
+  await saveCollaborativePlanChange("???????");
+  await broadcastPlanReplaced("??????");
   render();
   closeCreateChoice();
 }
 
 dom.applyGuideBtn.addEventListener("click", () => {
-  if (!requireEdit("创建计划")) return;
-  const destination = dom.destinationInput.value.trim() || "自定义目的地";
-  const origin = dom.originInput.value.trim() || "上海";
+  if (!requireEdit("????")) return;
+  const destination = dom.destinationInput.value.trim() || "??????";
+  const origin = dom.originInput.value.trim() || "??";
   guideState.destination = destination;
   guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
-  dom.createChoiceTitle.textContent = `为「${destination}」创建计划`;
-  dom.createChoiceCopy.textContent = `${origin}出发，${dateRangeText(guideState.startDate, guideState.endDate)}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
+  dom.createChoiceTitle.textContent = `??${destination}?????`;
+  dom.createChoiceCopy.textContent = `${origin}???${dateRangeText(guideState.startDate, guideState.endDate)}??${days}??${guideState.pace}?????${guideState.interests.join(" / ")}?${guideState.budget}???`;
   dom.createChoiceModal.classList.add("is-open");
   dom.createChoiceModal.setAttribute("aria-hidden", "false");
   renderGuideResult();
@@ -12287,7 +12413,7 @@ document.querySelectorAll("[data-close-create]").forEach((button) => {
 });
 
 dom.exportBtn.addEventListener("click", async () => {
-  await refreshLiveCollabStateBeforeRemoteSave("导出前已刷新协作快照");
+  await refreshLiveCollabStateBeforeRemoteSave("??????????");
   const exportState = planVersionSnapshot(state);
   const blob = new Blob([JSON.stringify(exportState, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -12297,45 +12423,45 @@ dom.exportBtn.addEventListener("click", async () => {
   link.click();
   URL.revokeObjectURL(url);
   if (!isReadonlyMode) {
-    logActivity("导出计划 JSON");
-    saveState("已导出 JSON");
+    logActivity("???? JSON");
+    saveState("??? JSON");
     renderActivities();
   } else {
-    dom.saveState.textContent = "已导出 JSON";
+    dom.saveState.textContent = "??? JSON";
   }
 });
 
 async function importPlanJsonFile(file) {
-  if (!file || !requireEdit("导入 JSON")) return;
+  if (!file || !requireEdit("?? JSON")) return;
   let importedPlan = null;
   try {
     importedPlan = JSON.parse(await file.text());
   } catch {
-    dom.saveState.textContent = "JSON 文件无法解析";
+    dom.saveState.textContent = "JSON ??????";
     return;
   }
   if (!importedPlan?.days?.length) {
-    dom.saveState.textContent = "JSON 文件不是有效计划";
+    dom.saveState.textContent = "JSON ????????";
     return;
   }
-  saveVersionSnapshot("导入 JSON 前版本");
+  saveVersionSnapshot("?? JSON ???");
   state = ensurePlanDates(clone(importedPlan));
   activeDay = 0;
   activeStop = 0;
   transportFilterApplied = false;
   const importedPlanYjs = state.planYjs || "";
   const restoredFromYjs = importedPlanYjs
-    ? await replaceLivePlanDocWithYjsState(importedPlanYjs, "已从 JSON 导入协作快照")
+    ? await replaceLivePlanDocWithYjsState(importedPlanYjs, "?? JSON ??????")
     : false;
   if (!restoredFromYjs) await replacePlanCollabDoc("local-json-import");
-  await logActivity(`导入 JSON「${file.name || "计划"}」`);
-  await saveCollaborativePlanChange("已导入 JSON");
-  await broadcastPlanReplaced("导入 JSON", { replacementType: "json-import", importedFileName: file.name || "" });
+  await logActivity(`?? JSON?${file.name || "??"}?`);
+  await saveCollaborativePlanChange("??? JSON");
+  await broadcastPlanReplaced("?? JSON", { replacementType: "json-import", importedFileName: file.name || "" });
   render();
 }
 
 dom.importJsonBtn?.addEventListener("click", () => {
-  if (!requireEdit("导入 JSON")) return;
+  if (!requireEdit("?? JSON")) return;
   dom.importJsonInput.value = "";
   dom.importJsonInput.click();
 });
@@ -12343,7 +12469,7 @@ dom.importJsonBtn?.addEventListener("click", () => {
 dom.importJsonInput?.addEventListener("change", () => {
   const file = dom.importJsonInput.files?.[0];
   importPlanJsonFile(file).catch((error) => {
-    dom.saveState.textContent = `导入 JSON 失败：${error.message}`;
+    dom.saveState.textContent = `?? JSON ???${error.message}`;
   });
 });
 
@@ -12351,9 +12477,9 @@ dom.shareBtn.addEventListener("click", async () => {
   const text = `${state.name}\n${state.days.map((day) => `${day.title}: ${day.route}`).join("\n")}`;
   try {
     await navigator.clipboard.writeText(text);
-    dom.saveState.textContent = "分享摘要已复制";
+    dom.saveState.textContent = "???????";
   } catch {
-    dom.saveState.textContent = "浏览器未允许复制，已生成分享摘要";
+    dom.saveState.textContent = "????????????????";
   }
 });
 
@@ -12361,17 +12487,17 @@ dom.createSharedTripBtn.addEventListener("click", createSharedTrip);
 
 dom.copySharedLinkBtn.addEventListener("click", async () => {
   if (!tripId) {
-    dom.collabStatus.textContent = "请先创建共享计划，再复制链接。";
+    dom.collabStatus.textContent = "???????????????";
     return;
   }
   const url = isReadonlyMode ? getReadonlyShareUrl() : getShareUrl();
   try {
     await navigator.clipboard.writeText(url);
     dom.collabStatus.textContent = isReadonlyMode
-      ? "只读链接已复制。"
+      ? "????????"
       : state.editKeyHash
-        ? "口令编辑链接已复制；对方需要输入编辑口令才能修改。"
-        : "编辑链接已复制；当前未设置口令，拿到链接即可修改。";
+        ? "?????????????????????????"
+        : "?????????????????????????";
   } catch {
     dom.collabStatus.textContent = url;
   }
@@ -12379,17 +12505,17 @@ dom.copySharedLinkBtn.addEventListener("click", async () => {
 
 dom.copyInviteLinkBtn?.addEventListener("click", async () => {
   if (!tripId) {
-    dom.collabStatus.textContent = "请先创建共享计划，再复制直入邀请。";
+    dom.collabStatus.textContent = "?????????????????";
     return;
   }
   if (!state.editKeyHash || !currentEditKeyValue()) {
-    dom.collabStatus.textContent = "请先设置或输入编辑口令，再复制直入邀请。";
+    dom.collabStatus.textContent = "????????????????????";
     return;
   }
   const url = getInviteShareUrl();
   try {
     await navigator.clipboard.writeText(url);
-    dom.collabStatus.textContent = "直入邀请已复制；此链接带编辑密钥，只发给可信成员。";
+    dom.collabStatus.textContent = "?????????????????????????";
   } catch {
     dom.collabStatus.textContent = url;
   }
@@ -12397,13 +12523,13 @@ dom.copyInviteLinkBtn?.addEventListener("click", async () => {
 
 dom.copyReadonlyLinkBtn.addEventListener("click", async () => {
   if (!tripId) {
-    dom.collabStatus.textContent = "请先创建共享计划，再复制只读链接。";
+    dom.collabStatus.textContent = "?????????????????";
     return;
   }
   const url = getReadonlyShareUrl();
   try {
     await navigator.clipboard.writeText(url);
-    dom.collabStatus.textContent = "只读链接已复制，打开后只能查看不能编辑。";
+    dom.collabStatus.textContent = "????????????????????";
   } catch {
     dom.collabStatus.textContent = url;
   }
@@ -12412,22 +12538,22 @@ dom.copyReadonlyLinkBtn.addEventListener("click", async () => {
 dom.editAccessForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!tripId) {
-    dom.editAccessStatus.textContent = "请先创建共享计划，再设置编辑口令。";
+    dom.editAccessStatus.textContent = "?????????????????";
     return;
   }
   if (forcedReadonlyMode) {
-    dom.editAccessStatus.textContent = "当前是只读链接，不能解锁或设置编辑口令。";
+    dom.editAccessStatus.textContent = "????????????????????";
     return;
   }
   const editKey = dom.editAccessInput.value.trim();
   if (!editKey) {
-    dom.editAccessStatus.textContent = "请输入编辑口令。";
+    dom.editAccessStatus.textContent = "????????";
     return;
   }
   const hash = await sha256Text(`${tripId}:${editKey}`);
   if (state.editKeyHash && !canEdit()) {
     if (hash !== state.editKeyHash) {
-      dom.editAccessStatus.textContent = "编辑口令不正确。";
+      dom.editAccessStatus.textContent = "????????";
       return;
     }
     setLocalEditAccess(hash);
@@ -12435,25 +12561,25 @@ dom.editAccessForm?.addEventListener("submit", async (event) => {
     editAccessGranted = true;
     isReadonlyMode = false;
     dom.editAccessInput.value = "";
-    dom.collabStatus.textContent = "编辑已解锁，可以修改计划。";
+    dom.collabStatus.textContent = "?????????????";
     applyReadonlyUi();
     render();
     return;
   }
   if (!canEdit() && state.editKeyHash) {
-    dom.editAccessStatus.textContent = "请先输入正确口令解锁，再更新口令。";
+    dom.editAccessStatus.textContent = "?????????????????";
     return;
   }
   state.editKeyHash = hash;
-  state.editKeyHint = editKey.length >= 2 ? `${editKey.slice(0, 1)}***${editKey.slice(-1)}` : "已设置";
+  state.editKeyHint = editKey.length >= 2 ? `${editKey.slice(0, 1)}***${editKey.slice(-1)}` : "???";
   setLocalEditAccess(hash);
   setCurrentEditKeyValue(editKey);
   editAccessGranted = true;
   isReadonlyMode = false;
   dom.editAccessInput.value = "";
   await syncPlanMetaToDoc("local-edit-access");
-  await saveCollaborativePlanChange("编辑口令已更新");
-  dom.collabStatus.textContent = "编辑口令已更新；普通编辑链接需要口令，直入邀请才会带密钥。";
+  await saveCollaborativePlanChange("???????");
+  dom.collabStatus.textContent = "?????????????????????????????";
   applyReadonlyUi();
   render();
 });
@@ -12467,7 +12593,7 @@ dom.versionList.addEventListener("click", (event) => {
   if (!button) return;
   pendingVersionRestoreId = button.dataset.version || "";
   renderVersionHistory();
-  dom.saveState.textContent = "请确认是否恢复该历史版本";
+  dom.saveState.textContent = "????????????";
 });
 
 dom.versionPreview?.addEventListener("click", (event) => {
@@ -12479,7 +12605,7 @@ dom.versionPreview?.addEventListener("click", (event) => {
   if (event.target.closest("[data-cancel-version-restore]")) {
     pendingVersionRestoreId = "";
     renderVersionHistory();
-    dom.saveState.textContent = "已取消恢复历史版本";
+    dom.saveState.textContent = "?????????";
   }
 });
 
@@ -12547,10 +12673,10 @@ dom.memberForm.addEventListener("submit", (event) => {
     role: dom.collabRole.value,
   });
   if (!saved) {
-    dom.collabStatus.textContent = "请先填写你的名字，再加入协作。";
+    dom.collabStatus.textContent = "???????????????";
     return;
   }
-  dom.collabStatus.textContent = tripId ? `${memberProfile.name} 已加入协作。` : `${memberProfile.name} 已准备加入，创建或打开共享链接后会显示在线。`;
+  dom.collabStatus.textContent = tripId ? `${memberProfile.name} ??????` : `${memberProfile.name} ??????????????????????`;
   renderMembers();
   trackPresence();
   refreshIcons();
@@ -12569,11 +12695,11 @@ dom.collabRole.addEventListener("input", () => {
 dom.ctripLoginBtn.addEventListener("click", () => {
   const nextOpen = dom.ctripConnectPanel.hidden;
   dom.ctripConnectPanel.hidden = !nextOpen;
-  dom.syncBadge.textContent = ctripConfig.endpoint ? "已配置接口" : "等待配置";
+  dom.syncBadge.textContent = ctripConfig.endpoint ? "?????" : "????";
   setCtripStatus(
     nextOpen
-      ? "请填写 Google Flights 航班代理接口，然后点击“测试连接”。SearchApi Key 只放在后端环境变量里。"
-      : "航班报价接入配置已收起。",
+      ? "??? Google Flights ??????????????????SearchApi Key ???????????"
+      : "????????????",
     nextOpen ? "plug-zap" : "info",
   );
 });
@@ -12581,7 +12707,7 @@ dom.ctripLoginBtn.addEventListener("click", () => {
 dom.ctripConnectForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveCtripConfig();
-  setCtripStatus(ctripConfig.endpoint ? "接入地址已保存。下一步点击“测试连接”。" : "请填写后端代理接口地址。", ctripConfig.endpoint ? "check-circle-2" : "alert-circle");
+  setCtripStatus(ctripConfig.endpoint ? "????????????????????" : "????????????", ctripConfig.endpoint ? "check-circle-2" : "alert-circle");
 });
 
 dom.ctripTestBtn.addEventListener("click", testCtripConnection);
@@ -12589,8 +12715,8 @@ dom.ctripTestBtn.addEventListener("click", testCtripConnection);
 dom.ctripSyncTransportBtn.addEventListener("click", syncCtripTransport);
 
 dom.multiOriginExampleBtn.addEventListener("click", () => {
-  dom.multiOriginInput.value = "林: SHA; 王: PEK; 周: CAN";
-  setCtripStatus("已填入多人出发地示例。到达地可填 LHW 或 兰州，然后点击“综合比较”。", "users");
+  dom.multiOriginInput.value = "?: SHA; ?: PEK; ?: CAN";
+  setCtripStatus("???????????????? LHW ? ??????????????", "users");
 });
 
 dom.compareOriginsBtn.addEventListener("click", compareMultiOrigins);
@@ -12599,36 +12725,36 @@ dom.ctripSpecBtn.addEventListener("click", async () => {
   const spec = dom.ctripSpecBox.textContent.trim();
   try {
     await navigator.clipboard.writeText(spec);
-    setCtripStatus("接口规范已复制。把这个规范给后端或 Supabase Edge Function 使用。", "copy-check");
+    setCtripStatus("????????????????? Supabase Edge Function ???", "copy-check");
   } catch {
-    setCtripStatus("浏览器未允许复制，你可以直接选中规范文本。", "info");
+    setCtripStatus("?????????????????????", "info");
   }
 });
 
 dom.resetBtn.addEventListener("click", async () => {
-  if (!requireEdit("重置计划")) return;
-  saveVersionSnapshot("重置前版本");
+  if (!requireEdit("????")) return;
+  saveVersionSnapshot("?????");
   state = ensurePlanDates(buildKyotoPlan());
   clearPlanYjsState();
   activeDay = 0;
   activeStop = 0;
   transportFilterApplied = false;
   await replacePlanCollabDoc("local-reset-plan");
-  await saveCollaborativePlanChange("已重置示例");
-  await broadcastPlanReplaced("重置示例计划");
+  await saveCollaborativePlanChange("?????");
+  await broadcastPlanReplaced("??????");
   render();
 });
 
 document.querySelectorAll(".sync-card").forEach((card) => {
   card.addEventListener("click", () => {
-    if (!requireEdit("导入外部记录")) return;
+    if (!requireEdit("??????")) return;
     pendingProvider = card.dataset.provider;
     const defaults = providerDefaults(pendingProvider);
     lastParsedImport = null;
-    dom.importTitle.textContent = `从${pendingProvider}导入`;
+    dom.importTitle.textContent = `?${pendingProvider}??`;
     dom.importCopy.textContent = externalImportConfig.endpoint
-      ? "粘贴订单文本后可用 AI 解析，再写入计划；不会读取你的账号。"
-      : "这里不会读取你的账号，只把你录入或粘贴的订单信息写入计划。";
+      ? "????????? AI ??????????????????"
+      : "?????????????????????????????";
     dom.importCategory.value = defaults.category;
     dom.importDate.value = currentDay()?.date || "";
     dom.importName.value = defaults.title;
@@ -12656,16 +12782,16 @@ document.querySelectorAll("[data-close-import]").forEach((button) => {
 
 dom.parseImportBtn.addEventListener("click", () => {
   dom.parseImportBtn.disabled = true;
-  dom.syncStatus.innerHTML = `${icon("scan-text")}<span>正在解析外部订单文本...</span>`;
+  dom.syncStatus.innerHTML = `${icon("scan-text")}<span>??????????...</span>`;
   requestExternalOrderParse()
     .then(({ source, parsed }) => {
       applyParsedImport(parsed, source);
-      dom.syncStatus.innerHTML = `${icon("scan-text")}<span>已解析订单字段，请检查预览后导入。</span>`;
+      dom.syncStatus.innerHTML = `${icon("scan-text")}<span>?????????????????</span>`;
     })
     .catch((error) => {
       const parsed = parseExternalOrderText(dom.importNote.value, pendingProvider);
-      applyParsedImport(parsed, "本地规则兜底");
-      dom.syncStatus.innerHTML = `${icon("info")}<span>AI 解析不可用：${escapeHtml(error.message)}。已使用本地规则。</span>`;
+      applyParsedImport(parsed, "??????");
+      dom.syncStatus.innerHTML = `${icon("info")}<span>AI ??????${escapeHtml(error.message)}?????????</span>`;
     })
     .finally(() => {
       dom.parseImportBtn.disabled = false;
@@ -12675,37 +12801,37 @@ dom.parseImportBtn.addEventListener("click", () => {
 
 dom.importCategory.addEventListener("change", () => {
   const defaults = providerDefaults(dom.importCategory.value);
-  if (!dom.importName.value || ["外部记录", "餐厅预约", "住宿入住", "交通订单", "景点预约"].includes(dom.importName.value)) {
+  if (!dom.importName.value || ["????", "????", "????", "????", "????"].includes(dom.importName.value)) {
     dom.importName.value = defaults.title;
   }
 });
 
 dom.importForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const title = dom.importName.value.trim() || "外部记录";
+  const title = dom.importName.value.trim() || "????";
   const category = normalizeImportCategory(dom.importCategory.value, pendingProvider);
   const targetDayIndex = dayIndexByDate(dom.importDate.value);
   const targetDay = state.days[targetDayIndex] || currentDay();
   const defaults = providerDefaults(category);
   const metadataLines = [
-    `来源：${pendingProvider || "外部导入"}`,
-    `类别：${category}`,
-    dom.importOrderNo.value.trim() ? `订单号：${dom.importOrderNo.value.trim()}` : "",
-    dom.importSourceUrl.value.trim() ? `链接：${dom.importSourceUrl.value.trim()}` : "",
-    lastParsedImport?.source ? `解析：${lastParsedImport.source}` : "",
+    `???${pendingProvider || "????"}`,
+    `???${category}`,
+    dom.importOrderNo.value.trim() ? `????${dom.importOrderNo.value.trim()}` : "",
+    dom.importSourceUrl.value.trim() ? `???${dom.importSourceUrl.value.trim()}` : "",
+    lastParsedImport?.source ? `???${lastParsedImport.source}` : "",
   ].filter(Boolean);
   const rawNote = dom.importNote.value.trim();
   const note = [metadataLines.join("\n"), rawNote].filter(Boolean).join("\n\n");
   let createdStop = null;
-  const label = `导入${pendingProvider}记录`;
+  const label = `??${pendingProvider}??`;
   if (!mutate(label, () => {
     createdStop = makeStop({
       time: dom.importTime.value.trim() || "18:30",
       title,
       type: category,
-      address: dom.importAddress.value.trim() || "地址待确认",
-      note: note || `${pendingProvider}记录，后续可继续补充订单详情。`,
-      tags: ["已导入", pendingProvider, category].filter(Boolean),
+      address: dom.importAddress.value.trim() || "?????",
+      note: note || `${pendingProvider}???????????????`,
+      tags: ["???", pendingProvider, category].filter(Boolean),
       budget: numberValue(dom.importBudget.value),
       paid: numberValue(dom.importPaid.value),
       payer: dom.importPayer.value.trim(),
@@ -12716,8 +12842,8 @@ dom.importForm.addEventListener("submit", async (event) => {
     targetDay.stops.push(createdStop);
     activeDay = targetDayIndex;
     activeStop = targetDay.stops.length - 1;
-    dom.syncBadge.textContent = "已导入";
-    dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已加入 ${targetDay.label}，可在右侧继续编辑。</span>`;
+    dom.syncBadge.textContent = "???";
+    dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}????? ${targetDay.label}??????????</span>`;
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
   }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(targetDay.id, createdStop?.id || "", { action: "external-import" }) })) return;
@@ -12783,8 +12909,8 @@ async function boot() {
   dom.weatherEndpointInput.value = serviceConfig.weatherEndpoint || "";
   renderServiceStatus();
   if (ctripConfig.endpoint) {
-    dom.syncBadge.textContent = "已配置接口";
-    setCtripStatus("已读取本机保存的 Google Flights 航班代理地址。配置 Supabase 密钥后可测试连接并同步航班。", "plug-zap");
+    dom.syncBadge.textContent = "?????";
+    setCtripStatus("???????? Google Flights ????????? Supabase ??????????????", "plug-zap");
   }
   syncGuideStateFromPlan();
   dom.partySizeInput.value = state.partySize || 1;
@@ -12793,13 +12919,13 @@ async function boot() {
   render();
   renderMembers();
   window.addEventListener("online", () => {
-    flushPendingPlanUpdates("网络恢复后重放离线协作更新").catch((error) => {
-      dom.collabStatus.textContent = `网络恢复后同步失败：${error.message}`;
+    flushPendingPlanUpdates("?????????????").catch((error) => {
+      dom.collabStatus.textContent = `??????????${error.message}`;
     });
   });
   if (supabaseClient && tripId) {
     const pendingCount = pendingPlanUpdates().length;
-    if (pendingCount) dom.collabStatus.textContent = `检测到 ${pendingCount} 条离线协作更新，连接共享计划后会自动同步。`;
+    if (pendingCount) dom.collabStatus.textContent = `??? ${pendingCount} ?????????????????????`;
     await connectSharedTrip(tripId);
   } else {
     saveState();
