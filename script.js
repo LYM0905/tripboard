@@ -8747,8 +8747,35 @@ function focusActivityDetail(detail = null) {
     dom.saveState.textContent = "已定位到活动对应批注";
     return true;
   }
+  if (detail.commentId && detail.deleted && focusDeletedCommentActivityTarget(detail)) return true;
   if ((detail.type === "dayBlock" || detail.blockId) && focusDayBlockActivityTarget(detail)) return true;
   return false;
+}
+
+function focusDeletedCommentActivityTarget(detail = null) {
+  if (!detail || typeof detail !== "object") return false;
+  if (detail.scope === "block" && focusDayBlockActivityTarget({ type: "dayBlock", dayId: detail.dayId || "", blockId: detail.blockId || "", deletedComment: true })) {
+    dom.saveState.textContent = "批注已删除，已定位到原协作块";
+    return true;
+  }
+  const dayIndex = state.days.findIndex((day) => (detail.dayId && day.id === detail.dayId) || (detail.stopId && (day.stops || []).some((stop) => stop.id === detail.stopId)));
+  if (dayIndex < 0) return false;
+  activeDay = dayIndex;
+  if (detail.scope === "stop") {
+    const day = state.days[dayIndex];
+    const stopIndex = (day.stops || []).findIndex((stop) => stop.id === detail.stopId);
+    activeStop = stopIndex >= 0 ? stopIndex : 0;
+  } else {
+    activeStop = 0;
+  }
+  render();
+  const target = detail.scope === "day" ? document.querySelector(".comment-index-panel") : dom.commentList || document.querySelector(".editor-panel");
+  if (!target) return false;
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  dom.saveState.textContent = detail.scope === "day" ? "批注已删除，已定位到当天批注总览" : "评论已删除，已定位到原地点评论区";
+  return true;
 }
 
 function dayBlockActivityTarget(dayId = "", blockId = "", extra = {}) {
@@ -9868,7 +9895,7 @@ dom.commentList.addEventListener("click", async (event) => {
     }
     renderStopComments(stop);
     dom.commentCount.textContent = stop.comments.length;
-    await logActivity(`删除评论「${stop.title}」`);
+    await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "", deleted: true } });
     await syncStopSnapshotToPlanDoc(stop.id, "local-comment-delete-snapshot");
     await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
     dom.saveState.textContent = `已删除「${stop.title}」的评论`;
@@ -9882,6 +9909,7 @@ dom.commentList.addEventListener("click", async (event) => {
     }
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot");
+  await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "", deleted: true } });
   await saveState(`删除评论「${stop.title}」`);
   render();
 });
@@ -10014,7 +10042,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
       dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
     }
     renderDayComments(day);
-    await logActivity(`删除当天批注「${day.title}」`);
+    await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "", deleted: true } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-delete-snapshot");
     await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
     dom.saveState.textContent = `已删除「${day.title}」的当天批注`;
@@ -10028,6 +10056,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     }
   }, { requireUnlocked: false, save: false, render: false })) return;
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-delete-fallback-snapshot");
+  await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "", deleted: true } });
   await saveState(`删除当天批注「${day.title}」`);
   render();
 });
