@@ -406,6 +406,12 @@ button {
   cursor: pointer;
 }
 
+.version-item.is-selected {
+  background: #fff8e8;
+  border-color: #d79d4d;
+  box-shadow: inset 3px 0 0 #d79d4d;
+}
+
 .version-item span {
   color: var(--muted);
   font-size: 12px;
@@ -416,6 +422,55 @@ button {
   font-size: 11px;
   font-weight: 800;
   line-height: 1.45;
+}
+
+.version-preview {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 9px;
+  padding: 10px;
+  background: #fff8e8;
+  border: 1px solid #f0d69b;
+  border-radius: 8px;
+}
+
+.version-preview[hidden] {
+  display: none;
+}
+
+.version-preview strong {
+  color: #7a4f0d;
+  font-size: 12px;
+}
+
+.version-preview span,
+.version-preview small,
+.version-preview li {
+  color: #5e6b71;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.version-preview ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.version-preview-actions {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.version-preview-actions .primary-btn,
+.version-preview-actions .text-btn {
+  justify-content: center;
+  width: 100%;
 }
 
 .topbar {
