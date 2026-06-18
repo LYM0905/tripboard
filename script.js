@@ -3207,6 +3207,16 @@ function resolvedCommentPatch(isResolved) {
     : { resolved: true, resolvedAt: updatedAt, resolvedBy: getCollabName(), updatedAt };
 }
 
+function createCommentReply(parentId = "", text = "") {
+  return normalizeCommentEntry({
+    id: uid(),
+    parentId,
+    author: getCollabName(),
+    text,
+    at: new Date().toISOString(),
+  });
+}
+
 function commentAnchorLabel(anchor = null) {
   if (!anchor?.field) return "";
   const meta = collabTextFieldMeta(anchor.field);
@@ -6549,6 +6559,7 @@ function renderCommentIndex() {
           <p>${escapeHtml(item.text)}</p>
           <small>${escapeHtml(meta)}</small>
           ${canEdit() ? `<span class="comment-index-actions"><span class="comment-index-author">${escapeHtml(item.author || "我")}${item.at ? ` · ${escapeHtml(formatCommentTime(item.at))}` : ""}</span><button type="button" class="comment-action" data-comment-index-resolve="${escapeHtml(item.id)}">${item.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}解决`}</button></span>` : ""}
+          ${canEdit() ? `<form class="comment-index-reply-form" data-comment-index-reply="${escapeHtml(item.id)}"><input placeholder="回复这个批注" aria-label="回复批注" /><button type="submit" class="icon-btn subtle" aria-label="发送回复">${icon("send")}</button></form>` : ""}
         </article>
       `;
     })
@@ -6598,6 +6609,54 @@ async function toggleCommentIndexResolved(commentId = "") {
   }
   render();
   dom.saveState.textContent = item.resolved ? "已重新打开批注" : "已标记批注解决";
+  return true;
+}
+
+async function replyFromCommentIndex(commentId = "", text = "") {
+  const item = commentIndexItems().find((entry) => entry.id === commentId);
+  const replyText = String(text || "").trim();
+  if (!item || !replyText || !requireEdit("回复批注")) return false;
+  const day = state.days[item.dayIndex] || state.days.find((entry) => entry.id === item.dayId);
+  if (!day) return false;
+  if (item.scope === "stop") {
+    const stop = (day.stops || []).find((entry, index) => (item.stopId && entry.id === item.stopId) || index === item.stopIndex);
+    if (!stop) return false;
+    const wasCurrentStop = currentStop()?.id === stop.id;
+    let reply = false;
+    if (wasCurrentStop) reply = await addCollaborativeCommentReply(item.id, replyText);
+    const nextReply = reply || createCommentReply(item.id, replyText);
+    stop.comments = normalizeComments([...(stop.comments || []), nextReply]);
+    await logActivity(`回复批注「${stop.title || "地点"}」`);
+    await syncStopSnapshotToPlanDoc(stop.id, reply ? "comment-index-stop-reply-snapshot" : "comment-index-stop-reply-fallback-snapshot");
+    if (wasCurrentStop) await saveCollaborativeTextChange(`回复批注「${stop.title || "地点"}」`);
+    else await saveCollaborativePlanChange(`回复批注「${stop.title || "地点"}」`);
+  } else if (item.scope === "day") {
+    const wasCurrentDay = currentDay()?.id === day.id;
+    let reply = false;
+    if (wasCurrentDay) reply = await addCollaborativeDayCommentReply(item.id, replyText);
+    const nextReply = reply || createCommentReply(item.id, replyText);
+    day.comments = normalizeComments([...(day.comments || []), nextReply]);
+    await logActivity(`回复当天批注「${day.title || day.label}」`);
+    await patchDayMetaInDoc(day.id, { comments: day.comments }, reply ? "comment-index-day-reply-snapshot" : "comment-index-day-reply-fallback-snapshot");
+    if (wasCurrentDay) await saveCollaborativeTextChange(`回复当天批注「${day.title || day.label}」`);
+    else await saveCollaborativePlanChange(`回复当天批注「${day.title || day.label}」`);
+  } else if (item.scope === "block") {
+    const blocks = normalizeDayBlocks(day.blocks || []);
+    const block = blocks.find((entry) => entry.id === item.blockId);
+    if (!block) return false;
+    const reply = await addDayBlockCommentToDoc(day.id, block.id, replyText, item.id, "comment-index-block-comment-reply");
+    const nextReply = reply || createCommentReply(item.id, replyText);
+    day.blocks = normalizeDayBlocks(blocks.map((entry) => (
+      entry.id === block.id
+        ? { ...entry, comments: normalizeComments([...(entry.comments || []), nextReply]), updatedBy: getCollabName(), updatedAt: new Date().toISOString() }
+        : entry
+    )));
+    await logActivity(`回复块级批注「${block.text.slice(0, 18)}」`);
+    if (!reply) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-reply-fallback");
+    await saveCollaborativePlanChange("已回复块级批注");
+  }
+  render();
+  dom.saveState.textContent = "已回复批注";
   return true;
 }
 
@@ -9277,7 +9336,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
     }
     const fallbackTitle = currentStop().title;
     if (!mutate(`回复评论「${fallbackTitle}」`, () => {
-      currentStop().comments = normalizeComments([...(currentStop().comments || []), { id: uid(), parentId, author: getCollabName(), text, at: new Date().toISOString() }]);
+      currentStop().comments = normalizeComments([...(currentStop().comments || []), createCommentReply(parentId, text)]);
       replyingCommentId = "";
       dom.commentInput.value = "";
       dom.commentInput.placeholder = "添加同行意见或提醒";
@@ -9420,7 +9479,7 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
     }
     const fallbackTitle = currentDay().title;
     if (!mutate(`回复当天批注「${fallbackTitle}」`, () => {
-      currentDay().comments = normalizeComments([...(currentDay().comments || []), { id: uid(), parentId, author: getCollabName(), text, at: new Date().toISOString() }]);
+      currentDay().comments = normalizeComments([...(currentDay().comments || []), createCommentReply(parentId, text)]);
       dayReplyingCommentId = "";
       dom.dayCommentInput.value = "";
       dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
@@ -10458,6 +10517,7 @@ dom.commentIndexFilters?.addEventListener("click", (event) => {
 });
 
 dom.commentIndexList?.addEventListener("click", (event) => {
+  if (event.target.closest("[data-comment-index-reply]")) return;
   const resolveButton = event.target.closest("[data-comment-index-resolve]");
   if (resolveButton) {
     event.preventDefault();
@@ -10472,10 +10532,22 @@ dom.commentIndexList?.addEventListener("click", (event) => {
 
 dom.commentIndexList?.addEventListener("keydown", (event) => {
   if (!["Enter", " "].includes(event.key)) return;
+  if (event.target.closest?.("[data-comment-index-reply]")) return;
   const item = event.target.closest("[data-comment-index-id]");
   if (!item || event.target.closest("[data-comment-index-resolve]")) return;
   event.preventDefault();
   focusCommentIndexItem(item.dataset.commentIndexId || "");
+});
+
+dom.commentIndexList?.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-comment-index-reply]");
+  if (!form) return;
+  event.preventDefault();
+  const input = form.querySelector("input");
+  const text = input?.value?.trim() || "";
+  if (!text) return;
+  const sent = await replyFromCommentIndex(form.dataset.commentIndexReply || "", text);
+  if (sent && input) input.value = "";
 });
 
 dom.memberForm.addEventListener("submit", (event) => {
