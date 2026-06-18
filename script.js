@@ -639,22 +639,16 @@ function reflowPlanDates(plan = state, startDateValue = plan?.startDate || plan?
 }
 
 function currentPlanMeta() {
-  return {
-    name: state.name,
-    destination: state.destination,
-    origin: state.origin,
-    dateRange: state.dateRange,
-    startDate: state.startDate,
-    endDate: state.endDate,
-    budgetLimit: state.budgetLimit,
-    partySize: state.partySize,
-    cover: state.cover,
-  };
+  return Object.fromEntries(
+    PLAN_SETTING_FIELDS.map((meta) => [meta.field, planSettingValue(state, meta)]),
+  );
 }
 
 function applyPlanMeta(meta = {}) {
-  ["name", "destination", "origin", "dateRange", "startDate", "endDate", "budgetLimit", "partySize", "cover"].forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(meta, field)) state[field] = clone(meta[field]);
+  PLAN_SETTING_FIELDS.forEach((setting) => {
+    if (Object.prototype.hasOwnProperty.call(meta, setting.field)) {
+      state[setting.field] = normalizePlanSettingValue(setting.field, meta[setting.field]);
+    }
   });
 }
 
