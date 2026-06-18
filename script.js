@@ -5093,7 +5093,15 @@ async function updateDayBlockInDoc(dayId, blockId, patch = {}, origin = "local-d
     updatedAt: new Date().toISOString(),
   });
   if (!next) return false;
-  if (sameSerialized(normalizeDayBlock(items[index]), next)) return true;
+  const currentNormalized = normalizeDayBlock(items[index]);
+  const sameVisibleBlock = sameSerialized(currentNormalized, next);
+  const textKey = patchHasText ? dayBlockTextKey(dayId, blockId) : "";
+  const currentYText = patchHasText ? collabDayBlockTextsMap.get(textKey) : null;
+  const textSnapshotMatches = !patchHasText || (
+    currentYText?.toString?.() === nextText &&
+    collabDayBlockTextStatesMap.get(textKey) === nextTextState
+  );
+  if (sameVisibleBlock && textSnapshotMatches) return patchHasText ? { text: nextText, textYjs: nextTextState } : true;
   collabPlanDoc.transact(() => {
     const latestItems = blockArray.toArray();
     const latestIndex = latestItems.findIndex((block) => block?.id === blockId);
@@ -5105,7 +5113,8 @@ async function updateDayBlockInDoc(dayId, blockId, patch = {}, origin = "local-d
       updatedBy: getCollabName(),
       updatedAt: new Date().toISOString(),
     });
-    if (!latest || sameSerialized(normalizeDayBlock(latestItems[latestIndex]), latest)) return;
+    if (!latest) return;
+    const sameLatestVisibleBlock = sameSerialized(normalizeDayBlock(latestItems[latestIndex]), latest);
     if (patchHasText) {
       const key = dayBlockTextKey(dayId, blockId);
       let yText = collabDayBlockTextsMap.get(key);
@@ -5116,6 +5125,7 @@ async function updateDayBlockInDoc(dayId, blockId, patch = {}, origin = "local-d
       applyTextDiff(yText, nextText);
       collabDayBlockTextStatesMap.set(key, nextTextState);
     }
+    if (sameLatestVisibleBlock) return;
     blockArray.delete(latestIndex, 1);
     blockArray.insert(latestIndex, [latest]);
   }, origin);
