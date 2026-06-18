@@ -784,6 +784,7 @@ button:disabled {
 }
 
 .input-shell {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -800,6 +801,8 @@ button:disabled {
 }
 
 .input-shell input {
+  position: relative;
+  z-index: 2;
   width: 100%;
   min-width: 0;
   color: var(--ink);
@@ -1990,6 +1993,26 @@ button:disabled {
 
 .text-presence[hidden] {
   display: none;
+}
+
+.plan-text-presence {
+  position: absolute;
+  inset: auto 8px 5px 38px;
+  margin: 0;
+}
+
+.plan-text-presence .text-presence-inline {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 29px;
+}
+
+.plan-text-presence .text-presence-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 4;
 }
 
 .text-presence-inline {
