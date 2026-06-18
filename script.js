@@ -52,6 +52,12 @@ const COLLAB_DAY_TEXT_FIELDS = [
   { field: "day:weather", docField: "weather", domKey: "fieldDayWeather", label: "天气", presenceId: "fieldDayWeatherPresence", scope: "day" },
   { field: "day:transport", docField: "transport", domKey: "fieldDayTransport", label: "交通", presenceId: "fieldDayTransportPresence", scope: "day" },
 ];
+const COLLAB_PLAN_TEXT_PRESENCE_FIELDS = [
+  { field: "plan:destination", planField: "destination", domKey: "destinationInput", label: "目的地", presenceId: "destinationInputPresence", scope: "plan" },
+  { field: "plan:origin", planField: "origin", domKey: "originInput", label: "出发城市", presenceId: "originInputPresence", scope: "plan" },
+  { field: "plan:startDate", planField: "startDate", domKey: "startDateInput", label: "出发日期", presenceId: "startDateInputPresence", scope: "plan" },
+  { field: "plan:endDate", planField: "endDate", domKey: "endDateInput", label: "返程日期", presenceId: "endDateInputPresence", scope: "plan" },
+];
 const COLLAB_STRUCT_FIELDS = [
   { field: "time", domKey: "fieldTime", type: "string", label: "时间", presenceId: "fieldTimePresence" },
   { field: "budget", domKey: "fieldBudget", type: "number", label: "预算", presenceId: "fieldBudgetPresence" },
@@ -73,6 +79,7 @@ const COLLAB_PRESENCE_TEXT_FIELDS = [
   ...COLLAB_TEXT_FIELDS.map((field) => ({ ...field, scope: "stop" })),
   ...COLLAB_STRUCT_PRESENCE_FIELDS,
   ...COLLAB_DAY_TEXT_FIELDS,
+  ...COLLAB_PLAN_TEXT_PRESENCE_FIELDS,
 ];
 const COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD = new Map(COLLAB_PRESENCE_TEXT_FIELDS.map((item) => [item.field, item]));
 const COLLAB_COMMENT_ANCHOR_FIELDS = COLLAB_PRESENCE_TEXT_FIELDS.filter((item) => item.domKey && item.presenceId);
@@ -1857,6 +1864,9 @@ function remoteTextEditorsForField(field, scope = "stop") {
   return onlineMembers.filter((member) => {
     if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
     if (!freshMember(member)) return false;
+    if (scope === "plan") {
+      return member.textSelection?.field === field;
+    }
     if (scope === "day") {
       if (member.activeDayId !== dayId) return false;
     } else if (member.activeStopId !== stopId) {
@@ -9621,6 +9631,15 @@ COLLAB_STRUCT_FIELDS.forEach((meta) => {
   ["focus", "click", "keyup", "select"].forEach((eventName) => {
     dom[meta.domKey]?.addEventListener(eventName, () => {
       if (anchorMeta) captureCommentAnchor(anchorMeta);
+      schedulePresenceTrack(eventName === "focus" ? 0 : 90);
+    });
+  });
+  dom[meta.domKey]?.addEventListener("blur", () => schedulePresenceTrack(180));
+});
+
+COLLAB_PLAN_TEXT_PRESENCE_FIELDS.forEach((meta) => {
+  ["input", "change", "focus", "click", "keyup", "select"].forEach((eventName) => {
+    dom[meta.domKey]?.addEventListener(eventName, () => {
       schedulePresenceTrack(eventName === "focus" ? 0 : 90);
     });
   });

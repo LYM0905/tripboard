@@ -209,6 +209,7 @@
                 <label class="input-shell">
                   <i data-lucide="map-pin"></i>
                   <input id="destinationInput" value="甘肃" aria-label="目的地" />
+                  <span class="text-presence plan-text-presence" id="destinationInputPresence" hidden></span>
                 </label>
               </div>
               <div class="control-group">
@@ -216,6 +217,7 @@
                 <label class="input-shell">
                   <i data-lucide="navigation"></i>
                   <input id="originInput" value="上海" aria-label="出发城市" />
+                  <span class="text-presence plan-text-presence" id="originInputPresence" hidden></span>
                 </label>
               </div>
               <div class="control-group">
@@ -223,6 +225,7 @@
                 <label class="input-shell">
                   <i data-lucide="calendar-days"></i>
                   <input id="startDateInput" type="date" aria-label="出发日期" />
+                  <span class="text-presence plan-text-presence" id="startDateInputPresence" hidden></span>
                 </label>
               </div>
               <div class="control-group">
@@ -230,6 +233,7 @@
                 <label class="input-shell">
                   <i data-lucide="calendar-check"></i>
                   <input id="endDateInput" type="date" aria-label="返程日期" />
+                  <span class="text-presence plan-text-presence" id="endDateInputPresence" hidden></span>
                 </label>
               </div>
               <p class="date-range-note" id="tripLengthHint">共 6 天，按自然日生成。</p>
