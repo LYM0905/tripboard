@@ -8304,7 +8304,7 @@ async function syncCtripTransport() {
   const isDemoProxy = transportProviderSource === "demo" || transportProviderItems.some((item) => /示例/.test(item.source || ""));
   setCtripStatus(isDemoProxy ? `后端代理已连通，返回 ${transportProviderItems.length} 条示例交通数据，并保存 ${savedCount} 条到协作报价。` : `已同步 ${transportProviderItems.length} 条 Google Flights 航班报价，并保存 ${savedCount} 条到共享计划。`, isDemoProxy ? "info" : "check-circle-2");
   dom.syncBadge.textContent = isDemoProxy ? "代理示例" : "Google Flights";
-  logActivity(`同步 Google Flights 航班报价 ${transportProviderItems.length} 条，保存 ${savedCount} 条`);
+  logActivity(`同步 Google Flights 航班报价 ${transportProviderItems.length} 条，保存 ${savedCount} 条`, { target: transportQuoteActivityTarget("", day.id || "", { action: "provider-sync" }) });
   await saveState("已同步 Google Flights 报价");
   render();
 }
@@ -8388,7 +8388,7 @@ async function compareMultiOrigins() {
     refreshIcons();
     const matched = results.filter((item) => item.best).length;
     const total = results.reduce((sum, item) => sum + Number(item.best?.price || 0), 0);
-    logActivity(`比较多人出发地航班 ${matched}/${results.length} 人，保存 ${savedCount} 条推荐报价`);
+    logActivity(`比较多人出发地航班 ${matched}/${results.length} 人，保存 ${savedCount} 条推荐报价`, { target: transportQuoteActivityTarget("", day.id || "", { action: "multi-origin-sync" }) });
     await saveState("已保存多人出发地航班比较");
     setCtripStatus(`已完成多人出发地比较：${matched}/${results.length} 人匹配到航班，最低合计 ${money(total)}；已保存 ${savedCount} 条推荐报价到共享计划。`, matched ? "check-circle-2" : "alert-circle");
   } catch (error) {
@@ -8686,7 +8686,7 @@ function renderCandidates() {
   dom.candidateGrid.innerHTML = state.candidates
     .map(
       (stop, index) => `
-        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}" data-candidate="${index}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
+        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
           ${icon(stop.type === "Market" ? "shopping-bag" : stop.type === "Cafe" ? "coffee" : "landmark")}
           <span class="candidate-title">${escapeHtml(stop.title)}</span>
           <span class="candidate-price">${money(stop.budget)}</span>
@@ -8757,6 +8757,9 @@ function focusActivityDetail(detail = null) {
   }
   if (detail.commentId && detail.deleted && focusDeletedCommentActivityTarget(detail)) return true;
   if ((detail.type === "dayBlock" || detail.blockId) && focusDayBlockActivityTarget(detail)) return true;
+  if ((detail.type === "transportQuote" || detail.quoteId) && focusTransportQuoteActivityTarget(detail)) return true;
+  if ((detail.type === "candidate" || detail.candidateId) && focusCandidateActivityTarget(detail)) return true;
+  if (detail.type === "budgetSetting" && focusBudgetSettingActivityTarget(detail)) return true;
   if ((detail.type === "stop" || detail.stopId) && focusStopActivityTarget(detail)) return true;
   if ((detail.type === "day" || detail.dayId) && focusDayActivityTarget(detail)) return true;
   return false;
@@ -8775,6 +8778,31 @@ function stopActivityTarget(dayId = "", stopId = "", extra = {}) {
     type: "stop",
     dayId: dayId || "",
     stopId: stopId || "",
+    ...extra,
+  };
+}
+
+function candidateActivityTarget(candidateId = "", extra = {}) {
+  return {
+    type: "candidate",
+    candidateId: candidateId || "",
+    ...extra,
+  };
+}
+
+function transportQuoteActivityTarget(quoteId = "", dayId = "", extra = {}) {
+  return {
+    type: "transportQuote",
+    quoteId: quoteId || "",
+    dayId: dayId || "",
+    ...extra,
+  };
+}
+
+function budgetSettingActivityTarget(field = "", extra = {}) {
+  return {
+    type: "budgetSetting",
+    field: field || "",
     ...extra,
   };
 }
@@ -8819,6 +8847,53 @@ function focusStopActivityTarget(detail = null) {
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
   dom.saveState.textContent = stopIndex >= 0 ? "已定位到活动对应地点" : "地点已不存在，已定位到原日期时间线";
+  return true;
+}
+
+function focusCandidateActivityTarget(detail = null) {
+  if (!detail || typeof detail !== "object") return false;
+  const candidateId = String(detail.candidateId || "");
+  renderCandidates();
+  const candidate = candidateId ? dom.candidateGrid?.querySelector(`[data-candidate-id="${CSS.escape(candidateId)}"]`) : null;
+  const target = candidate || document.querySelector(".candidate-panel");
+  if (!target) return false;
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  dom.saveState.textContent = candidate ? "已定位到活动对应备选地点" : "备选已不存在，已定位到备选池";
+  return true;
+}
+
+function focusTransportQuoteActivityTarget(detail = null) {
+  if (!detail || typeof detail !== "object") return false;
+  const dayIndex = state.days.findIndex((day) => detail.dayId && day.id === detail.dayId);
+  if (dayIndex >= 0) {
+    activeDay = dayIndex;
+    activeStop = 0;
+  }
+  transportFilterApplied = true;
+  render();
+  const quoteId = String(detail.quoteId || "");
+  const quote = quoteId ? dom.transportList?.querySelector(`[data-quote="${CSS.escape(quoteId)}"]`) : null;
+  const target = quote || document.querySelector(".transport-panel");
+  if (!target) return false;
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  dom.saveState.textContent = quote ? "已定位到活动对应交通报价" : "报价已不存在，已定位到交通面板";
+  return true;
+}
+
+function focusBudgetSettingActivityTarget(detail = null) {
+  renderShell();
+  const fieldTarget = detail?.field === "partySize" ? dom.partySizeInput : detail?.field === "budgetLimit" ? dom.budgetLimitInput : null;
+  const target = fieldTarget || document.querySelector(".budget-tools") || dom.budgetSettlement;
+  if (!target) return false;
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  fieldTarget?.focus();
+  dom.saveState.textContent = "已定位到活动对应预算设置";
   return true;
 }
 
@@ -9350,7 +9425,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
     };
     if (await updateCandidateInDoc(editingCandidateId, patch)) {
       persistCurrentPlanFromDoc("备选池协作内容已实时同步");
-      await logActivity(`更新备选池「${draft.title}」`);
+      await logActivity(`更新备选池「${draft.title}」`, { target: candidateActivityTarget(editingCandidateId, { action: "update" }) });
       clearQuickPlaceForm();
       await saveCollaborativePlanChange(`更新备选「${draft.title}」`);
       dom.saveState.textContent = `已更新备选「${draft.title}」`;
@@ -9360,13 +9435,14 @@ dom.addCandidateBtn.addEventListener("click", async () => {
     mutate(`更新备选「${draft.title}」`, () => {
       state.candidates = mergedCandidatesWithPatch("update", patch, editingCandidateId);
       clearQuickPlaceForm();
-    }, { requireUnlocked: false });
+    }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(editingCandidateId, { action: "update" }) });
     await syncCandidatesToDoc("local-candidate-update-fallback");
+    await saveCollaborativePlanChange(`更新备选「${draft.title}」`);
     return;
   }
   if (await addCollaborativeCandidate(draft)) {
     persistCurrentPlanFromDoc("备选池协作内容已实时同步");
-    await logActivity(`加入备选池「${draft.title}」`);
+    await logActivity(`加入备选池「${draft.title}」`, { target: candidateActivityTarget(draft.id, { action: "create" }) });
     clearQuickPlaceForm();
     await saveCollaborativePlanChange(`加入备选池「${draft.title}」`);
     dom.saveState.textContent = `已加入备选池「${draft.title}」`;
@@ -9376,8 +9452,9 @@ dom.addCandidateBtn.addEventListener("click", async () => {
   mutate(`加入备选池「${draft.title}」`, () => {
     state.candidates = mergedCandidatesWithPatch("add", draft);
     clearQuickPlaceForm();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(draft.id, { action: "create" }) });
   await syncCandidatesToDoc("local-candidate-fallback");
+  await saveCollaborativePlanChange(`加入备选池「${draft.title}」`);
 });
 
 dom.openAmapBtn.addEventListener("click", async () => {
@@ -10642,6 +10719,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     if (!candidate || !requireEdit("移除备选地点")) return;
     if (await deleteCandidateFromDoc(candidateId)) {
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
+      await logActivity(`移除备选「${candidate.title}」`, { target: candidateActivityTarget(candidateId, { deleted: true, action: "delete" }) });
       await saveCollaborativePlanChange(`移除备选「${candidate.title}」`);
       dom.saveState.textContent = `已移除备选「${candidate.title}」`;
       return;
@@ -10649,8 +10727,9 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     mutate(`移除备选「${candidate.title}」`, () => {
       state.candidates = mergedCandidatesWithPatch("delete", null, candidateId);
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
-    }, { requireUnlocked: false });
+    }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(candidateId, { deleted: true, action: "delete" }) });
     await syncCandidatesToDoc("local-candidate-delete-fallback");
+    await saveCollaborativePlanChange(`移除备选「${candidate.title}」`);
     return;
   }
   const button = event.target.closest("[data-candidate]");
@@ -10750,6 +10829,7 @@ dom.transportList.addEventListener("click", async (event) => {
   if (await deleteTransportQuoteFromDoc(quoteId)) {
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
+    await logActivity(`删除报价「${quote.code}」`, { target: transportQuoteActivityTarget(quoteId, quote.dayId || "", { deleted: true, action: "delete" }) });
     await saveCollaborativePlanChange(`删除报价「${quote.code}」`);
     dom.saveState.textContent = `已删除报价「${quote.code}」`;
     return;
@@ -10758,8 +10838,9 @@ dom.transportList.addEventListener("click", async (event) => {
     state.transportQuotes = mergedTransportQuotesWithPatch("delete", null, quoteId);
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(quoteId, quote.dayId || "", { deleted: true, action: "delete" }) });
   await syncTransportQuotesToDoc("local-transport-quote-delete-fallback");
+  await saveCollaborativePlanChange(`删除报价「${quote.code}」`);
 });
 
 dom.cancelQuoteEditBtn?.addEventListener("click", () => {
@@ -10783,7 +10864,7 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
     }
     if (await updateTransportQuoteInDoc(editingTransportQuoteId, quote)) {
       persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
-      await logActivity(`更新交通报价「${code}」`);
+      await logActivity(`更新交通报价「${code}」`, { target: transportQuoteActivityTarget(editingTransportQuoteId, quote.dayId || "", { action: "update" }) });
       transportFilterApplied = true;
       clearManualQuoteForm();
       await saveCollaborativePlanChange(`更新交通报价「${code}」`);
@@ -10795,13 +10876,14 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
       state.transportQuotes = mergedTransportQuotesWithPatch("update", manualQuotePatchFromForm(), editingTransportQuoteId);
       transportFilterApplied = true;
       clearManualQuoteForm();
-    }, { requireUnlocked: false });
+    }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(editingTransportQuoteId, quote.dayId || "", { action: "update" }) });
     await syncTransportQuotesToDoc("local-transport-quote-update-fallback");
+    await saveCollaborativePlanChange(`更新交通报价「${code}」`);
     return;
   }
   if (await addCollaborativeTransportQuote(quote)) {
     persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
-    await logActivity(`保存交通报价「${code}」`);
+    await logActivity(`保存交通报价「${code}」`, { target: transportQuoteActivityTarget(quote.id, quote.dayId || "", { action: "create" }) });
     transportFilterApplied = true;
     clearManualQuoteForm();
     await saveCollaborativePlanChange(`保存交通报价「${code}」`);
@@ -10813,30 +10895,39 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
     state.transportQuotes = mergedTransportQuotesWithPatch("add", quote).slice(0, 40);
     transportFilterApplied = true;
     clearManualQuoteForm();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(quote.id, quote.dayId || "", { action: "create" }) });
   await syncTransportQuotesToDoc("local-transport-quote-fallback");
+  await saveCollaborativePlanChange(`保存交通报价「${code}」`);
 });
 
 dom.partySizeInput.addEventListener("change", async () => {
   if (!requireEdit("更新同行人数")) return;
   if (await syncPlanSettingToDoc("partySize", dom.partySizeInput.value)) {
+    persistCurrentPlanFromDoc("预算设置协作内容已实时同步");
+    await logActivity("更新同行人数", { target: budgetSettingActivityTarget("partySize", { action: "update" }) });
     await saveCollaborativePlanChange("更新同行人数");
     return;
   }
   mutate("更新同行人数", () => {
     state.partySize = partySize();
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, activityTarget: budgetSettingActivityTarget("partySize", { action: "update" }) });
+  await syncPlanMetaToDoc("local-party-size-fallback");
+  await saveCollaborativePlanChange("更新同行人数");
 });
 
 dom.budgetLimitInput.addEventListener("change", async () => {
   if (!requireEdit("更新预算上限")) return;
   if (await syncPlanSettingToDoc("budgetLimit", dom.budgetLimitInput.value)) {
+    persistCurrentPlanFromDoc("预算设置协作内容已实时同步");
+    await logActivity("更新预算上限", { target: budgetSettingActivityTarget("budgetLimit", { action: "update" }) });
     await saveCollaborativePlanChange("更新预算上限");
     return;
   }
   mutate("更新预算上限", () => {
     state.budgetLimit = numberValue(dom.budgetLimitInput.value);
-  }, { requireUnlocked: false });
+  }, { requireUnlocked: false, save: false, activityTarget: budgetSettingActivityTarget("budgetLimit", { action: "update" }) });
+  await syncPlanMetaToDoc("local-budget-limit-fallback");
+  await saveCollaborativePlanChange("更新预算上限");
 });
 
 dom.destinationInput.addEventListener("input", () => {
