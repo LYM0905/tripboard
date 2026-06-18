@@ -9981,7 +9981,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
     }, { save: false, render: false })) return;
     await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-reply-fallback-snapshot");
     await logActivity(`回复评论「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: currentStop().id || "" } });
-    await saveState(`回复评论「${fallbackTitle}」`);
+    await saveCollaborativeTextChange(`回复评论「${fallbackTitle}」`);
     render();
     return;
   }
@@ -10007,7 +10007,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-fallback-snapshot");
   await logActivity(`评论「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "stop", stopId: currentStop().id || "" } });
-  await saveState(`评论「${fallbackTitle}」`);
+  await saveCollaborativeTextChange(`评论「${fallbackTitle}」`);
   render();
 });
 
@@ -10062,7 +10062,7 @@ dom.commentList.addEventListener("click", async (event) => {
     }, { save: false, render: false })) return;
     await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-resolve-fallback-snapshot");
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "" } });
-    await saveState(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
+    await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
     render();
     return;
   }
@@ -10096,7 +10096,7 @@ dom.commentList.addEventListener("click", async (event) => {
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot");
   await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "", deleted: true } });
-  await saveState(`删除评论「${stop.title}」`);
+  await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
   render();
 });
 
@@ -10130,7 +10130,7 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-reply-fallback-snapshot");
     await logActivity(`回复当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: currentDay().id || "" } });
-    await saveState(`回复当天批注「${fallbackTitle}」`);
+    await saveCollaborativeTextChange(`回复当天批注「${fallbackTitle}」`);
     render();
     return;
   }
@@ -10155,7 +10155,7 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
   }, { requireUnlocked: false, save: false, render: false })) return;
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-fallback-snapshot");
   await logActivity(`当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "day", dayId: currentDay().id || "" } });
-  await saveState(`当天批注「${fallbackTitle}」`);
+  await saveCollaborativeTextChange(`当天批注「${fallbackTitle}」`);
   render();
 });
 
@@ -10210,7 +10210,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-resolve-fallback-snapshot");
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "" } });
-    await saveState(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
+    await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
     render();
     return;
   }
@@ -10243,7 +10243,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
   }, { requireUnlocked: false, save: false, render: false })) return;
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-delete-fallback-snapshot");
   await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "", deleted: true } });
-  await saveState(`删除当天批注「${day.title}」`);
+  await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
   render();
 });
 
@@ -10277,7 +10277,7 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
   }, { requireUnlocked: false, save: false, render: false })) return;
   await syncDayBlocksToDoc(currentDay().id, "local-day-block-add-fallback");
   await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(currentDay().id, block.id) });
-  await saveState(`添加协作块「${day.title}」`);
+  await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
   render();
 });
 
@@ -10339,7 +10339,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback");
     await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "toggle" }) });
-    await saveState("已更新协作块");
+    await saveCollaborativePlanChange("已更新协作块");
     render();
     return;
   }
@@ -10380,7 +10380,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-resolve-fallback");
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
-    await saveState("已更新块级评论");
+    await saveCollaborativePlanChange("已更新块级评论");
     render();
     return;
   }
@@ -10406,7 +10406,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-delete-fallback");
     await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "", deleted: true } });
-    await saveState("已删除块级评论");
+    await saveCollaborativePlanChange("已删除块级评论");
     render();
     return;
   }
@@ -10434,7 +10434,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-reorder-fallback");
     await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "move", direction }) });
-    await saveState("已排序协作块");
+    await saveCollaborativePlanChange("已排序协作块");
     render();
     return;
   }
@@ -10458,7 +10458,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-delete-fallback");
     await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { deleted: true }) });
-    await saveState("已删除协作块");
+    await saveCollaborativePlanChange("已删除协作块");
     render();
   }
 });
@@ -10514,7 +10514,7 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
   }, { requireUnlocked: false, save: false, render: false })) return;
   await syncDayBlocksToDoc(currentDay().id, parentId ? "local-day-block-comment-reply-fallback" : "local-day-block-comment-add-fallback");
   await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || fallbackComment.id, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
-  await saveState(parentId ? "已回复块级评论" : "已添加块级评论");
+  await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
   render();
 });
 
@@ -10616,7 +10616,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
   await syncDayBlocksToDoc(currentDay().id, "local-day-block-drag-reorder-fallback");
   clearDayBlockDragState();
   await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, draggedId, { action: "drag", targetIndex }) });
-  await saveState("已拖拽排序协作块");
+  await saveCollaborativePlanChange("已拖拽排序协作块");
   render();
 });
 
@@ -10651,7 +10651,7 @@ dom.dayBlockList?.addEventListener("input", (event) => {
     day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text } : item)));
     await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback");
     await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
-    await saveState("协作块已更新");
+    await saveCollaborativePlanChange("协作块已更新");
   }, 650);
 });
 
