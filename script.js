@@ -11147,35 +11147,53 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
+    const cursorStart = input.selectionStart ?? input.value.length;
+    const cursorEnd = input.selectionEnd ?? cursorStart;
+    const beforeText = input.value.slice(0, cursorStart).trim();
+    const afterText = input.value.slice(cursorEnd).trim();
     const newBlock = normalizeDayBlock({
       id: uid(),
       type: block.type || "note",
-      text: "",
+      level: block.level || 0,
+      text: afterText,
       createdBy: getCollabName(),
       createdAt: new Date().toISOString(),
     });
-    if (!newBlock || !requireEdit("新增协作块")) return;
+    if (!newBlock || !requireEdit(afterText ? "拆分协作块" : "新增协作块")) return;
     activeBlockPresenceId = newBlock.id;
     const insertIndex = blockIndex + 1;
-    const added = await addDayBlockToDoc(day.id, newBlock, "local-day-block-keyboard-add", insertIndex);
+    const splitPatch = { text: beforeText, textYjs: "" };
+    let textUpdateResult = true;
+    if (beforeText !== block.text) {
+      textUpdateResult = await updateDayBlockTextInDoc(day.id, blockId, beforeText, "local-day-block-keyboard-split-text");
+    }
+    const textUpdated = Boolean(textUpdateResult);
+    const visibleSplitPatch = typeof textUpdateResult === "object" ? { ...splitPatch, ...textUpdateResult } : splitPatch;
+    const added = textUpdated ? await addDayBlockToDoc(day.id, newBlock, "local-day-block-keyboard-add", insertIndex) : false;
     if (added) {
       const addedBlock = added === true ? newBlock : added;
-      day.blocks = insertDayBlockList(day.blocks || [], addedBlock, insertIndex);
+      const withSplitText = normalizeDayBlocks((day.blocks || []).map((item) => (
+        item.id === blockId ? { ...item, ...visibleSplitPatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+      )));
+      day.blocks = insertDayBlockList(withSplitText, addedBlock, insertIndex);
       renderDayBlocks(day);
       focusDayBlockInput(addedBlock.id);
-      await logActivity("用键盘新增协作块", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: "keyboard-add" }) });
-      await saveCollaborativePlanChange("已用键盘新增协作块");
+      await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
+      await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
       focusDayBlockInput(addedBlock.id);
       return;
     }
-    if (!mutate("用键盘新增协作块", () => {
-      currentDay().blocks = insertDayBlockList(currentDay().blocks || [], newBlock, insertIndex);
+    if (!mutate(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", () => {
+      const splitBlocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (
+        item.id === blockId ? { ...item, ...splitPatch } : item
+      )));
+      currentDay().blocks = insertDayBlockList(splitBlocks, newBlock, insertIndex);
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-add-fallback");
     renderDayBlocks(currentDay());
     focusDayBlockInput(newBlock.id);
-    await logActivity("用键盘新增协作块", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: "keyboard-add" }) });
-    await saveCollaborativePlanChange("已用键盘新增协作块");
+    await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
+    await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
     focusDayBlockInput(newBlock.id);
     return;
   }
