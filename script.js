@@ -6488,6 +6488,7 @@ const dom = {
   collabStatus: document.querySelector("#collabStatus"),
   createSharedTripBtn: document.querySelector("#createSharedTripBtn"),
   copySharedLinkBtn: document.querySelector("#copySharedLinkBtn"),
+  copyInviteLinkBtn: document.querySelector("#copyInviteLinkBtn"),
   copyReadonlyLinkBtn: document.querySelector("#copyReadonlyLinkBtn"),
   editAccessForm: document.querySelector("#editAccessForm"),
   editAccessInput: document.querySelector("#editAccessInput"),
@@ -7197,13 +7198,13 @@ function renderEditAccessState() {
     dom.editAccessStatus.textContent = "创建共享计划后可设置编辑口令。";
     dom.editAccessBtn.innerHTML = `${icon("key-round")}设置口令`;
   } else if (state.editKeyHash && canEdit()) {
-    dom.editAccessStatus.textContent = "已启用编辑口令；复制编辑链接会带上编辑密钥，只读链接仍只能查看。";
+    dom.editAccessStatus.textContent = "已启用编辑口令；口令编辑链接需要输入口令，直入邀请会带密钥，请只发给可信成员。";
     dom.editAccessBtn.innerHTML = `${icon("key-round")}更新口令`;
   } else if (state.editKeyHash) {
     dom.editAccessStatus.textContent = state.editKeyHint ? `需要编辑口令，提示：${state.editKeyHint}` : "需要编辑口令才能修改计划。";
     dom.editAccessBtn.innerHTML = `${icon("unlock-keyhole")}解锁编辑`;
   } else {
-    dom.editAccessStatus.textContent = "未设置编辑口令，编辑链接可直接修改。";
+    dom.editAccessStatus.textContent = "未设置编辑口令，编辑链接可直接修改；建议先设置口令再邀请成员。";
     dom.editAccessBtn.innerHTML = `${icon("key-round")}设置口令`;
   }
   refreshIcons();
@@ -7276,7 +7277,11 @@ function applyReadonlyUi() {
   });
   if (dom.editAccessInput) dom.editAccessInput.disabled = forcedReadonlyMode || !tripId;
   if (dom.editAccessBtn) dom.editAccessBtn.disabled = forcedReadonlyMode || !tripId;
-  dom.copySharedLinkBtn.textContent = isReadonlyMode ? "复制当前只读链接" : "复制编辑链接";
+  if (dom.copySharedLinkBtn) dom.copySharedLinkBtn.textContent = isReadonlyMode ? "复制当前只读链接" : state.editKeyHash ? "复制口令编辑链接" : "复制编辑链接";
+  if (dom.copyInviteLinkBtn) {
+    dom.copyInviteLinkBtn.hidden = !tripId || !state.editKeyHash || isReadonlyMode;
+    dom.copyInviteLinkBtn.disabled = isReadonlyMode;
+  }
   renderEditAccessState();
   if (pendingConflict) {
     dom.collabMode.textContent = "待处理冲突";
@@ -7533,15 +7538,20 @@ function schedulePresenceTrack(delay = 120) {
   }, delay);
 }
 
-function getShareUrl() {
+function getShareUrl(options = {}) {
   if (!tripId) return "";
+  const { includeEditKey = false } = options;
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
   url.searchParams.delete("mode");
   const editKey = currentEditKeyValue();
-  if (state.editKeyHash && editKey) url.searchParams.set("editKey", editKey);
+  if (includeEditKey && state.editKeyHash && editKey) url.searchParams.set("editKey", editKey);
   else url.searchParams.delete("editKey");
   return url.toString();
+}
+
+function getInviteShareUrl() {
+  return getShareUrl({ includeEditKey: true });
 }
 
 function getReadonlyShareUrl() {
@@ -12137,7 +12147,29 @@ dom.copySharedLinkBtn.addEventListener("click", async () => {
   const url = isReadonlyMode ? getReadonlyShareUrl() : getShareUrl();
   try {
     await navigator.clipboard.writeText(url);
-    dom.collabStatus.textContent = isReadonlyMode ? "只读链接已复制。" : "编辑链接已复制。";
+    dom.collabStatus.textContent = isReadonlyMode
+      ? "只读链接已复制。"
+      : state.editKeyHash
+        ? "口令编辑链接已复制；对方需要输入编辑口令才能修改。"
+        : "编辑链接已复制；当前未设置口令，拿到链接即可修改。";
+  } catch {
+    dom.collabStatus.textContent = url;
+  }
+});
+
+dom.copyInviteLinkBtn?.addEventListener("click", async () => {
+  if (!tripId) {
+    dom.collabStatus.textContent = "请先创建共享计划，再复制直入邀请。";
+    return;
+  }
+  if (!state.editKeyHash || !currentEditKeyValue()) {
+    dom.collabStatus.textContent = "请先设置或输入编辑口令，再复制直入邀请。";
+    return;
+  }
+  const url = getInviteShareUrl();
+  try {
+    await navigator.clipboard.writeText(url);
+    dom.collabStatus.textContent = "直入邀请已复制；此链接带编辑密钥，只发给可信成员。";
   } catch {
     dom.collabStatus.textContent = url;
   }
@@ -12201,7 +12233,7 @@ dom.editAccessForm?.addEventListener("submit", async (event) => {
   dom.editAccessInput.value = "";
   await syncPlanMetaToDoc("local-edit-access");
   await saveCollaborativePlanChange("编辑口令已更新");
-  dom.collabStatus.textContent = "编辑口令已更新；复制编辑链接会带上编辑密钥。";
+  dom.collabStatus.textContent = "编辑口令已更新；普通编辑链接需要口令，直入邀请才会带密钥。";
   applyReadonlyUi();
   render();
 });
