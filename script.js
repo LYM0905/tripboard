@@ -4125,6 +4125,7 @@ function renderDayBlocks(day = currentDay()) {
               <span class="day-block-order">
                 <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
                 <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
+                <button type="button" class="icon-btn subtle" data-duplicate-day-block="${escapeHtml(block.id)}" aria-label="复制协作块"${disabledAttr}>${icon("copy")}</button>
               </span>
               <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
               <div class="day-block-comment-panel" id="${escapeHtml(commentPanelId)}">
@@ -10980,6 +10981,52 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "move", direction }) });
     await saveCollaborativePlanChange("已排序协作块");
     render();
+    return;
+  }
+  const duplicateButton = event.target.closest("[data-duplicate-day-block]");
+  if (duplicateButton) {
+    event.preventDefault();
+    const sourceBlockId = duplicateButton.dataset.duplicateDayBlock || "";
+    const blocks = normalizeDayBlocks(day.blocks || []);
+    const sourceIndex = blocks.findIndex((item) => item.id === sourceBlockId);
+    const sourceBlock = sourceIndex >= 0 ? blocks[sourceIndex] : null;
+    if (!sourceBlock || !requireEdit("复制协作块")) return;
+    const duplicateBlock = normalizeDayBlock({
+      ...sourceBlock,
+      id: uid(),
+      text: sourceBlock.text ? `${sourceBlock.text} 副本` : dayBlockTypeLabel(sourceBlock.type),
+      textYjs: "",
+      comments: [],
+      done: false,
+      createdBy: getCollabName(),
+      createdAt: new Date().toISOString(),
+      updatedBy: "",
+      updatedAt: "",
+    });
+    if (!duplicateBlock) return;
+    activeBlockPresenceId = duplicateBlock.id;
+    schedulePresenceTrack(0);
+    const insertIndex = sourceIndex + 1;
+    const added = await addDayBlockToDoc(day.id, duplicateBlock, "local-day-block-duplicate", insertIndex);
+    if (added) {
+      const addedBlock = added === true ? duplicateBlock : added;
+      day.blocks = insertDayBlockList(day.blocks || [], addedBlock, insertIndex);
+      renderDayBlocks(day);
+      focusDayBlockInput(addedBlock.id);
+      await logActivity(`复制协作块「${sourceBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: "duplicate", sourceBlockId }) });
+      await saveCollaborativePlanChange("已复制协作块");
+      focusDayBlockInput(addedBlock.id);
+      return;
+    }
+    if (!mutate("复制协作块", () => {
+      currentDay().blocks = insertDayBlockList(currentDay().blocks || [], duplicateBlock, insertIndex);
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-duplicate-fallback");
+    renderDayBlocks(currentDay());
+    focusDayBlockInput(duplicateBlock.id);
+    await logActivity(`复制协作块「${sourceBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, duplicateBlock.id, { action: "duplicate", sourceBlockId }) });
+    await saveCollaborativePlanChange("已复制协作块");
+    focusDayBlockInput(duplicateBlock.id);
     return;
   }
   const deleteButton = event.target.closest("[data-delete-day-block]");
