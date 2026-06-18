@@ -6,6 +6,7 @@ type AmapPlaceRequest = {
 };
 
 type AmapPlace = {
+  id: string;
   title: string;
   address: string;
   lng: string;
@@ -42,6 +43,7 @@ function normalizePlace(poi: Record<string, any>): AmapPlace | null {
   const [lng = "", lat = ""] = location.split(",");
   if (!lng || !lat) return null;
   return {
+    id: String(poi.id || ""),
     title: String(poi.name || ""),
     address: normalizeAddress(poi.address) || normalizeAddress(poi.pname) + normalizeAddress(poi.cityname) + normalizeAddress(poi.adname),
     lng,
