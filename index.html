@@ -381,6 +381,7 @@
             </div>
           </form>
           <p class="helper-text" id="optimizeHint">优化会先请求后端 AI 代理；未配置模型密钥时会自动使用本地距离排序兜底。</p>
+          <div class="amap-place-results" id="quickAmapCandidates" hidden></div>
           <div class="ai-route-report" id="aiRouteReport" hidden></div>
           <div class="amap-route-tools">
             <select id="amapRouteMode" aria-label="高德路线方式">
@@ -388,7 +389,16 @@
               <option value="driving">驾车</option>
               <option value="transit">公交/地铁</option>
             </select>
+            <select id="amapRouteStrategy" aria-label="高德路线偏好">
+              <option value="default">默认路线</option>
+              <option value="fastest">时间优先</option>
+              <option value="avoid_tolls">少收费</option>
+              <option value="avoid_congestion">躲避拥堵</option>
+              <option value="least_walking">少步行</option>
+              <option value="least_transfer">少换乘</option>
+            </select>
             <button type="button" class="text-btn" id="amapRouteBtn"><i data-lucide="route"></i>高德规划路线</button>
+            <button type="button" class="text-btn" id="amapRouteRetryBtn" hidden><i data-lucide="refresh-cw"></i>重试</button>
           </div>
           <div class="amap-route-report" id="amapRouteReport" hidden></div>
           <a class="map-link" id="quickAmapLink" href="#" target="_blank" rel="noopener">高德链接会显示在这里</a>
@@ -509,6 +519,7 @@
             <label class="full">标签<input id="fieldTags" name="tags" placeholder="用逗号分隔，比如 必去,日落,需预约" /><span class="text-presence" id="fieldTagsPresence" hidden></span></label>
             <label class="full">备注<textarea id="fieldNote" name="note" rows="4" placeholder="写下预订、交通、注意事项"></textarea><span class="text-presence" id="fieldNotePresence" hidden></span><small class="field-hint" id="noteCollabStatus">名称、类型、地址、高德关键词和备注会随计划保存</small></label>
             <a class="map-link full" id="fieldAmapLink" href="#" target="_blank" rel="noopener">生成后可打开高德搜索</a>
+            <div class="amap-place-results full" id="fieldAmapCandidates" hidden></div>
             <div class="form-actions full">
               <button type="button" class="text-btn" id="amapLookupBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
               <button type="button" class="text-btn" id="moveUpBtn"><i data-lucide="arrow-up"></i>上移</button>

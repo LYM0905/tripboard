@@ -9,6 +9,7 @@ type AmapStop = {
 
 type AmapRouteRequest = {
   mode?: "walking" | "driving" | "transit";
+  strategy?: "default" | "fastest" | "avoid_tolls" | "avoid_congestion" | "least_walking" | "least_transfer";
   city?: string;
   destination?: string;
   stops?: AmapStop[];
@@ -69,6 +70,32 @@ function validCoordinate(lng?: string, lat?: string) {
   const x = Number(lng);
   const y = Number(lat);
   return Boolean(lng && lat && Number.isFinite(x) && Number.isFinite(y));
+}
+
+function normalizeStrategy(value: unknown) {
+  const strategy = cleanText(value);
+  return ["default", "fastest", "avoid_tolls", "avoid_congestion", "least_walking", "least_transfer"].includes(strategy)
+    ? strategy
+    : "default";
+}
+
+function drivingStrategyCode(strategy: string) {
+  const map: Record<string, string> = {
+    fastest: "0",
+    avoid_congestion: "4",
+    avoid_tolls: "1",
+  };
+  return map[strategy] || "0";
+}
+
+function transitStrategyCode(strategy: string) {
+  const map: Record<string, string> = {
+    fastest: "0",
+    avoid_tolls: "1",
+    least_transfer: "2",
+    least_walking: "3",
+  };
+  return map[strategy] || "0";
 }
 
 function firstInstruction(steps: unknown) {
@@ -194,7 +221,7 @@ async function resolveStops(key: string, request: AmapRouteRequest) {
   return { resolved, warnings };
 }
 
-async function routeWalkingOrDriving(key: string, mode: "walking" | "driving", from: ResolvedStop, to: ResolvedStop): Promise<RouteLeg> {
+async function routeWalkingOrDriving(key: string, mode: "walking" | "driving", from: ResolvedStop, to: ResolvedStop, strategy = "default"): Promise<RouteLeg> {
   const endpoint =
     mode === "walking"
       ? Deno.env.get("AMAP_WALKING_ROUTE_URL") || "https://restapi.amap.com/v3/direction/walking"
@@ -206,6 +233,7 @@ async function routeWalkingOrDriving(key: string, mode: "walking" | "driving", f
     output: "json",
     extensions: mode === "driving" ? "base" : "base",
   });
+  if (mode === "driving") query.set("strategy", drivingStrategyCode(strategy));
   const response = await fetch(`${endpoint}?${query.toString()}`);
   const data = await response.json().catch(() => ({}));
   if (!response.ok || String(data.status) !== "1") {
@@ -224,7 +252,7 @@ async function routeWalkingOrDriving(key: string, mode: "walking" | "driving", f
   };
 }
 
-async function routeTransit(key: string, city: string, from: ResolvedStop, to: ResolvedStop): Promise<RouteLeg> {
+async function routeTransit(key: string, city: string, from: ResolvedStop, to: ResolvedStop, strategy = "default"): Promise<RouteLeg> {
   const endpoint = Deno.env.get("AMAP_TRANSIT_ROUTE_URL") || "https://restapi.amap.com/v3/direction/transit/integrated";
   const query = new URLSearchParams({
     key,
@@ -233,7 +261,7 @@ async function routeTransit(key: string, city: string, from: ResolvedStop, to: R
     city,
     cityd: city,
     output: "json",
-    strategy: "0",
+    strategy: transitStrategyCode(strategy),
   });
   const response = await fetch(`${endpoint}?${query.toString()}`);
   const data = await response.json().catch(() => ({}));
@@ -257,6 +285,7 @@ async function planRoute(request: AmapRouteRequest) {
   const key = Deno.env.get("AMAP_WEB_SERVICE_KEY");
   if (!key) throw new Error("Missing AMAP_WEB_SERVICE_KEY in Supabase secrets.");
   const mode = ["walking", "driving", "transit"].includes(cleanText(request.mode)) ? (request.mode as "walking" | "driving" | "transit") : "walking";
+  const strategy = mode === "walking" ? "default" : normalizeStrategy(request.strategy);
   const city = cleanText(request.city || request.destination);
   const { resolved, warnings } = await resolveStops(key, request);
   if (resolved.length < 2) {
@@ -270,11 +299,12 @@ async function planRoute(request: AmapRouteRequest) {
   for (let index = 0; index < resolved.length - 1; index += 1) {
     const from = resolved[index];
     const to = resolved[index + 1];
-    const leg = mode === "transit" ? await routeTransit(key, city, from, to) : await routeWalkingOrDriving(key, mode, from, to);
+    const leg = mode === "transit" ? await routeTransit(key, city, from, to, strategy) : await routeWalkingOrDriving(key, mode, from, to, strategy);
     legs.push(leg);
   }
   return {
     mode,
+    strategy,
     stops: resolved,
     legs,
     distance: legs.reduce((sum, leg) => sum + leg.distance, 0),

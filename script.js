@@ -702,23 +702,37 @@ function amapMarkerUrl(stop) {
   return amapSearchUrl(keyword);
 }
 
-async function lookupAmapPlace(keyword) {
-  if (!serviceConfig.amapEndpoint || !keyword) return null;
-  const response = await fetch(serviceConfig.amapEndpoint, {
-    method: "POST",
-    headers: serviceHeaders("", serviceConfig.amapEndpoint),
-    body: JSON.stringify({ keyword, city: state.destination || "" }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
-  const place = Array.isArray(data.places) ? data.places[0] : data.place || data;
+function normalizeAmapPlace(place, keyword = "") {
   if (!place) return null;
   return {
+    id: place.id || place.uid || "",
     title: place.title || place.name || keyword,
     address: place.address || place.formattedAddress || "",
     lng: String(place.lng || place.longitude || ""),
     lat: String(place.lat || place.latitude || ""),
+    adcode: place.adcode || "",
+    city: place.city || "",
+    type: place.type || "",
+    source: place.source || "高德 Web服务",
   };
+}
+
+async function lookupAmapPlaces(keyword, { limit = 6 } = {}) {
+  if (!serviceConfig.amapEndpoint || !keyword) return null;
+  const response = await fetch(serviceConfig.amapEndpoint, {
+    method: "POST",
+    headers: serviceHeaders("", serviceConfig.amapEndpoint),
+    body: JSON.stringify({ keyword, city: state.destination || "", limit }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+  const places = Array.isArray(data.places) ? data.places : [data.place || data].filter(Boolean);
+  return places.map((place) => normalizeAmapPlace(place, keyword)).filter(Boolean);
+}
+
+async function lookupAmapPlace(keyword) {
+  const places = await lookupAmapPlaces(keyword, { limit: 1 });
+  return Array.isArray(places) ? places[0] || null : null;
 }
 
 function hasAmapJsConfig() {
@@ -880,7 +894,7 @@ function scheduleAmapRender(day) {
   });
 }
 
-async function requestAmapRoute(day, mode = "walking") {
+async function requestAmapRoute(day, mode = "walking", strategy = "default") {
   if (!serviceConfig.amapRouteEndpoint) {
     throw new Error("请先配置高德路线代理。");
   }
@@ -902,6 +916,7 @@ async function requestAmapRoute(day, mode = "walking") {
     headers: serviceHeaders("", serviceConfig.amapRouteEndpoint),
     body: JSON.stringify({
       mode,
+      strategy,
       destination: state.destination || "",
       city: state.destination || "",
       stops,
@@ -6211,11 +6226,14 @@ const dom = {
   addCandidateBtn: document.querySelector("#addCandidateBtn"),
   cancelCandidateEditBtn: document.querySelector("#cancelCandidateEditBtn"),
   quickAmapLink: document.querySelector("#quickAmapLink"),
+  quickAmapCandidates: document.querySelector("#quickAmapCandidates"),
   optimizeRouteBtn: document.querySelector("#optimizeRouteBtn"),
   optimizeHint: document.querySelector("#optimizeHint"),
   aiRouteReport: document.querySelector("#aiRouteReport"),
   amapRouteMode: document.querySelector("#amapRouteMode"),
+  amapRouteStrategy: document.querySelector("#amapRouteStrategy"),
   amapRouteBtn: document.querySelector("#amapRouteBtn"),
+  amapRouteRetryBtn: document.querySelector("#amapRouteRetryBtn"),
   amapRouteReport: document.querySelector("#amapRouteReport"),
   moveUpBtn: document.querySelector("#moveUpBtn"),
   moveDownBtn: document.querySelector("#moveDownBtn"),
@@ -6255,6 +6273,7 @@ const dom = {
   cancelQuoteEditBtn: document.querySelector("#cancelQuoteEditBtn"),
   amapLookupBtn: document.querySelector("#amapLookupBtn"),
   fieldAmapLink: document.querySelector("#fieldAmapLink"),
+  fieldAmapCandidates: document.querySelector("#fieldAmapCandidates"),
   exportBtn: document.querySelector("#exportBtn"),
   resetBtn: document.querySelector("#resetBtn"),
   shareBtn: document.querySelector("#shareBtn"),
@@ -6313,6 +6332,7 @@ let activeDay = 0;
 let activeStop = 0;
 let pendingProvider = "";
 let quickAmapPlace = null;
+let lastAmapRouteRequest = null;
 let transportFilterApplied = false;
 let transportProviderItems = [];
 let transportProviderSource = "";
@@ -7871,6 +7891,79 @@ function setCandidateEditing(candidate = null) {
   refreshIcons();
 }
 
+function hideAmapCandidates(target = "both") {
+  const targets = target === "both" ? ["quick", "field"] : [target];
+  targets.forEach((scope) => {
+    const container = scope === "quick" ? dom.quickAmapCandidates : dom.fieldAmapCandidates;
+    if (!container) return;
+    container.hidden = true;
+    container.innerHTML = "";
+  });
+}
+
+function placeCoordinateText(place) {
+  return place?.lng && place?.lat ? `${place.lng}, ${place.lat}` : "坐标待确认";
+}
+
+function renderAmapCandidates(target, places = [], keyword = "") {
+  const container = target === "field" ? dom.fieldAmapCandidates : dom.quickAmapCandidates;
+  if (!container) return;
+  if (!places.length) {
+    container.hidden = false;
+    container.innerHTML = `<p>高德没有返回候选地点，可以换一个关键词或直接打开高德搜索。</p>`;
+    return;
+  }
+  container.hidden = false;
+  container.innerHTML = `
+    <div class="amap-place-results-head">
+      <strong>高德候选地点</strong>
+      <span>${escapeHtml(keyword)}</span>
+    </div>
+    <div class="amap-place-list">
+      ${places
+        .map(
+          (place, index) => `
+            <button type="button" class="amap-place-option" data-amap-target="${target}" data-amap-place-index="${index}">
+              <strong>${escapeHtml(place.title || "候选地点")}</strong>
+              <span>${escapeHtml(place.address || place.city || "地址待确认")}</span>
+              <small>${escapeHtml([place.type, placeCoordinateText(place)].filter(Boolean).join(" · "))}</small>
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+  container._amapPlaces = places;
+  refreshIcons();
+}
+
+function applyQuickAmapPlace(place, keyword = "") {
+  if (!place) return;
+  quickAmapPlace = { ...place, keyword };
+  if (place.title && !dom.quickPlaceName.value.trim()) dom.quickPlaceName.value = place.title;
+  if (keyword && !dom.quickAmapKeyword.value.trim()) dom.quickAmapKeyword.value = keyword;
+  if (place.address) dom.quickAddress.value = place.address;
+  dom.optimizeHint.textContent = place.lng && place.lat
+    ? `已选择高德候选：${place.title || keyword}（${placeCoordinateText(place)}）。加入当天或备选池时会带入坐标。`
+    : `已选择高德候选：${place.title || keyword}，但没有坐标。`;
+}
+
+async function applyFieldAmapPlace(place, keyword = "") {
+  if (!place) return;
+  if (place.title && !dom.fieldTitle.value.trim()) dom.fieldTitle.value = place.title;
+  if (place.address) dom.fieldAddress.value = place.address;
+  if (place.lng) dom.fieldLng.value = place.lng;
+  if (place.lat) dom.fieldLat.value = place.lat;
+  if (keyword && !dom.fieldAmapKeyword.value.trim()) dom.fieldAmapKeyword.value = keyword;
+  await Promise.all([
+    syncCollabTextFieldToDoc("title", dom.fieldTitle.value),
+    syncCollabTextFieldToDoc("address", dom.fieldAddress.value),
+    syncCollabTextFieldToDoc("amapKeyword", dom.fieldAmapKeyword.value),
+    syncCollabStructValuesToDoc({ lng: dom.fieldLng.value, lat: dom.fieldLat.value }, "local-amap-place-select"),
+  ]);
+  dom.saveState.textContent = place.lng && place.lat ? `已选择高德候选：${place.title || keyword}` : `已选择高德候选，但坐标待确认：${place.title || keyword}`;
+}
+
 function clearQuickPlaceForm({ keepCandidateEditing = false } = {}) {
   if (!keepCandidateEditing) editingCandidateId = "";
   dom.quickPlaceName.value = "";
@@ -7879,6 +7972,7 @@ function clearQuickPlaceForm({ keepCandidateEditing = false } = {}) {
   dom.quickBudget.value = "";
   dom.quickAddress.value = "";
   quickAmapPlace = null;
+  hideAmapCandidates("quick");
   if (!keepCandidateEditing) setCandidateEditing(null);
 }
 
@@ -9147,6 +9241,23 @@ dom.mapCanvas.addEventListener("click", (event) => {
   trackPresence();
 });
 
+document.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-amap-place-index]");
+  if (!option) return;
+  const target = option.dataset.amapTarget || "quick";
+  const container = target === "field" ? dom.fieldAmapCandidates : dom.quickAmapCandidates;
+  const places = container?._amapPlaces || [];
+  const place = places[Number(option.dataset.amapPlaceIndex)];
+  if (!place) return;
+  if (target === "field") {
+    applyFieldAmapPlace(place, dom.fieldAmapKeyword.value.trim()).catch((error) => {
+      dom.saveState.textContent = `高德候选回填失败：${error.message}`;
+    });
+  } else {
+    applyQuickAmapPlace(place, dom.quickAmapKeyword.value.trim());
+  }
+});
+
 dom.dayForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let updatedDay = null;
@@ -9521,15 +9632,20 @@ dom.openAmapBtn.addEventListener("click", async () => {
   dom.quickAmapLink.href = amapSearchUrl(keyword);
   dom.quickAmapLink.textContent = `打开高德搜索：${keyword}`;
   if (!serviceConfig.amapEndpoint) {
+    hideAmapCandidates("quick");
     dom.optimizeHint.textContent = `已生成高德链接：${keyword}。配置高德代理后可自动回填地址和经纬度。`;
     return;
   }
   try {
-    const place = await lookupAmapPlace(keyword);
-    if (place?.address) dom.quickAddress.value = place.address;
-    quickAmapPlace = place ? { ...place, keyword } : null;
-    dom.optimizeHint.textContent = place?.lng && place?.lat ? `高德代理已定位：${place.address || keyword}（${place.lng}, ${place.lat}）。加入后可在右侧保存坐标。` : `高德代理已响应，但没有返回经纬度；已保留搜索链接。`;
+    const places = await lookupAmapPlaces(keyword, { limit: 6 });
+    const firstPlace = Array.isArray(places) ? places[0] : null;
+    renderAmapCandidates("quick", places || [], keyword);
+    if (firstPlace) applyQuickAmapPlace(firstPlace, keyword);
+    dom.optimizeHint.textContent = firstPlace?.lng && firstPlace?.lat
+      ? `高德返回 ${places.length} 个候选，已先采用「${firstPlace.title}」（${placeCoordinateText(firstPlace)}）。可在候选列表里切换。`
+      : `高德已响应，但没有返回可用坐标；已保留搜索链接。`;
   } catch (error) {
+    hideAmapCandidates("quick");
     dom.optimizeHint.textContent = `高德代理调用失败：${error.message}。已保留高德搜索链接。`;
   }
 });
@@ -9540,36 +9656,40 @@ dom.amapLookupBtn.addEventListener("click", async () => {
   dom.fieldAmapLink.href = amapSearchUrl(keyword);
   dom.fieldAmapLink.textContent = `打开高德搜索：${keyword}`;
   if (!serviceConfig.amapEndpoint) {
+    hideAmapCandidates("field");
     dom.saveState.textContent = `已生成高德链接：${keyword}`;
     return;
   }
   try {
-    const place = await lookupAmapPlace(keyword);
-    if (place?.address) dom.fieldAddress.value = place.address;
-    if (place?.lng) dom.fieldLng.value = place.lng;
-    if (place?.lat) dom.fieldLat.value = place.lat;
-    await Promise.all([
-      place?.address ? syncCollabTextFieldToDoc("address", dom.fieldAddress.value) : Promise.resolve(),
-      ...COLLAB_STRUCT_FIELDS.filter(({ field }) => ["lng", "lat"].includes(field)).map((meta) => syncCollabStructFieldToDoc(meta)),
-    ]);
-    dom.saveState.textContent = place?.lng && place?.lat ? `高德代理已回填定位：${keyword}` : `高德代理已响应：${keyword}`;
+    const places = await lookupAmapPlaces(keyword, { limit: 6 });
+    const firstPlace = Array.isArray(places) ? places[0] : null;
+    renderAmapCandidates("field", places || [], keyword);
+    if (firstPlace) await applyFieldAmapPlace(firstPlace, keyword);
+    dom.saveState.textContent = firstPlace?.lng && firstPlace?.lat
+      ? `高德返回 ${places.length} 个候选，已先回填「${firstPlace.title}」；可在候选列表里切换。`
+      : `高德已响应，但没有返回可用坐标。`;
   } catch (error) {
+    hideAmapCandidates("field");
     dom.saveState.textContent = `高德代理调用失败：${error.message}`;
   }
 });
 
-dom.amapRouteBtn.addEventListener("click", async () => {
+async function planAmapRouteForCurrentDay({ retry = false } = {}) {
   if (!requireEdit("高德规划路线")) return;
   const day = currentDay();
   if (day.stops.length < 2) {
     dom.optimizeHint.textContent = "至少需要 2 个地点才能用高德规划路线。";
     return;
   }
-  saveVersionSnapshot("高德规划路线前版本");
+  const mode = retry && lastAmapRouteRequest?.mode ? lastAmapRouteRequest.mode : dom.amapRouteMode.value;
+  const strategy = retry && lastAmapRouteRequest?.strategy ? lastAmapRouteRequest.strategy : dom.amapRouteStrategy.value;
+  lastAmapRouteRequest = { dayId: day.id, mode, strategy };
+  if (!retry) saveVersionSnapshot("高德规划路线前版本");
   dom.amapRouteBtn.disabled = true;
-  dom.optimizeHint.textContent = "正在请求高德路线规划...";
+  if (dom.amapRouteRetryBtn) dom.amapRouteRetryBtn.disabled = true;
+  dom.optimizeHint.textContent = retry ? "正在重试高德路线规划..." : "正在请求高德路线规划...";
   try {
-    const result = await requestAmapRoute(day, dom.amapRouteMode.value);
+    const result = await requestAmapRoute(day, mode, strategy);
     const resolvedStops = Array.isArray(result.stops) ? result.stops : [];
     resolvedStops.forEach((resolved) => {
       const stop = day.stops[Number(resolved.index)];
@@ -9581,7 +9701,8 @@ dom.amapRouteBtn.addEventListener("click", async () => {
     });
     day.amapRoute = {
       source: result.source || "高德路线规划",
-      mode: result.mode || dom.amapRouteMode.value,
+      mode: result.mode || mode,
+      strategy: result.strategy || strategy,
       distance: Number(result.distance || 0),
       duration: Number(result.duration || 0),
       legs: Array.isArray(result.legs) ? result.legs : [],
@@ -9598,17 +9719,29 @@ dom.amapRouteBtn.addEventListener("click", async () => {
     await saveCollaborativePlanChange("已用高德规划路线");
     render();
     dom.optimizeHint.textContent = `高德已规划 ${day.amapRoute.legs.length} 段路线：${formatDistanceText(day.amapRoute.distance)} · ${formatDurationText(day.amapRoute.duration)}。`;
+    if (dom.amapRouteRetryBtn) dom.amapRouteRetryBtn.hidden = true;
   } catch (error) {
     dom.optimizeHint.textContent = `高德路线规划失败：${error.message}`;
     renderAmapRouteReport({
       source: "高德路线规划失败",
-      mode: dom.amapRouteMode.value,
+      mode,
+      strategy,
       warnings: [error.message, "请检查 Supabase 函数是否部署、AMAP_WEB_SERVICE_KEY 是否配置，以及地点是否能搜索到坐标。"],
     });
+    if (dom.amapRouteRetryBtn) dom.amapRouteRetryBtn.hidden = false;
   } finally {
     dom.amapRouteBtn.disabled = false;
+    if (dom.amapRouteRetryBtn) dom.amapRouteRetryBtn.disabled = false;
     refreshIcons();
   }
+}
+
+dom.amapRouteBtn.addEventListener("click", () => {
+  planAmapRouteForCurrentDay();
+});
+
+dom.amapRouteRetryBtn?.addEventListener("click", () => {
+  planAmapRouteForCurrentDay({ retry: true });
 });
 
 dom.deleteStopBtn.addEventListener("click", async () => {
@@ -9754,11 +9887,12 @@ function renderAmapRouteReport(result) {
     driving: "驾车",
     transit: "公交/地铁",
   }[result.mode] || "路线";
+  const strategyText = amapRouteStrategyLabel(result.strategy, result.mode);
   dom.amapRouteReport.hidden = false;
   dom.amapRouteReport.innerHTML = `
     <div class="amap-route-summary">
       <strong>${escapeHtml(result.source || "高德路线规划")}</strong>
-      <span>${escapeHtml(modeText)} · ${formatDistanceText(result.distance)} · ${formatDurationText(result.duration)}</span>
+      <span>${escapeHtml([modeText, strategyText, formatDistanceText(result.distance), formatDurationText(result.duration)].filter(Boolean).join(" · "))}</span>
     </div>
     ${
       legs.length
@@ -9779,6 +9913,20 @@ function renderAmapRouteReport(result) {
     }
     ${warnings.length ? `<p>${warnings.map((warning) => escapeHtml(warning)).join("；")}</p>` : ""}
   `;
+}
+
+function amapRouteStrategyLabel(strategy, mode = "") {
+  const common = {
+    default: "默认路线",
+    fastest: "时间优先",
+    avoid_tolls: "少收费",
+    avoid_congestion: "躲避拥堵",
+    least_walking: "少步行",
+    least_transfer: "少换乘",
+  };
+  if (!strategy || strategy === "default") return common.default;
+  if (mode === "walking" && strategy !== "default") return "";
+  return common[strategy] || "";
 }
 
 function formatDistanceText(value) {

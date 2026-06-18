@@ -1198,6 +1198,88 @@ button:disabled {
   outline: 0;
 }
 
+.amap-place-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.amap-place-results[hidden] {
+  display: none;
+}
+
+.amap-place-results.full {
+  margin-top: 0;
+}
+
+.amap-place-results-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.amap-place-results-head strong {
+  color: var(--green);
+}
+
+.amap-place-results p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.amap-place-list {
+  display: grid;
+  gap: 7px;
+}
+
+.amap-place-option {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 9px 10px;
+  color: #34464f;
+  text-align: left;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.amap-place-option:hover,
+.amap-place-option:focus-visible {
+  border-color: rgba(36, 115, 92, 0.45);
+  box-shadow: 0 0 0 3px rgba(36, 115, 92, 0.1);
+  outline: 0;
+}
+
+.amap-place-option strong,
+.amap-place-option span,
+.amap-place-option small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.amap-place-option strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.amap-place-option span,
+.amap-place-option small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .connector-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(140px, 1fr));
