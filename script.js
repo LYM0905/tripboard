@@ -7681,7 +7681,7 @@ async function syncWeather() {
       await Promise.all(weatherPatches.map((patch) => patchDayMetaInDoc(patch.id, { weather: patch.weather }, "local-weather-sync-patch")));
       await syncPlanMetaToDoc("local-weather-sync-meta");
     }
-    await saveState("已同步天气");
+    await saveCollaborativePlanChange("已同步天气");
     dom.serviceStatusText.textContent = `已同步 ${applied} 天天气，来源：${forecast.source || "天气接口"}。`;
     render();
   } catch (error) {
@@ -8308,7 +8308,7 @@ async function syncCtripTransport() {
   setCtripStatus(isDemoProxy ? `后端代理已连通，返回 ${transportProviderItems.length} 条示例交通数据，并保存 ${savedCount} 条到协作报价。` : `已同步 ${transportProviderItems.length} 条 Google Flights 航班报价，并保存 ${savedCount} 条到共享计划。`, isDemoProxy ? "info" : "check-circle-2");
   dom.syncBadge.textContent = isDemoProxy ? "代理示例" : "Google Flights";
   logActivity(`同步 Google Flights 航班报价 ${transportProviderItems.length} 条，保存 ${savedCount} 条`, { target: transportQuoteActivityTarget("", day.id || "", { action: "provider-sync" }) });
-  await saveState("已同步 Google Flights 报价");
+  await saveCollaborativePlanChange("已同步 Google Flights 报价");
   render();
 }
 
@@ -8392,7 +8392,7 @@ async function compareMultiOrigins() {
     const matched = results.filter((item) => item.best).length;
     const total = results.reduce((sum, item) => sum + Number(item.best?.price || 0), 0);
     logActivity(`比较多人出发地航班 ${matched}/${results.length} 人，保存 ${savedCount} 条推荐报价`, { target: transportQuoteActivityTarget("", day.id || "", { action: "multi-origin-sync" }) });
-    await saveState("已保存多人出发地航班比较");
+    await saveCollaborativePlanChange("已保存多人出发地航班比较");
     setCtripStatus(`已完成多人出发地比较：${matched}/${results.length} 人匹配到航班，最低合计 ${money(total)}；已保存 ${savedCount} 条推荐报价到共享计划。`, matched ? "check-circle-2" : "alert-circle");
   } catch (error) {
     setCtripStatus(`多人出发地比较保存失败：${error.message}。已保留当前页面结果，可稍后重试。`, "alert-triangle");
@@ -9139,7 +9139,7 @@ dom.dayForm.addEventListener("submit", async (event) => {
       await patchDayMetaInDoc(dayId, dayPatch, "local-day-update-patch");
     }
     await syncPlanMetaToDoc("local-day-date-meta");
-    await saveState("保存当天设置");
+    await saveCollaborativeTextChange("保存当天设置");
     broadcastDayUpdated(updatedDay);
     render();
   } else if (changed) {
@@ -9161,7 +9161,7 @@ async function syncDayEditorDraftChange({ silent = false } = {}) {
     await patchDayMetaInDoc(dayId, dayPatch, "local-day-field-change-patch");
   }
   await syncPlanMetaToDoc("local-day-field-change-meta");
-  await saveState(silent ? "当天设置正在协作同步" : "已同步当天设置");
+  await saveCollaborativeTextChange(silent ? "当天设置正在协作同步" : "已同步当天设置");
   broadcastDayUpdated(updatedDay);
   if (silent) {
     renderShell();
@@ -9221,7 +9221,7 @@ dom.addDayBtn.addEventListener("click", async () => {
     }
     await syncStopListToDoc(createdDay.id, "local-day-create-stops");
     await syncPlanMetaToDoc("local-day-create-meta");
-    await saveState("新增一天");
+    await saveCollaborativePlanChange("新增一天");
     broadcastDayCreated(createdDay, createdIndex);
     render();
   }
@@ -9247,7 +9247,7 @@ dom.deleteDayBtn.addEventListener("click", async () => {
     await syncStopListsToDoc("local-day-delete-stops-fallback");
   }
   await syncPlanMetaToDoc("local-day-delete-meta");
-  await saveState(label);
+  await saveCollaborativePlanChange(label);
   broadcastDayDeleted(deletedDay, deletedDayIndex);
   render();
 });
@@ -9268,7 +9268,7 @@ dom.moveDayUpBtn.addEventListener("click", async () => {
       await syncDayMetasToDoc("local-day-reorder-fallback");
     }
     await syncPlanMetaToDoc("local-day-reorder-meta");
-    await saveState("上移当天");
+    await saveCollaborativePlanChange("上移当天");
     broadcastDaysReordered();
     render();
   }
@@ -9290,7 +9290,7 @@ dom.moveDayDownBtn.addEventListener("click", async () => {
       await syncDayMetasToDoc("local-day-reorder-fallback");
     }
     await syncPlanMetaToDoc("local-day-reorder-meta");
-    await saveState("下移当天");
+    await saveCollaborativePlanChange("下移当天");
     broadcastDaysReordered();
     render();
   }
@@ -9327,7 +9327,7 @@ dom.stopForm.addEventListener("submit", async (event) => {
   if (!(await syncStopSnapshotToPlanDoc(savedStopId, "local-stop-detail-save"))) {
     await syncStopListToDoc(dayId, "local-stop-detail-save-fallback");
   }
-  await saveState(label);
+  await saveCollaborativeTextChange(label);
   render();
 });
 
@@ -9394,7 +9394,7 @@ dom.addStopBtn.addEventListener("click", async () => {
   }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, createdStop?.id || "", { action: "create" }) })) return;
   if (createdStop) {
     await addStopToDoc(createdDayId, createdStop, "local-stop-create");
-    await saveState("新增地点");
+    await saveCollaborativePlanChange("新增地点");
     broadcastStopCreated(createdDayId, createdStop);
     render();
   }
@@ -9423,7 +9423,7 @@ dom.quickAddForm.addEventListener("submit", async (event) => {
   }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, createdStop?.id || "", { action: "quick-add" }) })) return;
   if (createdStop) {
     await addStopToDoc(createdDayId, createdStop, "local-quick-stop-create");
-    await saveState(label);
+    await saveCollaborativePlanChange(label);
     broadcastStopCreated(createdDayId, createdStop);
     render();
   }
@@ -9572,7 +9572,7 @@ dom.amapRouteBtn.addEventListener("click", async () => {
     if (!(await reorderStopListInDoc(day.id, day.stops, "local-amap-route-stops", { patchFields: ["address", "lng", "lat", "amapKeyword"] }))) {
       await syncStopListToDoc(day.id, "local-amap-route-stops-fallback");
     }
-    await saveState("已用高德规划路线");
+    await saveCollaborativePlanChange("已用高德规划路线");
     render();
     dom.optimizeHint.textContent = `高德已规划 ${day.amapRoute.legs.length} 段路线：${formatDistanceText(day.amapRoute.distance)} · ${formatDurationText(day.amapRoute.duration)}。`;
   } catch (error) {
@@ -9602,7 +9602,7 @@ dom.deleteStopBtn.addEventListener("click", async () => {
     clearCurrentAmapRoute();
   }, { save: false, render: false, activityTarget: stopActivityTarget(day.id, deletedStop.id || "", { deleted: true }) })) return;
   await deleteStopFromDoc(day.id, deletedStop.id, "local-stop-delete");
-  await saveState(label);
+  await saveCollaborativePlanChange(label);
   broadcastStopDeleted(day.id, deletedStop);
   render();
 });
@@ -9624,7 +9624,7 @@ dom.moveUpBtn.addEventListener("click", async () => {
   if (!(await reorderStopListInDoc(dayId, nextStops, "local-stop-reorder"))) {
     await syncStopListToDoc(dayId, "local-stop-reorder-fallback");
   }
-  await saveState("上移地点");
+  await saveCollaborativePlanChange("上移地点");
   broadcastStopsReordered(dayId, nextStops);
   render();
 });
@@ -9647,7 +9647,7 @@ dom.moveDownBtn.addEventListener("click", async () => {
   if (!(await reorderStopListInDoc(dayId, nextStops, "local-stop-reorder"))) {
     await syncStopListToDoc(dayId, "local-stop-reorder-fallback");
   }
-  await saveState("下移地点");
+  await saveCollaborativePlanChange("下移地点");
   broadcastStopsReordered(dayId, nextStops);
   render();
 });
@@ -9877,7 +9877,7 @@ async function optimizeCurrentDayRoute() {
     if (!(await reorderStopListInDoc(day.id, day.stops, reorderOrigin, { patchFields: ["tags"] }))) {
       await syncStopListToDoc(day.id, `${reorderOrigin}-fallback`);
     }
-    await saveState(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
+    await saveCollaborativePlanChange(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
     broadcastStopsReordered(day.id, day.stops);
     dom.optimizeHint.textContent = serviceConfig.aiEndpoint
       ? `${routeResult?.fallback ? "AI 代理未配置，已兜底优化" : "AI 已优化"} ${day.stops.length} 个地点：${routeResult?.note || "已应用返回顺序"}`
@@ -9929,7 +9929,7 @@ dom.mustVote.addEventListener("click", async () => {
     fallbackStop.votes = fallbackValues.votes;
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-vote-toggle-fallback");
-  await saveState("更新必去投票");
+  await saveCollaborativeTextChange("更新必去投票");
   render();
 });
 
@@ -9946,7 +9946,7 @@ dom.favoriteBtn.addEventListener("click", async () => {
     currentStop().favorite = !currentStop().favorite;
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-favorite-toggle-fallback");
-  await saveState("更新收藏");
+  await saveCollaborativeTextChange("更新收藏");
   render();
 });
 
@@ -10778,7 +10778,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     activeStop = currentDay().stops.length - 1;
   }, { save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add" }) })) return;
   await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop");
-  await saveState(label);
+  await saveCollaborativePlanChange(label);
   broadcastStopCreated(createdDayId, candidate);
   render();
 });
@@ -11252,7 +11252,7 @@ dom.editAccessForm?.addEventListener("submit", async (event) => {
   isReadonlyMode = false;
   dom.editAccessInput.value = "";
   await syncPlanMetaToDoc("local-edit-access");
-  await saveState("编辑口令已更新");
+  await saveCollaborativePlanChange("编辑口令已更新");
   dom.collabStatus.textContent = "编辑口令已更新；复制编辑链接会带上编辑密钥。";
   applyReadonlyUi();
   render();
@@ -11523,7 +11523,7 @@ dom.importForm.addEventListener("submit", async (event) => {
   }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(targetDay.id, createdStop?.id || "", { action: "external-import" }) })) return;
   if (createdStop) {
     await addStopToDoc(targetDay.id, createdStop, "local-import-stop");
-    await saveState(label);
+    await saveCollaborativePlanChange(label);
     broadcastStopCreated(targetDay.id, createdStop);
     render();
   }
