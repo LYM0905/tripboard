@@ -4119,11 +4119,44 @@ function refreshDayBlockTextPresence() {
   });
 }
 
+function selectedDayBlockList(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
+  return blocks.filter((block) => selectedDayBlockIds.has(block.id));
+}
+
+function clearSelectedDayBlocks() {
+  selectedDayBlockIds.clear();
+}
+
+function syncSelectedDayBlocks(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
+  const validIds = new Set(blocks.map((block) => block.id));
+  selectedDayBlockIds.forEach((blockId) => {
+    if (!validIds.has(blockId)) selectedDayBlockIds.delete(blockId);
+  });
+}
+
+function renderDayBlockBulkBar(blocks = []) {
+  const selectedBlocks = selectedDayBlockList(blocks);
+  if (!selectedBlocks.length) return "";
+  const count = selectedBlocks.length;
+  const disabledAttr = isReadonlyMode ? " disabled" : "";
+  return `
+    <div class="day-block-bulk-bar" role="toolbar" aria-label="协作块批量操作">
+      <strong>${count} 个块已选择</strong>
+      <button type="button" class="text-btn" data-day-block-bulk="copy"${disabledAttr}>${icon("copy")}复制</button>
+      <button type="button" class="text-btn" data-day-block-bulk="todo"${disabledAttr}>${icon("check-square")}设为待办</button>
+      <button type="button" class="text-btn" data-day-block-bulk="note"${disabledAttr}>${icon("notebook-text")}设为备注</button>
+      <button type="button" class="text-btn danger-text" data-day-block-bulk="delete"${disabledAttr}>${icon("trash-2")}删除</button>
+      <button type="button" class="text-btn" data-day-block-bulk="clear">${icon("x")}取消选择</button>
+    </div>
+  `;
+}
+
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
   const blocks = normalizeDayBlocks(day.blocks || []);
   const disabledAttr = isReadonlyMode ? " disabled" : "";
   const blockIds = new Set(blocks.map((block) => block.id));
+  syncSelectedDayBlocks(blocks);
   Object.keys(blockCommentFilters).forEach((blockId) => {
     if (!blockIds.has(blockId)) delete blockCommentFilters[blockId];
   });
@@ -4135,13 +4168,15 @@ function renderDayBlocks(day = currentDay()) {
     const commentCount = blocks.reduce((sum, block) => sum + commentRootsAndReplies(block.comments || []).roots.length, 0);
     dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办 · ${commentCount} 条评论` : "可添加块";
   }
-  dom.dayBlockList.innerHTML = blocks.length
+  const blocksHtml = blocks.length
     ? blocks
         .map((block, index) => {
           const doneClass = block.done ? " is-done" : "";
           const typeClass = ` is-${block.type || "todo"}`;
           const collapsed = collapsedDayBlockIds.has(block.id);
           const collapsedClass = collapsed ? " is-collapsed" : "";
+          const selected = selectedDayBlockIds.has(block.id);
+          const selectedClass = selected ? " is-selected" : "";
           const comments = normalizeComments(block.comments || []);
           const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
           const commentPanelId = `block-comments-${block.id}`;
@@ -4156,7 +4191,10 @@ function renderDayBlocks(day = currentDay()) {
           const rows = block.type === "heading" ? 1 : 2;
           const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
           return `
-            <article class="day-block${doneClass}${typeClass}${collapsedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
+            <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
+              <label class="day-block-select" title="选择协作块">
+                <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="选择协作块"${selected ? " checked" : ""} />
+              </label>
               <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <span class="day-block-text-wrap">
@@ -4190,6 +4228,7 @@ function renderDayBlocks(day = currentDay()) {
         })
         .join("")
     : `<div class="empty-state">还没有协作块，可以添加待办、备注、决定、标题或提醒。</div>`;
+  dom.dayBlockList.innerHTML = `${renderDayBlockBulkBar(blocks)}${blocksHtml}`;
   refreshIcons();
   requestAnimationFrame(() => refreshDayBlockTextPresence());
 }
@@ -4203,6 +4242,153 @@ function focusDayBlockInput(blockId = "") {
     const length = input.value.length;
     input.setSelectionRange?.(length, length);
   });
+}
+
+async function setSelectedDayBlockType(day, nextType) {
+  const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
+  if (!day || !selectedBlocks.length || !DAY_BLOCK_TYPES.includes(nextType) || !requireEdit("批量切换协作块类型")) return false;
+  let changedCount = 0;
+  for (const block of selectedBlocks) {
+    if (block.type === nextType) continue;
+    noteRemoteBlockEditors(block.id, "批量切换类型");
+    const updated = await updateDayBlockInDoc(day.id, block.id, { type: nextType }, "local-day-block-bulk-type");
+    if (updated) {
+      changedCount += 1;
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+        item.id === block.id ? { ...item, type: nextType, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+      )));
+    }
+  }
+  if (!changedCount) {
+    const fallbackBlocks = normalizeDayBlocks((day.blocks || []).map((block) => (
+      selectedDayBlockIds.has(block.id) && block.type !== nextType ? { ...block, type: nextType } : block
+    )));
+    changedCount = fallbackBlocks.filter((block) => selectedDayBlockIds.has(block.id) && block.type === nextType).length;
+    if (changedCount && mutate("批量切换协作块类型", () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-type-fallback");
+      day = currentDay();
+    }
+  }
+  if (!changedCount) {
+    dom.saveState.textContent = `所选块已经是${dayBlockTypeLabel(nextType)}`;
+    return false;
+  }
+  activeBlockPresenceId = selectedBlocks[0]?.id || activeBlockPresenceId;
+  renderDayBlocks(day);
+  await logActivity(`批量切换 ${changedCount} 个协作块为${dayBlockTypeLabel(nextType)}`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-type" } });
+  await saveCollaborativePlanChange("已批量切换协作块类型");
+  dom.saveState.textContent = `已批量切换 ${changedCount} 个块`;
+  return true;
+}
+
+function duplicateDayBlockDraft(block) {
+  return normalizeDayBlock({
+    ...block,
+    id: uid(),
+    text: block.text ? `${block.text} 副本` : dayBlockTypeLabel(block.type),
+    textYjs: "",
+    comments: [],
+    done: false,
+    createdBy: getCollabName(),
+    createdAt: new Date().toISOString(),
+    updatedBy: "",
+    updatedAt: "",
+  });
+}
+
+async function duplicateSelectedDayBlocks(day) {
+  const blocks = normalizeDayBlocks(day?.blocks || []);
+  const selectedBlocks = selectedDayBlockList(blocks);
+  if (!day || !selectedBlocks.length || !requireEdit("批量复制协作块")) return false;
+  let workingBlocks = blocks;
+  let insertedCount = 0;
+  let lastAddedId = "";
+  for (const block of selectedBlocks) {
+    const sourceIndex = workingBlocks.findIndex((item) => item.id === block.id);
+    if (sourceIndex < 0) continue;
+    noteRemoteBlockEditors(block.id, "批量复制");
+    const duplicateBlock = duplicateDayBlockDraft(block);
+    if (!duplicateBlock) continue;
+    const insertIndex = sourceIndex + 1;
+    const added = await addDayBlockToDoc(day.id, duplicateBlock, "local-day-block-bulk-duplicate", insertIndex);
+    if (!added) continue;
+    const addedBlock = added === true ? duplicateBlock : added;
+    workingBlocks = insertDayBlockList(workingBlocks, addedBlock, insertIndex);
+    insertedCount += 1;
+    lastAddedId = addedBlock.id;
+  }
+  if (!insertedCount) {
+    let fallbackBlocks = blocks;
+    for (const block of selectedBlocks) {
+      const sourceIndex = fallbackBlocks.findIndex((item) => item.id === block.id);
+      if (sourceIndex < 0) continue;
+      const duplicateBlock = duplicateDayBlockDraft(block);
+      if (!duplicateBlock) continue;
+      fallbackBlocks = insertDayBlockList(fallbackBlocks, duplicateBlock, sourceIndex + 1);
+      insertedCount += 1;
+      lastAddedId = duplicateBlock.id;
+    }
+    if (insertedCount && mutate("批量复制协作块", () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-duplicate-fallback");
+      day = currentDay();
+      workingBlocks = day.blocks;
+    }
+  }
+  if (!insertedCount) {
+    dom.saveState.textContent = "批量复制失败，请稍后再试";
+    return false;
+  }
+  day.blocks = normalizeDayBlocks(workingBlocks);
+  clearSelectedDayBlocks();
+  activeBlockPresenceId = lastAddedId || activeBlockPresenceId;
+  renderDayBlocks(day);
+  if (lastAddedId) focusDayBlockInput(lastAddedId);
+  await logActivity(`批量复制 ${insertedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-duplicate" } });
+  await saveCollaborativePlanChange("已批量复制协作块");
+  dom.saveState.textContent = `已复制 ${insertedCount} 个块`;
+  return true;
+}
+
+async function deleteSelectedDayBlocks(day) {
+  const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
+  if (!day || !selectedBlocks.length || !requireEdit("批量删除协作块")) return false;
+  let deletedCount = 0;
+  const deletedIds = new Set();
+  for (const block of selectedBlocks) {
+    noteRemoteBlockEditors(block.id, "批量删除");
+    const deleted = await deleteDayBlockFromDoc(day.id, block.id, "local-day-block-bulk-delete");
+    if (deleted) {
+      deletedIds.add(block.id);
+      deletedCount += 1;
+    }
+  }
+  if (!deletedCount) {
+    const selectedIds = new Set(selectedBlocks.map((block) => block.id));
+    const fallbackBlocks = normalizeDayBlocks((day.blocks || []).filter((block) => !selectedIds.has(block.id)));
+    deletedCount = normalizeDayBlocks(day.blocks || []).length - fallbackBlocks.length;
+    if (deletedCount && mutate("批量删除协作块", () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-delete-fallback");
+      day = currentDay();
+    }
+  }
+  if (!deletedCount) {
+    dom.saveState.textContent = "批量删除失败，请稍后再试";
+    return false;
+  }
+  day.blocks = normalizeDayBlocks((day.blocks || []).filter((block) => !deletedIds.has(block.id)));
+  clearSelectedDayBlocks();
+  activeBlockPresenceId = "";
+  renderDayBlocks(day);
+  await logActivity(`批量删除 ${deletedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-delete", deleted: true } });
+  await saveCollaborativePlanChange("已批量删除协作块");
+  dom.saveState.textContent = `已删除 ${deletedCount} 个块`;
+  return true;
 }
 
 function applyStopRealtimeFields(stop) {
@@ -6776,6 +6962,7 @@ let blockReplyingCommentId = "";
 let blockCommentFilters = {};
 let activeBlockPresenceId = "";
 let draggingDayBlockId = "";
+let selectedDayBlockIds = new Set();
 let collapsedDayBlockIds = loadCollapsedDayBlocks();
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
@@ -10866,6 +11053,15 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
 });
 
 dom.dayBlockList?.addEventListener("change", async (event) => {
+  const selectBlockInput = event.target.closest("[data-select-day-block]");
+  if (selectBlockInput) {
+    const blockId = selectBlockInput.dataset.selectDayBlock || "";
+    if (blockId && selectBlockInput.checked) selectedDayBlockIds.add(blockId);
+    else selectedDayBlockIds.delete(blockId);
+    renderDayBlocks(currentDay());
+    dom.saveState.textContent = selectedDayBlockIds.size ? `已选择 ${selectedDayBlockIds.size} 个协作块` : "已取消协作块选择";
+    return;
+  }
   const typeSelect = event.target.closest("[data-day-block-type]");
   if (!typeSelect || !canEdit() || isReadonlyMode) return;
   const day = currentDay();
@@ -10907,6 +11103,30 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
 dom.dayBlockList?.addEventListener("click", async (event) => {
   const day = currentDay();
   if (!day) return;
+  const bulkButton = event.target.closest("[data-day-block-bulk]");
+  if (bulkButton) {
+    event.preventDefault();
+    const action = bulkButton.dataset.dayBlockBulk || "";
+    if (action === "clear") {
+      clearSelectedDayBlocks();
+      renderDayBlocks(day);
+      dom.saveState.textContent = "已取消协作块选择";
+      return;
+    }
+    if (!selectedDayBlockIds.size) return;
+    if (action === "copy") {
+      await duplicateSelectedDayBlocks(day);
+      return;
+    }
+    if (action === "delete") {
+      await deleteSelectedDayBlocks(day);
+      return;
+    }
+    if (DAY_BLOCK_TYPES.includes(action)) {
+      await setSelectedDayBlockType(day, action);
+      return;
+    }
+  }
   const filterBlockCommentButton = event.target.closest("[data-block-comment-filter]");
   if (filterBlockCommentButton) {
     event.preventDefault();
