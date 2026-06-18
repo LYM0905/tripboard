@@ -1925,6 +1925,15 @@ function currentFocusedBlockContext() {
   };
 }
 
+function dayBlockSelectionForPresence(day = currentDay()) {
+  const validIds = new Set(normalizeDayBlocks(day?.blocks || []).map((block) => block.id));
+  const selectedIds = [...selectedDayBlockIds].filter((blockId) => validIds.has(blockId));
+  return {
+    ids: selectedIds.slice(0, 50),
+    count: selectedIds.length,
+  };
+}
+
 function blockEditingLabel(context = {}) {
   if (!context?.blockId) return "";
   if (context.mode === "comment") return "???????";
@@ -1943,6 +1952,17 @@ function remoteEditorsForBlock(blockId = "") {
   });
 }
 
+function remoteSelectorsForBlock(blockId = "") {
+  const dayId = currentDay()?.id || "";
+  const ownMemberId = memberProfile?.id || sessionId;
+  if (!blockId) return [];
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member) || member.activeDayId !== dayId) return false;
+    return Array.isArray(member.selectedDayBlockIds) && member.selectedDayBlockIds.includes(blockId);
+  });
+}
+
 function remoteActiveEditorsForBlock(blockId = "") {
   return remoteEditorsForBlock(blockId).filter((member) => (
     member.blockSelection ||
@@ -1952,6 +1972,13 @@ function remoteActiveEditorsForBlock(blockId = "") {
 
 function remoteBlockEditorNames(blockId = "") {
   const names = [...new Set(remoteActiveEditorsForBlock(blockId).map((member) => member.name || "???"))];
+  const visible = names.slice(0, 3).join("?");
+  const extra = names.length > 3 ? ` ? ${names.length} ?` : "";
+  return visible ? `${visible}${extra}` : "";
+}
+
+function remoteBlockSelectorNames(blockId = "") {
+  const names = [...new Set(remoteSelectorsForBlock(blockId).map((member) => member.name || "???"))];
   const visible = names.slice(0, 3).join("?");
   const extra = names.length > 3 ? ` ? ${names.length} ?` : "";
   return visible ? `${visible}${extra}` : "";
@@ -4096,12 +4123,22 @@ function renderDayBlockComments(block) {
 
 function renderDayBlockPresence(block) {
   const editors = remoteActiveEditorsForBlock(block.id).slice(0, 3);
-  if (!editors.length) return "";
+  const selectors = remoteSelectorsForBlock(block.id);
+  const selectorOnly = selectors
+    .filter((member) => !editors.some((editor) => editor.memberId === member.memberId))
+    .slice(0, Math.max(0, 3 - editors.length));
+  if (!editors.length && !selectors.length) return "";
   const names = remoteBlockEditorNames(block.id);
+  const selectorNames = remoteBlockSelectorNames(block.id);
   return `
-    <span class="day-block-presence" title="${escapeHtml(editors.map((member) => `${member.name || "???"} ${member.blockEditing || "???????"}`).join("?"))}">
-      <span class="day-block-presence-warning">${escapeHtml(names)} ?????</span>
+    <span class="day-block-presence" title="${escapeHtml([
+      ...editors.map((member) => `${member.name || "???"} ${member.blockEditing || "???????"}`),
+      ...selectorOnly.map((member) => `${member.name || "???"} ?????`),
+    ].join("?"))}">
+      ${names ? `<span class="day-block-presence-warning">${escapeHtml(names)} ?????</span>` : ""}
+      ${selectorNames ? `<span class="day-block-presence-warning is-selection">${escapeHtml(selectorNames)} ?????</span>` : ""}
       ${editors.map((member, index) => `<span class="text-presence-chip ${memberPresenceClass(member, index)}">${escapeHtml(memberInitial(member.name))}<span>${escapeHtml(member.blockEditing || "????")}</span></span>`).join("")}
+      ${selectorOnly.map((member, index) => `<span class="text-presence-chip ${memberPresenceClass(member, editors.length + index)}">${escapeHtml(memberInitial(member.name))}<span>???</span></span>`).join("")}
     </span>
   `;
 }
@@ -4200,6 +4237,8 @@ function renderDayBlocks(day = currentDay()) {
           const collapsedClass = collapsed ? " is-collapsed" : "";
           const selected = selectedDayBlockIds.has(block.id);
           const selectedClass = selected ? " is-selected" : "";
+          const remoteSelectors = remoteSelectorsForBlock(block.id);
+          const remoteSelectedClass = remoteSelectors.length ? " is-remote-selected" : "";
           const comments = normalizeComments(block.comments || []);
           const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
           const commentPanelId = `block-comments-${block.id}`;
@@ -4214,7 +4253,7 @@ function renderDayBlocks(day = currentDay()) {
           const rows = block.type === "heading" ? 1 : 2;
           const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
           return `
-            <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
+            <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}${remoteSelectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
               <label class="day-block-select" title="?????">
                 <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="?????"${selected ? " checked" : ""} />
               </label>
@@ -4450,6 +4489,7 @@ async function duplicateSelectedDayBlocks(day) {
   clearSelectedDayBlocks();
   activeBlockPresenceId = lastAddedId || activeBlockPresenceId;
   renderDayBlocks(day);
+  schedulePresenceTrack(0);
   if (lastAddedId) focusDayBlockInput(lastAddedId);
   await logActivity(`???? ${insertedCount} ????`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-duplicate" } });
   await saveCollaborativePlanChange("????????");
@@ -4489,6 +4529,7 @@ async function deleteSelectedDayBlocks(day) {
   clearSelectedDayBlocks();
   activeBlockPresenceId = "";
   renderDayBlocks(day);
+  schedulePresenceTrack(0);
   await logActivity(`???? ${deletedCount} ????`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-delete", deleted: true } });
   await saveCollaborativePlanChange("????????");
   dom.saveState.textContent = `??? ${deletedCount} ??`;
@@ -7402,6 +7443,7 @@ function presencePayload() {
   const textSelection = textSelectionPayload(focusedTextField);
   const blockContext = currentFocusedBlockContext();
   const blockEditing = blockEditingLabel(blockContext);
+  const dayBlockSelection = dayBlockSelectionForPresence(day);
   return {
     memberId: profile?.id || sessionId,
     name: profile?.name || "????",
@@ -7412,6 +7454,8 @@ function presencePayload() {
     activeBlockId: blockContext?.blockId || "",
     activeBlockText: blockContext?.blockText || "",
     blockSelection: blockContext?.blockSelection || null,
+    selectedDayBlockIds: dayBlockSelection.ids,
+    selectedDayBlockCount: dayBlockSelection.count,
     blockEditing,
     editing: blockEditing ? blockContext.blockText : stop?.title || "??",
     textSelection,
@@ -7469,12 +7513,13 @@ function renderMembers() {
         (member, index) => {
           const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
           const blockEditing = member.blockEditing ? `${member.blockEditing}?${member.activeBlockText || member.editing || "???"}` : "";
-          const activity = textEditing || blockEditing || `${member.lockMode === "editing" ? "????" : "??"}?${member.editing || "??"}`;
+          const selectedBlocks = Number(member.selectedDayBlockCount || 0) > 0 ? `??? ${member.selectedDayBlockCount} ????` : "";
+          const activity = textEditing || blockEditing || selectedBlocks || `${member.lockMode === "editing" ? "????" : "??"}?${member.editing || "??"}`;
           return `
-          <div class="member-item ${textEditing || blockEditing ? "is-text-editing" : ""}">
+          <div class="member-item ${textEditing || blockEditing || selectedBlocks ? "is-text-editing" : ""}">
             <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
             <p><strong>${escapeHtml(member.name || "????")}</strong><small>${escapeHtml(member.role || "????")} ? ${escapeHtml(member.activeDay || "??")} ? ${escapeHtml(activity)}</small></p>
-            ${textEditing || blockEditing ? `<em>${escapeHtml(member.editing || member.activeBlockText || "????")}</em>` : ""}
+            ${textEditing || blockEditing || selectedBlocks ? `<em>${escapeHtml(member.editing || member.activeBlockText || selectedBlocks || "????")}</em>` : ""}
           </div>
         `;
         },
@@ -11171,6 +11216,7 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
     }
     if (blockId) lastSelectedDayBlockId = blockId;
     renderDayBlocks(currentDay());
+    schedulePresenceTrack(0);
     dom.saveState.textContent = selectedDayBlockIds.size ? `??? ${selectedDayBlockIds.size} ????` : "????????";
     return;
   }
@@ -11222,12 +11268,14 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (action === "all") {
       selectAllDayBlocks(normalizeDayBlocks(day.blocks || []));
       renderDayBlocks(day);
+      schedulePresenceTrack(0);
       dom.saveState.textContent = `??? ${selectedDayBlockIds.size} ????`;
       return;
     }
     if (action === "clear") {
       clearSelectedDayBlocks();
       renderDayBlocks(day);
+      schedulePresenceTrack(0);
       dom.saveState.textContent = "????????";
       return;
     }
