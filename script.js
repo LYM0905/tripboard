@@ -4440,6 +4440,7 @@ function renderDayBlocks(day = currentDay()) {
   if (blockReplyingCommentId && !blocks.some((block) => normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId))) {
     blockReplyingCommentId = "";
   }
+  dayBlockTextBaselines = Object.fromEntries(blocks.map((block) => [block.id, block.text || ""]));
   if (dom.dayBlocksStatus) {
     const openCount = blocks.filter((block) => block.type === "todo" && !block.done).length;
     const commentCount = blocks.reduce((sum, block) => sum + commentRootsAndReplies(block.comments || []).roots.length, 0);
@@ -5787,7 +5788,7 @@ async function ensureDayBlockArray(dayId) {
   return blockArray;
 }
 
-async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day-block-text-crdt") {
+async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day-block-text-crdt", options = {}) {
   if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || isApplyingCollabPlanRemote) return false;
@@ -5801,8 +5802,10 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
     return false;
   }
   const nextText = String(text || "").trim();
+  const localBaseText = Object.prototype.hasOwnProperty.call(options, "baseText") ? String(options.baseText || "").trim() : null;
   let changed = false;
   let nextState = "";
+  let appliedText = nextText;
   collabPlanDoc.transact(() => {
     const key = dayBlockTextKey(dayId, blockId);
     let yText = collabDayBlockTextsMap.get(key);
@@ -5812,12 +5815,15 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
       if (initialText) yText.insert(0, initialText);
       collabDayBlockTextsMap.set(key, yText);
     }
-    changed = applyTextDiff(yText, nextText);
+    changed = localBaseText !== null
+      ? applyTextDiffFromBase(yText, localBaseText, nextText)
+      : applyTextDiff(yText, nextText);
     const yTextValue = yText.toString();
-    nextState = bytesToBase64(buildInitialDayBlockTextUpdate(Y, { ...block, id: blockId, text: yTextValue }, dayId));
+    appliedText = yTextValue;
+    nextState = bytesToBase64(buildInitialDayBlockTextUpdate(Y, { ...block, id: blockId, text: appliedText }, dayId));
     collabDayBlockTextStatesMap.set(key, nextState);
   }, origin);
-  if (!changed && block.text === nextText && block.textYjs === nextState) return true;
+  if (!changed && block.text === appliedText && block.textYjs === nextState) return true;
   collabPlanDoc.transact(() => {
     const latestItems = blockArray.toArray();
     const latestIndex = latestItems.findIndex((item) => item?.id === blockId);
@@ -5826,7 +5832,7 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
     const next = normalizeDayBlock({
       ...latest,
       id: blockId,
-      text: nextText,
+      text: appliedText,
       textYjs: nextState,
       updatedBy: getCollabName(),
       updatedAt: new Date().toISOString(),
@@ -5835,7 +5841,7 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
     blockArray.delete(latestIndex, 1);
     blockArray.insert(latestIndex, [next]);
   }, origin);
-  return { text: nextText, textYjs: nextState };
+  return { text: appliedText, textYjs: nextState };
 }
 
 async function addDayBlockToDoc(dayId, block, origin = "local-day-block-add", insertIndex = null) {
@@ -6863,6 +6869,110 @@ function applyTextDiff(yText, nextValue) {
   return true;
 }
 
+function textDiffParts(baseValue = "", nextValue = "") {
+  const baseText = String(baseValue || "");
+  const nextText = String(nextValue || "");
+  if (baseText === nextText) {
+    return { index: 0, deleteLength: 0, insertText: "", changed: false };
+  }
+  let prefixLength = 0;
+  const maxPrefix = Math.min(baseText.length, nextText.length);
+  while (prefixLength < maxPrefix && baseText[prefixLength] === nextText[prefixLength]) {
+    prefixLength += 1;
+  }
+  let suffixLength = 0;
+  const maxSuffix = Math.min(baseText.length - prefixLength, nextText.length - prefixLength);
+  while (
+    suffixLength < maxSuffix &&
+    baseText[baseText.length - 1 - suffixLength] === nextText[nextText.length - 1 - suffixLength]
+  ) {
+    suffixLength += 1;
+  }
+  return {
+    index: prefixLength,
+    deleteLength: baseText.length - prefixLength - suffixLength,
+    insertText: nextText.slice(prefixLength, nextText.length - suffixLength),
+    changed: true,
+  };
+}
+
+function anchoredTextPatchPosition(currentValue = "", baseValue = "", diff = {}) {
+  const currentText = String(currentValue || "");
+  const baseText = String(baseValue || "");
+  const index = Math.max(0, Math.min(Number(diff.index) || 0, currentText.length));
+  const deletedText = baseText.slice(diff.index, diff.index + diff.deleteLength);
+  const prefixText = baseText.slice(0, diff.index);
+  const suffixText = baseText.slice(diff.index + diff.deleteLength);
+  if (diff.deleteLength > 0 && deletedText) {
+    let deleteIndex = currentText.indexOf(deletedText, index);
+    if (deleteIndex < 0 && prefixText) {
+      const prefixIndex = currentText.indexOf(prefixText);
+      if (prefixIndex >= 0) deleteIndex = currentText.indexOf(deletedText, prefixIndex + prefixText.length);
+    }
+    if (deleteIndex < 0) deleteIndex = currentText.indexOf(deletedText);
+    if (deleteIndex >= 0) {
+      return {
+        index: deleteIndex,
+        deleteLength: Math.min(diff.deleteLength, currentText.length - deleteIndex),
+      };
+    }
+  }
+  if (diff.deleteLength === 0 && suffixText) {
+    const suffixIndex = currentText.indexOf(suffixText, index);
+    if (suffixIndex >= 0) return { index: suffixIndex, deleteLength: 0 };
+    const anySuffixIndex = currentText.indexOf(suffixText);
+    if (anySuffixIndex >= 0) return { index: anySuffixIndex, deleteLength: 0 };
+  }
+  if (prefixText) {
+    const prefixIndex = currentText.lastIndexOf(prefixText, index);
+    const anyPrefixIndex = prefixIndex >= 0 ? prefixIndex : currentText.lastIndexOf(prefixText);
+    if (anyPrefixIndex >= 0) {
+      const nextIndex = Math.min(currentText.length, anyPrefixIndex + prefixText.length);
+      return {
+        index: nextIndex,
+        deleteLength: Math.min(diff.deleteLength, currentText.length - nextIndex),
+      };
+    }
+  }
+  const remoteDiff = textDiffParts(baseText, currentText);
+  if (remoteDiff.changed) {
+    const remoteStart = remoteDiff.index;
+    const remoteEnd = remoteStart + remoteDiff.deleteLength;
+    const remoteDelta = remoteDiff.insertText.length - remoteDiff.deleteLength;
+    let transformedIndex = index;
+    if (index > remoteEnd) {
+      transformedIndex = index + remoteDelta;
+    } else if (index === remoteStart || index === remoteEnd || (index > remoteStart && index < remoteEnd)) {
+      transformedIndex = remoteStart + remoteDiff.insertText.length;
+    }
+    transformedIndex = Math.max(0, Math.min(transformedIndex, currentText.length));
+    return {
+      index: transformedIndex,
+      deleteLength: Math.min(diff.deleteLength || 0, currentText.length - transformedIndex),
+    };
+  }
+  return {
+    index,
+    deleteLength: Math.min(diff.deleteLength || 0, currentText.length - index),
+  };
+}
+
+function applyTextDiffFromBase(yText, baseValue = "", nextValue = "") {
+  const currentValue = yText.toString();
+  const baseText = String(baseValue || "");
+  const nextText = String(nextValue || "");
+  if (currentValue === nextText) return false;
+  if (currentValue === baseText) return applyTextDiff(yText, nextText);
+  const diff = textDiffParts(baseText, nextText);
+  if (!diff.changed) return false;
+  const patch = anchoredTextPatchPosition(currentValue, baseText, diff);
+  const index = Math.max(0, Math.min(patch.index, yText.length));
+  const deleteLength = Math.max(0, Math.min(patch.deleteLength, yText.length - index));
+  if (deleteLength > 0) yText.delete(index, deleteLength);
+  if (diff.insertText) yText.insert(index, diff.insertText);
+  return true;
+}
+
 async function syncCollabTextFieldToDoc(field, value) {
   if (!canEdit() || isReadonlyMode) return;
   await bindCollabTextDoc();
@@ -7519,6 +7629,7 @@ let dayFieldSyncTimer = null;
 let dayBlockEditTimer = null;
 let blockReplyingCommentId = "";
 let blockCommentFilters = {};
+let dayBlockTextBaselines = {};
 let activeBlockPresenceId = "";
 let draggingDayBlockId = "";
 let selectedDayBlockIds = new Set();
@@ -12608,9 +12719,14 @@ dom.dayBlockList?.addEventListener("input", (event) => {
     const blockId = input.dataset.editDayBlock;
     const text = input.value.trim();
     if (!day || !blockId) return;
-    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, text, "local-day-block-text-crdt");
+    const baseText = Object.prototype.hasOwnProperty.call(dayBlockTextBaselines, blockId)
+      ? dayBlockTextBaselines[blockId]
+      : (normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId)?.text || "");
+    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, text, "local-day-block-text-crdt", { baseText });
     if (updatedText) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      dayBlockTextBaselines[blockId] = updatedText.text || "";
+      if (input.value.trim() !== (updatedText.text || "")) input.value = updatedText.text || "";
       const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
       const metaElement = blockElement?.querySelector(".day-block-meta");
       if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;
