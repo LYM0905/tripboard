@@ -3178,6 +3178,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const visibleChanged = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || settingTextValuesChanged || stopListsChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
   const currentDayId = currentDay()?.id || "";
   const changedDayBlockKeys = new Set();
+  const changedDayBlockTextKeys = new Set();
   if (dayBlocksChanged) {
     const currentBlocks = normalizeDayBlocksFromDays(state.days || []);
     const nextBlocksByDay = nextDayBlocks || {};
@@ -3190,12 +3191,18 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
     const currentTextValues = dayBlockTextValueSnapshotFromDays(state.days || []);
     [...new Set([...Object.keys(currentTextStates), ...Object.keys(nextDayBlockTextStates), ...Object.keys(currentTextValues), ...Object.keys(nextDayBlockTextValues)])].forEach((key) => {
       if (currentTextStates[key] !== nextDayBlockTextStates[key] || currentTextValues[key] !== nextDayBlockTextValues[key]) {
-        changedDayBlockKeys.add(String(key).split(":")[0] || "");
+        const [dayId, blockId] = String(key).split(":");
+        if (dayId) changedDayBlockKeys.add(dayId);
+        if (dayId && blockId) changedDayBlockTextKeys.add(`${dayId}:${blockId}`);
       }
     });
   }
   const dayBlockOnlyVisibleChange = visibleChanged && !dayMetasChanged && !dayTextStatesChanged && !settingTextValuesChanged && !stopListsChanged && !quotesChanged && !candidatesChanged && !activitiesChanged && !settingsChanged && !stopTextStatesChanged && (dayBlockTextStatesChanged || dayBlockTextValuesChanged || dayBlocksChanged);
   const currentDayBlockChanged = Boolean(currentDayId && changedDayBlockKeys.has(currentDayId));
+  const currentDayChangedTextBlockIds = [...changedDayBlockTextKeys]
+    .map((key) => key.split(":"))
+    .filter(([dayId, blockId]) => dayId === currentDayId && blockId)
+    .map(([, blockId]) => blockId);
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   if (dayTextStatesChanged) applyDayTextStatesToState(nextDayTextStates);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
@@ -3219,7 +3226,10 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   if (updateStatus) dom.collabStatus.textContent = label;
   if (refreshViews && visibleChanged) {
     if (dayBlockOnlyVisibleChange && currentDayBlockChanged) {
-      renderDayBlocks(currentDay());
+      const textOnlyCurrentDayChange = !dayBlocksChanged && currentDayChangedTextBlockIds.length > 0;
+      if (!textOnlyCurrentDayChange || !refreshDayBlockTextDom(currentDay(), currentDayChangedTextBlockIds)) {
+        renderDayBlocks(currentDay());
+      }
     } else if (dayBlockOnlyVisibleChange) {
       requestAnimationFrame(() => refreshDayBlockTextPresence());
     } else {
@@ -4498,6 +4508,40 @@ function restoreDayBlockFocus(snapshot = null) {
     activeBlockPresenceId = snapshot.blockId;
     schedulePresenceTrack(90);
   });
+}
+
+function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let updated = false;
+  for (const blockId of blockIds) {
+    const block = blocks.find((item) => item.id === blockId);
+    const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+    const input = blockElement?.querySelector("[data-edit-day-block]");
+    if (!block || !blockElement || !input) return false;
+    const focused = document.activeElement === input;
+    if (!focused && input.value !== block.text) input.value = block.text || "";
+    const previewMode = previewDayBlockIds.has(block.id);
+    const textWrap = blockElement.querySelector(".day-block-text-wrap");
+    const oldPreview = textWrap?.querySelector(".day-block-markdown-preview");
+    const nextPreview = renderDayBlockMarkdownPreview(block, previewMode);
+    if (oldPreview) oldPreview.remove();
+    if (nextPreview && input) input.insertAdjacentHTML("afterend", nextPreview);
+    const collapsedPreview = blockElement.querySelector(".day-block-collapsed-text");
+    if (collapsedPreview) collapsedPreview.textContent = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+    const metaElement = blockElement.querySelector(".day-block-meta");
+    if (metaElement) {
+      metaElement.textContent = block.updatedBy || block.createdBy
+        ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+        : dayBlockTypeLabel(block.type);
+    }
+    updated = true;
+  }
+  if (updated) {
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return updated;
 }
 
 function renderDayBlocks(day = currentDay()) {
