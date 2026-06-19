@@ -11628,19 +11628,22 @@ function focusCandidateActivityTarget(detail = null) {
 function focusTransportQuoteActivityTarget(detail = null) {
   if (!detail || typeof detail !== "object") return false;
   const dayIndex = state.days.findIndex((day) => detail.dayId && day.id === detail.dayId);
-  if (dayIndex >= 0) {
+  if (dayIndex >= 0 && dayIndex !== activeDay) {
     activeDay = dayIndex;
     activeStop = 0;
+    transportFilterApplied = true;
+    render();
+  } else {
+    transportFilterApplied = true;
+    renderTransport();
+    renderActivities();
+    refreshIcons();
   }
-  transportFilterApplied = true;
-  render();
   const quoteId = String(detail.quoteId || "");
   const quote = quoteId ? dom.transportList?.querySelector(`[data-quote="${CSS.escape(quoteId)}"]`) : null;
   const target = quote || document.querySelector(".transport-panel");
   if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "smooth" });
-  target.classList.add("activity-target-pulse");
-  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  pulseActivityTarget(target);
   dom.saveState.textContent = quote ? "已定位到活动对应交通报价" : "报价已不存在，已定位到交通面板";
   return true;
 }
