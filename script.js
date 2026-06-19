@@ -4436,8 +4436,41 @@ function renderDayBlockBulkBar(blocks = []) {
   `;
 }
 
+function dayBlockFocusSnapshot() {
+  const input = dom.dayBlockList?.querySelector("[data-edit-day-block]:focus");
+  if (!input) return null;
+  const blockId = input.dataset.editDayBlock || "";
+  if (!blockId) return null;
+  const valueLength = String(input.value || "").length;
+  const start = typeof input.selectionStart === "number" ? input.selectionStart : valueLength;
+  const end = typeof input.selectionEnd === "number" ? input.selectionEnd : start;
+  return {
+    blockId,
+    start: Math.max(0, Math.min(start, valueLength)),
+    end: Math.max(0, Math.min(end, valueLength)),
+    scrollTop: input.scrollTop || 0,
+  };
+}
+
+function restoreDayBlockFocus(snapshot = null) {
+  if (!snapshot?.blockId || !dom.dayBlockList || isReadonlyMode) return;
+  requestAnimationFrame(() => {
+    const input = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(snapshot.blockId)}"]`);
+    if (!input) return;
+    const valueLength = String(input.value || "").length;
+    const start = Math.max(0, Math.min(Number(snapshot.start) || 0, valueLength));
+    const end = Math.max(start, Math.min(Number(snapshot.end) || start, valueLength));
+    input.focus({ preventScroll: true });
+    input.setSelectionRange?.(start, end);
+    input.scrollTop = snapshot.scrollTop || 0;
+    activeBlockPresenceId = snapshot.blockId;
+    schedulePresenceTrack(90);
+  });
+}
+
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
+  const focusSnapshot = dayBlockFocusSnapshot();
   const blocks = normalizeDayBlocks(day.blocks || []);
   const disabledAttr = isReadonlyMode ? " disabled" : "";
   const blockIds = new Set(blocks.map((block) => block.id));
@@ -4529,6 +4562,9 @@ function renderDayBlocks(day = currentDay()) {
     : `<div class="empty-state">还没有协作块，可以添加待办、备注、决定、标题或提醒。</div>`;
   dom.dayBlockList.innerHTML = `${renderDayBlockBulkBar(blocks)}${blocksHtml}`;
   refreshIcons();
+  if (focusSnapshot && blocks.some((block) => block.id === focusSnapshot.blockId)) {
+    restoreDayBlockFocus(focusSnapshot);
+  }
   requestAnimationFrame(() => refreshDayBlockTextPresence());
 }
 
