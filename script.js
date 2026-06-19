@@ -6425,6 +6425,114 @@ async function syncStopSnapshotToPlanDoc(stopId, origin = "local-stop-snapshot")
   return true;
 }
 
+function patchedStopTextState(stopId, fallbackStop = {}, patch = {}, Y = yjsModule) {
+  if (!Y || !stopId) return "";
+  const textFields = new Set(COLLAB_TEXT_FIELDS.map((field) => field.field));
+  const structMetas = COLLAB_STRUCT_FIELDS.filter((meta) => Object.prototype.hasOwnProperty.call(patch, meta.field));
+  const patchedTextFields = Object.keys(patch || {}).filter((field) => textFields.has(field));
+  if (!patchedTextFields.length && !structMetas.length) return collabStopTextStatesMap?.get(stopId) || fallbackStop.textYjs || fallbackStop.noteYjs || "";
+  const tempDoc = new Y.Doc();
+  const baseState = collabStopTextStatesMap?.get(stopId) || fallbackStop.textYjs || fallbackStop.noteYjs || "";
+  try {
+    if (baseState) {
+      Y.applyUpdate(tempDoc, base64ToBytes(baseState), "patch");
+    } else {
+      Y.applyUpdate(tempDoc, buildInitialTextUpdate(Y, fallbackStop), "patch");
+    }
+    tempDoc.transact(() => {
+      patchedTextFields.forEach((field) => {
+        applyTextDiff(tempDoc.getText(field), String(patch[field] || ""));
+      });
+      const structMap = tempDoc.getMap("struct");
+      const patchedStop = { ...fallbackStop, ...patch, id: stopId };
+      COLLAB_STRUCT_FIELDS.forEach((meta) => {
+        if (Object.prototype.hasOwnProperty.call(patch, meta.field) || !structMap.has(meta.field)) {
+          structMap.set(meta.field, stopStructValue(patchedStop, meta));
+        }
+      });
+    }, "patch");
+    return bytesToBase64(Y.encodeStateAsUpdate(tempDoc));
+  } catch (error) {
+    console.warn("Patched stop text state could not be encoded", error);
+    return "";
+  } finally {
+    tempDoc.destroy();
+  }
+}
+
+function patchActiveStopTextDoc(stopId, patch = {}, origin = "local-stop-patch-active-text") {
+  if (!collabTextDoc || collabTextStopId !== stopId || isApplyingCollabTextRemote) return false;
+  const textFields = new Set(COLLAB_TEXT_FIELDS.map((field) => field.field));
+  const structMetas = COLLAB_STRUCT_FIELDS.filter((meta) => Object.prototype.hasOwnProperty.call(patch, meta.field));
+  const patchedTextFields = Object.keys(patch || {}).filter((field) => textFields.has(field));
+  if (!patchedTextFields.length && !structMetas.length) return false;
+  const location = findStopLocation(stopId);
+  const patchedStop = { ...(location?.stop || {}), ...patch, id: stopId };
+  collabTextDoc.transact(() => {
+    patchedTextFields.forEach((field) => {
+      const yText = collabTextFields[field] || collabTextDoc.getText(field);
+      collabTextFields[field] = yText;
+      applyTextDiff(yText, String(patch[field] || ""));
+    });
+    if (collabStructMap) {
+      structMetas.forEach((meta) => {
+        collabStructMap.set(meta.field, stopStructValue(patchedStop, meta));
+      });
+    }
+  }, origin);
+  return true;
+}
+
+async function patchStopInDoc(stopId, patch = {}, origin = "local-stop-patch") {
+  if (!canEdit() || isReadonlyMode || !stopId) return false;
+  const patchFields = Object.keys(patch || {});
+  if (!patchFields.length) return false;
+  await bindCollabPlanDoc();
+  let Y = yjsModule;
+  if (!Y) {
+    try {
+      Y = await ensureYjs();
+    } catch {
+      Y = null;
+    }
+  }
+  const location = findStopLocation(stopId);
+  if (!location?.day?.id || !location.stop || !collabPlanDoc || !collabStopListsMap || isApplyingCollabPlanRemote) return false;
+  const sourceStop = normalizeCollaborativeStop(location.stop);
+  let stopArray = collabStopListsMap.get(location.day.id);
+  const existingStops = stopArray && typeof stopArray.toArray === "function" ? stopArray.toArray() : [];
+  const existingIndex = existingStops.findIndex((stop) => stop?.id === stopId);
+  const current = existingIndex >= 0 ? normalizeCollaborativeStop(existingStops[existingIndex]) : sourceStop;
+  const next = normalizeCollaborativeStop({ ...current, ...patch, id: stopId });
+  const nextTextState = Y ? patchedStopTextState(stopId, next, patch, Y) : "";
+  const textChanged = Boolean(nextTextState && collabStopTextStatesMap?.get(stopId) !== nextTextState);
+  const stopChanged = !sameSerialized(current, next);
+  if (!stopChanged && !textChanged) {
+    patchActiveStopTextDoc(stopId, patch, `${origin}-active-text`);
+    return true;
+  }
+  collabPlanDoc.transact(() => {
+    if (!stopArray) {
+      stopArray = new yjsModule.Array();
+      collabStopListsMap.set(location.day.id, stopArray);
+    }
+    const freshStops = stopArray.toArray();
+    const freshIndex = freshStops.findIndex((stop) => stop?.id === stopId);
+    const freshCurrent = freshIndex >= 0 ? normalizeCollaborativeStop(freshStops[freshIndex]) : sourceStop;
+    const freshNext = normalizeCollaborativeStop({ ...freshCurrent, ...patch, id: stopId });
+    if (!sameSerialized(freshCurrent, freshNext)) {
+      if (freshIndex >= 0) stopArray.delete(freshIndex, 1);
+      stopArray.insert(freshIndex >= 0 ? freshIndex : stopArray.length, [freshNext]);
+    }
+    if (Y && collabStopTextStatesMap) {
+      const textState = patchedStopTextState(stopId, freshNext, patch, Y);
+      if (textState && collabStopTextStatesMap.get(stopId) !== textState) collabStopTextStatesMap.set(stopId, textState);
+    }
+  }, origin);
+  patchActiveStopTextDoc(stopId, patch, `${origin}-active-text`);
+  return true;
+}
+
 async function syncStopListToDoc(dayId, origin = "local-stop-list") {
   if (!canEdit() || isReadonlyMode || !dayId) return false;
   await bindCollabPlanDoc();
@@ -11067,23 +11175,36 @@ async function adoptAllBudgetEstimates() {
   saveVersionSnapshot("批量采用门票估算前版本");
   let stopCount = 0;
   let candidateCount = 0;
-  const changedDayIds = new Set();
+  const fallbackDayIds = new Set();
+  let candidateFallback = false;
   for (const item of entries) {
     if (item.refType === "stop") {
       const day = state.days.find((entry) => entry.id === item.dayId);
       const stop = day?.stops?.find((entry) => entry.id === item.itemId);
       const estimate = inferTicketPrice(stop);
       if (!day || !stop || !estimate || numberValue(stop.budget)) continue;
-      stop.budget = estimate;
-      stop.tags = Array.from(new Set([...(stop.tags || []), "门票估算待确认"]));
-      changedDayIds.add(day.id);
+      const patch = {
+        budget: estimate,
+        tags: Array.from(new Set([...(stop.tags || []), "门票估算待确认"])),
+      };
+      Object.assign(stop, patch);
+      if (!(await patchStopInDoc(stop.id, patch, "local-budget-estimate-stop-batch"))) {
+        fallbackDayIds.add(day.id);
+      }
       stopCount += 1;
     } else if (item.refType === "candidate") {
       const candidate = (state.candidates || []).find((entry) => entry.id === item.itemId);
       const estimate = inferTicketPrice(candidate);
       if (!candidate || !estimate || numberValue(candidate.budget)) continue;
-      candidate.budget = estimate;
-      candidate.tags = Array.from(new Set([...(candidate.tags || []), "门票估算待确认"]));
+      const patch = {
+        budget: estimate,
+        tags: Array.from(new Set([...(candidate.tags || []), "门票估算待确认"])),
+      };
+      Object.assign(candidate, patch);
+      if (!(await updateCandidateInDoc(candidate.id, patch))) {
+        state.candidates = mergedCandidatesWithPatch("update", patch, candidate.id);
+        candidateFallback = true;
+      }
       candidateCount += 1;
     }
   }
@@ -11091,10 +11212,11 @@ async function adoptAllBudgetEstimates() {
     dom.saveState.textContent = "没有新的门票估算需要写入。";
     return;
   }
-  for (const dayId of changedDayIds) {
-    await syncStopListToDoc(dayId, "local-budget-estimates-batch");
+  for (const dayId of fallbackDayIds) {
+    await syncStopListToDoc(dayId, "local-budget-estimates-batch-fallback");
   }
-  if (candidateCount) await syncCandidatesToDoc("local-candidate-budget-estimates-batch");
+  if (candidateFallback) await syncCandidatesToDoc("local-candidate-budget-estimates-batch-fallback");
+  persistCurrentPlanFromDoc("门票估算已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
   await logActivity(`批量采用门票估算 ${stopCount + candidateCount} 项`, { target: budgetSettingActivityTarget("budgetLimit", { action: "batch-estimate" }) });
   await saveCollaborativePlanChange("批量采用门票估算");
   render();
@@ -11114,29 +11236,29 @@ function isDefaultTripboardImage(value = "") {
 }
 
 function applyPlaceToStop(stop, place) {
-  if (!stop || !place) return false;
-  let changed = false;
+  if (!stop || !place) return null;
+  const patch = {};
   if (!stop.address && place.address) {
     stop.address = place.address;
-    changed = true;
+    patch.address = place.address;
   }
   if (!stop.lng && place.lng) {
     stop.lng = place.lng;
-    changed = true;
+    patch.lng = place.lng;
   }
   if (!stop.lat && place.lat) {
     stop.lat = place.lat;
-    changed = true;
+    patch.lat = place.lat;
   }
   if (place.image && isDefaultTripboardImage(stop.image)) {
     stop.image = place.image;
-    changed = true;
+    patch.image = place.image;
   }
   if (!stop.amapKeyword && (place.title || stop.title)) {
     stop.amapKeyword = place.title || stop.title;
-    changed = true;
+    patch.amapKeyword = place.title || stop.title;
   }
-  return changed;
+  return Object.keys(patch).length ? patch : null;
 }
 
 async function enrichPlacesFromAmap() {
@@ -11164,7 +11286,8 @@ async function enrichPlacesFromAmap() {
   }
   saveVersionSnapshot("补全地点图片前版本");
   dom.saveState.textContent = `正在通过高德补全 ${Math.min(candidates.length, 12)} 个地点...`;
-  const changedDayIds = new Set();
+  const fallbackDayIds = new Set();
+  let candidateFallback = false;
   let changedStops = 0;
   let changedCandidates = 0;
   let imageCount = 0;
@@ -11176,11 +11299,18 @@ async function enrichPlacesFromAmap() {
       const place = Array.isArray(places) ? places.find((entry) => entry.image) || places[0] : null;
       if (!place) continue;
       const hadRealImage = !isDefaultTripboardImage(item.stop.image);
-      if (applyPlaceToStop(item.stop, place)) {
+      const patch = applyPlaceToStop(item.stop, place);
+      if (patch) {
         if (item.type === "stop") {
-          changedDayIds.add(item.day.id);
+          if (!(await patchStopInDoc(item.stop.id, patch, "local-amap-place-enrich-stop"))) {
+            fallbackDayIds.add(item.day.id);
+          }
           changedStops += 1;
         } else {
+          if (!(await updateCandidateInDoc(item.stop.id, patch))) {
+            state.candidates = mergedCandidatesWithPatch("update", patch, item.stop.id);
+            candidateFallback = true;
+          }
           changedCandidates += 1;
         }
         if (!hadRealImage && item.stop.image && !isDefaultTripboardImage(item.stop.image)) imageCount += 1;
@@ -11189,14 +11319,15 @@ async function enrichPlacesFromAmap() {
       console.warn("Amap place enrichment failed", item.keyword, error);
     }
   }
-  for (const dayId of changedDayIds) {
-    await syncStopListToDoc(dayId, "local-amap-place-enrich");
+  for (const dayId of fallbackDayIds) {
+    await syncStopListToDoc(dayId, "local-amap-place-enrich-fallback");
   }
-  if (changedCandidates) await syncCandidatesToDoc("local-amap-candidate-enrich");
+  if (candidateFallback) await syncCandidatesToDoc("local-amap-candidate-enrich-fallback");
   if (!changedStops && !changedCandidates) {
     dom.saveState.textContent = `已查询 ${checked} 个地点，高德没有返回可写入的新坐标或图片。`;
     return;
   }
+  persistCurrentPlanFromDoc("高德地点资料已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
   await logActivity(`补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张`);
   await saveCollaborativePlanChange("补全地点图片和坐标");
   render();
