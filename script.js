@@ -4670,6 +4670,42 @@ async function saveChecklistTextChange(day, block, nextText, action = "checklist
   return true;
 }
 
+async function moveDayBlockByDirection(day, blockId, direction = "down", action = "move") {
+  const blocks = normalizeDayBlocks(day?.blocks || []);
+  const block = blocks.find((item) => item.id === blockId);
+  if (!day || !block || !requireEdit("排序协作块")) return false;
+  const offset = direction === "up" ? -1 : 1;
+  const index = blocks.findIndex((item) => item.id === blockId);
+  const targetIndex = index + offset;
+  if (targetIndex < 0 || targetIndex >= blocks.length) {
+    dom.saveState.textContent = direction === "up" ? "已经是第一个协作块" : "已经是最后一个协作块";
+    return false;
+  }
+  activeBlockPresenceId = blockId;
+  schedulePresenceTrack(0);
+  noteRemoteBlockEditors(blockId, action === "keyboard-move" ? "键盘排序" : "排序");
+  if (await moveDayBlockInDoc(day.id, blockId, direction, `local-day-block-${action}`)) {
+    day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    renderDayBlocks(day);
+    focusDayBlockInput(blockId);
+    await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action, direction }) });
+    await saveCollaborativePlanChange("已排序协作块");
+    return true;
+  }
+  if (!mutate("排序协作块", () => {
+    currentDay().blocks = moveDayBlockList(currentDay().blocks || [], blockId, direction);
+  }, { requireUnlocked: false, save: false, render: false })) return false;
+  await syncDayBlocksToDoc(day.id, `local-day-block-${action}-fallback`);
+  await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action, direction }) });
+  await saveCollaborativePlanChange("已排序协作块");
+  render();
+  focusDayBlockInput(blockId);
+  return true;
+}
+
 async function setSelectedDayBlockType(day, nextType) {
   const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
   if (!day || !selectedBlocks.length || !DAY_BLOCK_TYPES.includes(nextType) || !requireEdit("批量切换协作块类型")) return false;
@@ -12057,28 +12093,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     event.preventDefault();
     const blockId = moveButton.dataset.moveDayBlock;
     const direction = moveButton.dataset.direction === "up" ? "up" : "down";
-    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
-    if (!block || !requireEdit("排序协作块")) return;
-    activeBlockPresenceId = blockId;
-    schedulePresenceTrack(0);
-    noteRemoteBlockEditors(blockId, "排序");
-    if (await moveDayBlockInDoc(day.id, blockId, direction, "local-day-block-reorder")) {
-      day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
-        updatedBy: getCollabName(),
-        updatedAt: new Date().toISOString(),
-      });
-      renderDayBlocks(day);
-      await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "move", direction }) });
-      await saveCollaborativePlanChange("已排序协作块");
-      return;
-    }
-    if (!mutate("排序协作块", () => {
-      currentDay().blocks = moveDayBlockList(currentDay().blocks || [], blockId, direction);
-    }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(currentDay().id, "local-day-block-reorder-fallback");
-    await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "move", direction }) });
-    await saveCollaborativePlanChange("已排序协作块");
-    render();
+    await moveDayBlockByDirection(day, blockId, direction, "move");
     return;
   }
   const duplicateButton = event.target.closest("[data-duplicate-day-block]");
@@ -12360,6 +12375,11 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   if (formatShortcut) {
     event.preventDefault();
     await formatDayBlockInput(day, block, input, formatShortcut);
+    return;
+  }
+  if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+    event.preventDefault();
+    await moveDayBlockByDirection(day, blockId, event.key === "ArrowUp" ? "up" : "down", "keyboard-move");
     return;
   }
   if (event.key === "Tab") {
