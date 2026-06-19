@@ -4228,6 +4228,7 @@ function dayBlockFormattedText(value = "", start = 0, end = 0, format = "bold") 
     bold: { open: "**", close: "**", sample: "重点" },
     italic: { open: "*", close: "*", sample: "说明" },
     code: { open: "`", close: "`", sample: "字段" },
+    link: { open: "[", close: "](https://example.com)", sample: "链接" },
   };
   const marker = formats[format] || formats.bold;
   const from = Math.max(0, Math.min(Number(start) || 0, text.length));
@@ -4240,6 +4241,13 @@ function dayBlockFormattedText(value = "", start = 0, end = 0, format = "bold") 
   return { text: nextText, selectionStart, selectionEnd };
 }
 
+function safeMarkdownUrl(url = "") {
+  const value = String(url || "").trim();
+  if (/^(https?:|mailto:|tel:)/i.test(value)) return escapeHtml(value);
+  if (/^[./#]/.test(value)) return escapeHtml(value);
+  return "#";
+}
+
 function renderInlineMarkdown(text = "") {
   const placeholders = [];
   const token = (html) => {
@@ -4249,6 +4257,7 @@ function renderInlineMarkdown(text = "") {
   };
   let escaped = escapeHtml(String(text || ""));
   escaped = escaped.replace(/`([^`\n]+)`/g, (_, value) => token(`<code>${value}</code>`));
+  escaped = escaped.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_, label, url) => token(`<a href="${safeMarkdownUrl(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`));
   escaped = escaped.replace(/\*\*([^*\n]+)\*\*/g, (_, value) => token(`<strong>${value}</strong>`));
   escaped = escaped.replace(/(^|[^*])\*([^*\n]+)\*/g, (_, prefix, value) => `${prefix}${token(`<em>${value}</em>`)}`);
   placeholders.forEach((html, index) => {
@@ -4259,7 +4268,7 @@ function renderInlineMarkdown(text = "") {
 
 function renderDayBlockMarkdownPreview(block) {
   if (!block?.text || block.type === "checklist" || block.type === "divider") return "";
-  const hasMarkup = /(\*\*[^*\n]+\*\*|(^|[^*])\*[^*\n]+\*|`[^`\n]+`)/.test(block.text);
+  const hasMarkup = /(\[[^\]\n]+\]\([^)]+\)|\*\*[^*\n]+\*\*|(^|[^*])\*[^*\n]+\*|`[^`\n]+`)/.test(block.text);
   if (!hasMarkup) return "";
   return `<div class="day-block-markdown-preview">${String(block.text).split(/\r?\n/).map((line) => `<p>${renderInlineMarkdown(line)}</p>`).join("")}</div>`;
 }
@@ -4475,6 +4484,7 @@ function renderDayBlocks(day = currentDay()) {
                   <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="bold" title="加粗" aria-label="加粗"${disabledAttr}>${icon("bold")}</button>
                   <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="italic" title="斜体" aria-label="斜体"${disabledAttr}>${icon("italic")}</button>
                   <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="code" title="行内代码" aria-label="行内代码"${disabledAttr}>${icon("code-2")}</button>
+                  <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="link" title="链接" aria-label="链接"${disabledAttr}>${icon("link")}</button>
                 </span>
                 <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}" placeholder="${escapeHtml(textPlaceholder)}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
                 ${renderDayBlockMarkdownPreview(block)}
@@ -12341,7 +12351,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       ? "bold"
       : shortcutKey === "i"
         ? "italic"
-        : shortcutKey === "e" || event.key === "`"
+        : shortcutKey === "k"
+          ? "link"
+          : shortcutKey === "e" || event.key === "`"
           ? "code"
           : ""
     : "";

@@ -2799,6 +2799,13 @@ button:disabled {
   font-size: 11px;
 }
 
+.day-block-markdown-preview a {
+  color: #276c9b;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .day-block-text-presence {
   top: 0;
   bottom: 0;
