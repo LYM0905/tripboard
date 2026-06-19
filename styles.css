@@ -2508,6 +2508,22 @@ button:disabled {
   border-color: #f2d48c;
 }
 
+.day-block.is-quote {
+  background: #f7f3ec;
+  border-color: #d8c4a8;
+}
+
+.day-block.is-quote .day-block-toggle {
+  color: #6c5337;
+  background: #eadfce;
+}
+
+.day-block.is-quote .day-block-text {
+  border-color: #d8c4a8;
+  color: #3f3327;
+  font-style: italic;
+}
+
 .day-block-text-wrap {
   position: relative;
   display: block;

@@ -100,7 +100,7 @@ const PLAN_SETTING_FIELDS = [
   { field: "editKeyHint", type: "string" },
 ];
 const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "dateRange", "startDate", "endDate", "cover", "editKeyHint"];
-const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading", "callout"];
+const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading", "callout", "quote"];
 
 const images = {
   kyoto:
@@ -4063,6 +4063,7 @@ function renderDayComments(day = currentDay()) {
 }
 
 function dayBlockTypeLabel(type = "todo") {
+  if (type === "quote") return "??";
   if (type === "callout") return "??";
   if (type === "heading") return "??";
   if (type === "note") return "??";
@@ -4071,6 +4072,7 @@ function dayBlockTypeLabel(type = "todo") {
 }
 
 function dayBlockIcon(type = "todo") {
+  if (type === "quote") return "quote";
   if (type === "callout") return "info";
   if (type === "heading") return "heading-2";
   if (type === "note") return "notebook-text";
@@ -4100,6 +4102,9 @@ function dayBlockSlashCommand(value = "") {
     "/??": "callout",
     "/??": "callout",
     "/??": "callout",
+    "/quote": "quote",
+    "/??": "quote",
+    "/??": "quote",
   };
   return commands[command] || "";
 }
@@ -4110,6 +4115,9 @@ function dayBlockMarkdownShortcut(value = "") {
     "#": "heading",
     "##": "heading",
     ">": "callout",
+    ">>": "quote",
+    "\"": "quote",
+    "?": "quote",
     "!": "callout",
     "-": "todo",
     "*": "todo",
@@ -8337,6 +8345,8 @@ function averagePrice(options, type) {
 }
 
 function saveServiceConfig() {
+  const previousAmapJsKey = serviceConfig.amapJsKey || "";
+  const previousAmapSecurityCode = serviceConfig.amapSecurityCode || "";
   serviceConfig = {
     aiEndpoint: dom.aiRouteEndpointInput.value.trim(),
     aiToken: dom.aiRouteTokenInput.value.trim(),
@@ -8347,10 +8357,15 @@ function saveServiceConfig() {
     weatherEndpoint: dom.weatherEndpointInput.value.trim(),
   };
   localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
-  if (!serviceConfig.amapJsKey && amapMap) {
+  const amapSdkConfigChanged =
+    previousAmapJsKey !== serviceConfig.amapJsKey ||
+    previousAmapSecurityCode !== serviceConfig.amapSecurityCode;
+  if (amapSdkConfigChanged && amapMap) {
     clearAmapOverlay();
     amapMap.destroy();
     amapMap = null;
+  }
+  if (amapSdkConfigChanged) {
     amapLoadedKey = "";
     amapLoaderPromise = null;
   }
