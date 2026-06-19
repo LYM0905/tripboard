@@ -11302,10 +11302,17 @@ function focusActivityTarget(targetSelector = "") {
     dom.saveState.textContent = "暂时无法定位这条记录";
     return false;
   }
+  pulseActivityTarget(target);
+  dom.saveState.textContent = "已定位到相关区域";
+  return true;
+}
+
+function pulseActivityTarget(target, options = {}) {
+  if (!target) return false;
   target.scrollIntoView({ block: "center", behavior: "smooth" });
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  dom.saveState.textContent = "已定位到相关区域";
+  if (options.focus && typeof target.focus === "function") target.focus({ preventScroll: true });
   return true;
 }
 
@@ -11393,14 +11400,20 @@ function focusDayActivityTarget(detail = null) {
     dayIndex = Math.max(0, Math.min(fallbackIndex, state.days.length - 1));
   }
   if (dayIndex < 0) return false;
+  if (dayIndex === activeDay) {
+    const target = document.querySelector(`[data-day="${CSS.escape(String(dayIndex))}"]`) || document.querySelector(".day-editor-panel") || dom.dayList;
+    if (!target) return false;
+    pulseActivityTarget(target);
+    renderActivities();
+    dom.saveState.textContent = detail.deleted ? "日期已删除，已定位到相邻日期" : "已定位到活动对应日期";
+    return true;
+  }
   activeDay = dayIndex;
   activeStop = 0;
   render();
   const target = document.querySelector(`[data-day="${CSS.escape(String(dayIndex))}"]`) || document.querySelector(".day-editor-panel") || dom.dayList;
   if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "smooth" });
-  target.classList.add("activity-target-pulse");
-  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  pulseActivityTarget(target);
   dom.saveState.textContent = detail.deleted ? "日期已删除，已定位到相邻日期" : "已定位到活动对应日期";
   return true;
 }
@@ -11412,18 +11425,27 @@ function focusStopActivityTarget(detail = null) {
     return detail.stopId && (day.stops || []).some((stop) => stop.id === detail.stopId);
   });
   if (dayIndex < 0) return false;
-  activeDay = dayIndex;
   const day = state.days[dayIndex];
   const stopIndex = (day.stops || []).findIndex((stop) => detail.stopId && stop.id === detail.stopId);
+  if (dayIndex === activeDay && (stopIndex < 0 || stopIndex === activeStop)) {
+    if (stopIndex >= 0) activeStop = stopIndex;
+    const target = stopIndex >= 0
+      ? dom.timeline?.querySelector(`[data-stop="${CSS.escape(String(stopIndex))}"]`) || document.querySelector(".editor-panel")
+      : dom.timeline || document.querySelector(".editor-panel");
+    if (!target) return false;
+    pulseActivityTarget(target);
+    renderActivities();
+    dom.saveState.textContent = stopIndex >= 0 ? "已定位到活动对应地点" : "地点已不存在，已定位到原日期时间线";
+    return true;
+  }
+  activeDay = dayIndex;
   activeStop = stopIndex >= 0 ? stopIndex : 0;
   render();
   const target = stopIndex >= 0
     ? dom.timeline?.querySelector(`[data-stop="${CSS.escape(String(stopIndex))}"]`) || document.querySelector(".editor-panel")
     : dom.timeline || document.querySelector(".editor-panel");
   if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "smooth" });
-  target.classList.add("activity-target-pulse");
-  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  pulseActivityTarget(target);
   dom.saveState.textContent = stopIndex >= 0 ? "已定位到活动对应地点" : "地点已不存在，已定位到原日期时间线";
   return true;
 }
