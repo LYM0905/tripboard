@@ -8159,10 +8159,14 @@ const dom = {
   addStopBtn: document.querySelector("#addStopBtn"),
   quickAddForm: document.querySelector("#quickAddForm"),
   quickPlaceName: document.querySelector("#quickPlaceName"),
+  quickType: document.querySelector("#quickType"),
   quickAmapKeyword: document.querySelector("#quickAmapKeyword"),
   quickTime: document.querySelector("#quickTime"),
   quickBudget: document.querySelector("#quickBudget"),
+  quickPaid: document.querySelector("#quickPaid"),
+  quickPayer: document.querySelector("#quickPayer"),
   quickAddress: document.querySelector("#quickAddress"),
+  quickSelected: document.querySelector("#quickSelected"),
   openAmapBtn: document.querySelector("#openAmapBtn"),
   addCandidateBtn: document.querySelector("#addCandidateBtn"),
   cancelCandidateEditBtn: document.querySelector("#cancelCandidateEditBtn"),
@@ -9870,10 +9874,14 @@ function setCandidateEditing(candidate = null) {
   editingCandidateId = candidate?.id || "";
   if (candidate) {
     dom.quickPlaceName.value = candidate.title || "";
+    if (dom.quickType) dom.quickType.value = quickTypeValue(candidate.type);
     dom.quickAmapKeyword.value = candidate.amapKeyword || `${state.destination || ""} ${candidate.title || ""}`.trim();
     dom.quickTime.value = candidate.time || "";
     dom.quickBudget.value = candidate.budget || "";
+    if (dom.quickPaid) dom.quickPaid.value = candidate.paid || "";
+    if (dom.quickPayer) dom.quickPayer.value = candidate.payer || "";
     dom.quickAddress.value = candidate.address || "";
+    if (dom.quickSelected) dom.quickSelected.checked = Boolean(candidate.selected);
     quickAmapPlace = candidate.lng || candidate.lat ? {
       keyword: candidate.amapKeyword || "",
       title: candidate.title || "",
@@ -9967,10 +9975,14 @@ async function applyFieldAmapPlace(place, keyword = "") {
 function clearQuickPlaceForm({ keepCandidateEditing = false } = {}) {
   if (!keepCandidateEditing) editingCandidateId = "";
   dom.quickPlaceName.value = "";
+  if (dom.quickType) dom.quickType.value = "Scenic";
   dom.quickAmapKeyword.value = "";
   dom.quickTime.value = "";
   dom.quickBudget.value = "";
+  if (dom.quickPaid) dom.quickPaid.value = "";
+  if (dom.quickPayer) dom.quickPayer.value = "";
   dom.quickAddress.value = "";
+  if (dom.quickSelected) dom.quickSelected.checked = false;
   quickAmapPlace = null;
   hideAmapCandidates("quick");
   if (!keepCandidateEditing) setCandidateEditing(null);
@@ -10069,6 +10081,25 @@ function manualTransportQuotes() {
 
 function currentManualQuotes(day) {
   return manualTransportQuotes().filter((item) => item.dayId === day?.id || item.date === day?.date);
+}
+
+function quickTypeValue(type = "") {
+  const text = String(type || "").trim();
+  if (/hotel|住宿|民宿|酒店|客栈|入住|房/i.test(text)) return "Hotel";
+  if (/food|餐饮|餐厅|咖啡|午餐|晚餐|早餐|美食|团购|Cafe|Dinner|Lunch|Market/i.test(text)) return "Food";
+  if (/transport|交通|航班|机票|动车|高铁|火车|Transit|车站|机场/i.test(text)) return "Transport";
+  if (/other|其他/i.test(text)) return "Other";
+  return "Scenic";
+}
+
+function quickTypeLabel(type = "") {
+  return {
+    Scenic: "景点/门票",
+    Hotel: "住宿",
+    Food: "餐饮",
+    Transport: "交通",
+    Other: "其他",
+  }[quickTypeValue(type)] || "景点/门票";
 }
 
 function normalizeImportCategory(value, provider = "") {
@@ -10680,6 +10711,10 @@ function budgetTextForItem(item = {}) {
 }
 
 function budgetCategoryForItem(item = {}) {
+  const normalizedType = quickTypeValue(item.type);
+  if (normalizedType === "Hotel") return "住宿";
+  if (normalizedType === "Transport") return "交通";
+  if (normalizedType === "Food") return "餐饮";
   const text = budgetTextForItem(item);
   if (/hotel|住宿|民宿|酒店|客栈|入住|房/.test(text)) return "住宿";
   if (/flight|train|Transit|机票|航班|动车|高铁|火车|交通|打车|机场|车站/.test(text)) return "交通";
@@ -10693,11 +10728,11 @@ function inferTicketPrice(item = {}) {
   if (/免费|免票|开放式|街区|公园免费/.test(text)) return 0;
   const rules = [
     [/莫高窟|石窟|Grottoes/i, 238],
-    [/丹霞|雅丹|Geopark|地质公园/i, 120],
-    [/嘉峪关|关城|长城|Heritage|Fortress/i, 110],
+    [/七彩丹霞|丹霞|雅丹|平山湖|Geopark|地质公园/i, 120],
+    [/嘉峪关|关城|悬壁长城|长城|阳关|玉门关|Heritage|Fortress/i, 110],
     [/沙漠|鸣沙山|月牙泉|Desert/i, 110],
-    [/博物馆|Museum/i, 0],
-    [/寺|Temple|塔|宫|园|景区|门票|预约|Scenic/i, 80],
+    [/博物馆|黄河铁桥|中山桥|夜市|步行街|Museum|Walk/i, 0],
+    [/马蹄寺|寺|Temple|塔|宫|园|景区|门票|预约|Scenic/i, 80],
   ];
   const matched = rules.find(([pattern]) => pattern.test(text));
   return matched ? matched[1] : 0;
@@ -11094,11 +11129,17 @@ function renderCandidates() {
       (stop, index) => {
         const selected = Boolean(stop.selected);
         const estimatedTicket = inferTicketPrice(stop);
+        const category = budgetCategoryForItem(stop);
+        const paid = numberValue(stop.paid);
+        const payer = stop.payer ? ` · ${escapeHtml(stop.payer)}` : "";
+        const amountText = money(numberValue(stop.budget) || estimatedTicket);
+        const estimateText = !numberValue(stop.budget) && estimatedTicket ? " 估" : "";
         return `
         <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
-          ${icon(stop.type === "Market" ? "shopping-bag" : stop.type === "Cafe" ? "coffee" : "landmark")}
+          ${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}
           <span class="candidate-title">${escapeHtml(stop.title)}</span>
-          <span class="candidate-price">${money(stop.budget || estimatedTicket)}${!numberValue(stop.budget) && estimatedTicket ? " 估" : ""}</span>
+          <span class="candidate-meta">${escapeHtml(category)}${selected ? " · 已预选" : ""}${paid ? ` · 已付 ${money(paid)}${payer}` : ""}</span>
+          <span class="candidate-price">${amountText}${estimateText}</span>
           ${editable ? `<span class="candidate-actions">
             <button type="button" class="icon-btn subtle" data-toggle-candidate-selected="${escapeHtml(stop.id)}" aria-label="${selected ? "移出预选" : "加入预选"}" title="${selected ? "移出预选" : "加入预选"}">${icon(selected ? "check-circle-2" : "circle")}</button>
             <button type="button" class="icon-btn subtle" data-edit-candidate="${escapeHtml(stop.id)}" aria-label="编辑备选">${icon("pencil")}</button>
@@ -11490,20 +11531,25 @@ function quickPlaceDraft(extra = {}) {
   if (!name) return null;
   const keyword = dom.quickAmapKeyword.value.trim() || `${state.destination || ""} ${name}`.trim();
   const locatedPlace = quickAmapPlace && (quickAmapPlace.keyword === keyword || quickAmapPlace.title === name) ? quickAmapPlace : null;
+  const type = extra.type || quickTypeValue(dom.quickType?.value || "Scenic");
+  const typeLabel = quickTypeLabel(type);
   return makeStop({
     time: dom.quickTime.value.trim() || "10:00",
     title: name,
-    type: extra.type || "Scenic",
+    type,
     address: dom.quickAddress.value.trim() || locatedPlace?.address || keyword,
-    note: extra.note || `从快速录入加入。高德关键词：${keyword}`,
-    tags: extra.tags || ["自定义", "待优化"],
+    note: extra.note || `从快速录入加入。类型：${typeLabel}。高德关键词：${keyword}`,
+    tags: extra.tags || ["自定义", typeLabel, "待优化"],
     budget: Number(dom.quickBudget.value || 0),
+    paid: Number(dom.quickPaid?.value || 0),
+    payer: dom.quickPayer?.value.trim() || "",
     amapKeyword: keyword,
     lng: locatedPlace?.lng || "",
     lat: locatedPlace?.lat || "",
     x: extra.x ?? 50,
     y: extra.y ?? 50,
     image: locatedPlace?.image || state.cover || images.city,
+    selected: Boolean(extra.selected ?? dom.quickSelected?.checked),
   });
 }
 
@@ -11889,6 +11935,9 @@ dom.addCandidateBtn.addEventListener("click", async () => {
       note: draft.note,
       tags: draft.tags,
       budget: draft.budget,
+      paid: draft.paid,
+      payer: draft.payer,
+      selected: draft.selected,
       time: draft.time,
       amapKeyword: draft.amapKeyword,
       lng: draft.lng,
