@@ -9433,15 +9433,22 @@ async function requestWeatherForecast() {
     endDate: state.endDate,
     days: state.days.map((day) => ({ id: day.id, date: day.date, title: day.title })),
   };
+  let proxyError = "";
   if (serviceConfig.weatherEndpoint) {
-    const response = await fetch(serviceConfig.weatherEndpoint, {
-      method: "POST",
-      headers: serviceHeaders("", serviceConfig.weatherEndpoint),
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
-    return { source: data.source || "weather-proxy", days: Array.isArray(data.days) ? data.days : [] };
+    try {
+      const response = await fetch(serviceConfig.weatherEndpoint, {
+        method: "POST",
+        headers: serviceHeaders("", serviceConfig.weatherEndpoint),
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+      const days = Array.isArray(data.days) ? data.days : [];
+      if (days.length) return { source: data.source || "weather-proxy", days };
+      proxyError = data.message || "天气代理没有返回可用日期";
+    } catch (error) {
+      proxyError = error.message;
+    }
   }
 
   const place = await geocodeDestination();
@@ -9454,7 +9461,8 @@ async function requestWeatherForecast() {
     date,
     text: `${Math.round(data.daily.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily.temperature_2m_max?.[index] ?? 0)}°C ${weatherLabel(data.daily.weather_code?.[index])} · 降水${Math.round(data.daily.precipitation_probability_max?.[index] ?? 0)}%`,
   }));
-  return { source: `Open-Meteo · ${place.name}`, days };
+  const proxyHint = proxyError ? `（天气代理兜底：${proxyError}）` : "";
+  return { source: `Open-Meteo · ${place.name}${proxyHint}`, days };
 }
 
 function weatherForDay(forecastDays, day, index) {
