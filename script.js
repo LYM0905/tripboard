@@ -4432,12 +4432,7 @@ function refreshDayBlockTextPresence() {
   dom.dayBlockList?.querySelectorAll("[data-day-block]").forEach((blockElement) => {
     const blockId = blockElement.dataset.dayBlock || "";
     const block = normalizeDayBlocks(currentDay()?.blocks || []).find((item) => item.id === blockId);
-    const wrap = blockElement.querySelector(".day-block-text-wrap");
-    if (!block || !wrap) return;
-    wrap.querySelector(".day-block-text-presence")?.remove();
-    wrap.querySelectorAll(".comment-highlight").forEach((item) => item.remove());
-    wrap.insertAdjacentHTML("beforeend", renderDayBlockCommentHighlights(block));
-    wrap.insertAdjacentHTML("beforeend", renderDayBlockTextPresence(block));
+    if (block) refreshDayBlockOverlayDom(block);
   });
 }
 
@@ -4532,6 +4527,18 @@ function restoreDayBlockFocus(snapshot = null) {
   });
 }
 
+function refreshDayBlockOverlayDom(block) {
+  if (!block?.id || !dom.dayBlockList) return false;
+  const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(block.id)}"]`);
+  const wrap = blockElement?.querySelector(".day-block-text-wrap");
+  if (!wrap) return false;
+  wrap.querySelector(".day-block-text-presence")?.remove();
+  wrap.querySelectorAll(".comment-highlight").forEach((item) => item.remove());
+  wrap.insertAdjacentHTML("beforeend", renderDayBlockCommentHighlights(block));
+  wrap.insertAdjacentHTML("beforeend", renderDayBlockTextPresence(block));
+  return true;
+}
+
 function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
   if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
   const blocks = normalizeDayBlocks(day.blocks || []);
@@ -4557,6 +4564,7 @@ function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
         ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
         : dayBlockTypeLabel(block.type);
     }
+    refreshDayBlockOverlayDom(block);
     updated = true;
   }
   if (updated) {
@@ -4589,6 +4597,7 @@ function refreshDayBlockCommentsDom(day = currentDay(), blockId = "") {
       ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
       : dayBlockTypeLabel(block.type);
   }
+  refreshDayBlockOverlayDom(block);
   refreshIcons();
   return true;
 }
