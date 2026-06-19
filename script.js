@@ -4860,6 +4860,35 @@ function refreshDayBlockDeleteDom(day = currentDay(), deletedIds = []) {
   return true;
 }
 
+function refreshDayBlockInsertDom(day = currentDay(), insertedIds = [], focusBlockId = "") {
+  if (!day || !dom.dayBlockList || !Array.isArray(insertedIds) || !insertedIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  const insertedSet = new Set(insertedIds.filter(Boolean));
+  if (!blocks.length) return false;
+  dom.dayBlockList.querySelector(".empty-state")?.remove();
+  const disabledAttr = isReadonlyMode ? " disabled" : "";
+  let inserted = false;
+  for (const blockId of insertedSet) {
+    const index = blocks.findIndex((block) => block.id === blockId);
+    const block = index >= 0 ? blocks[index] : null;
+    if (!block) return false;
+    const existing = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+    if (existing) continue;
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = renderDayBlockHtml(block, index, blocks, disabledAttr).trim();
+    const blockElement = wrapper.firstElementChild;
+    if (!blockElement) return false;
+    const nextBlock = blocks.slice(index + 1).find((item) => !insertedSet.has(item.id));
+    const nextElement = nextBlock?.id ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(nextBlock.id)}"]`) : null;
+    if (nextElement) dom.dayBlockList.insertBefore(blockElement, nextElement);
+    else dom.dayBlockList.appendChild(blockElement);
+    inserted = true;
+  }
+  if (!inserted) return refreshDayBlockOrderDom(day, focusBlockId);
+  refreshDayBlockOrderDom(day, focusBlockId);
+  return true;
+}
+
 function dayBlockRowsForType(type = "todo") {
   if (type === "heading" || type === "divider") return 1;
   if (type === "checklist") return 3;
@@ -5027,6 +5056,79 @@ function refreshPresenceViews() {
   renderEditorLockState();
 }
 
+function renderDayBlockHtml(block, index = 0, blocks = normalizeDayBlocks(currentDay()?.blocks || []), disabledAttr = isReadonlyMode ? " disabled" : "") {
+  const doneClass = block.done ? " is-done" : "";
+  const typeClass = ` is-${block.type || "todo"}`;
+  const collapsed = collapsedDayBlockIds.has(block.id);
+  const collapsedClass = collapsed ? " is-collapsed" : "";
+  const selected = selectedDayBlockIds.has(block.id);
+  const selectedClass = selected ? " is-selected" : "";
+  const previewMode = previewDayBlockIds.has(block.id);
+  const previewClass = previewMode ? " is-previewing" : "";
+  const remoteSelectors = remoteSelectorsForBlock(block.id);
+  const remoteSelectedClass = remoteSelectors.length ? " is-remote-selected" : "";
+  const comments = normalizeComments(block.comments || []);
+  const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
+  const commentPanelId = `block-comments-${block.id}`;
+  const meta = block.updatedBy || block.createdBy
+    ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+    : dayBlockTypeLabel(block.type);
+  const upDisabled = isReadonlyMode || index === 0 ? " disabled" : "";
+  const downDisabled = isReadonlyMode || index === blocks.length - 1 ? " disabled" : "";
+  const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
+  const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
+  const presenceHtml = renderDayBlockPresence(block);
+  const rows = dayBlockRowsForType(block.type);
+  const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+  const toggleDisabled = block.type === "divider" ? " disabled" : disabledAttr;
+  const toggleLabel = block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成";
+  const textPlaceholder = dayBlockPlaceholderForType(block.type);
+  return `
+    <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}${previewClass}${remoteSelectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
+      <label class="day-block-select" title="选择协作块">
+        <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="选择协作块"${selected ? " checked" : ""} />
+      </label>
+      <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
+      <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${toggleLabel}"${toggleDisabled}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
+      <span class="day-block-text-wrap">
+        <span class="day-block-format-toolbar" role="toolbar" aria-label="协作块文字格式">
+          <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="bold" title="加粗" aria-label="加粗"${disabledAttr}>${icon("bold")}</button>
+          <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="italic" title="斜体" aria-label="斜体"${disabledAttr}>${icon("italic")}</button>
+          <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="code" title="行内代码" aria-label="行内代码"${disabledAttr}>${icon("code-2")}</button>
+          <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="link" title="链接" aria-label="链接"${disabledAttr}>${icon("link")}</button>
+          <button type="button" data-toggle-day-block-preview="${escapeHtml(block.id)}" title="${previewMode ? "编辑" : "预览"}" aria-label="${previewMode ? "切回编辑" : "预览富文本"}">${icon(previewMode ? "pencil" : "eye")}</button>
+        </span>
+        <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}" placeholder="${escapeHtml(textPlaceholder)}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
+        ${renderDayBlockMarkdownPreview(block, previewMode)}
+        ${renderChecklistPreview(block)}
+        ${renderDayBlockTextPresence(block)}
+      </span>
+      <button type="button" class="day-block-collapsed-text" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="展开协作块">${escapeHtml(collapsedPreview)}</button>
+      <label class="day-block-type-control" title="切换块类型">
+        <span>类型</span>
+        <select data-day-block-type="${escapeHtml(block.id)}" aria-label="切换协作块类型"${disabledAttr}>${dayBlockTypeOptions(block.type)}</select>
+      </label>
+      <span class="day-block-meta">${escapeHtml(meta)}</span>
+      ${presenceHtml}
+      <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
+      <span class="day-block-order">
+        <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
+        <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
+        <button type="button" class="icon-btn subtle" data-duplicate-day-block="${escapeHtml(block.id)}" aria-label="复制协作块"${disabledAttr}>${icon("copy")}</button>
+        <button type="button" class="icon-btn subtle" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="${collapsed ? "展开协作块" : "折叠协作块"}">${icon(collapsed ? "chevrons-down-up" : "chevrons-up-down")}</button>
+      </span>
+      <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
+      <div class="day-block-comment-panel" id="${escapeHtml(commentPanelId)}">
+        ${renderDayBlockComments(block)}
+        <form class="comment-form day-block-comment-form" data-block-comment-form="${escapeHtml(block.id)}">
+          <input data-block-comment-input="${escapeHtml(block.id)}" placeholder="${escapeHtml(placeholder)}"${disabledAttr} />
+          <button class="primary-btn" type="submit" aria-label="${replyTarget ? "回复块级评论" : "添加块级评论"}"${disabledAttr}>${icon(replyTarget ? "reply" : "send")}</button>
+        </form>
+      </div>
+    </article>
+  `;
+}
+
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
   const focusSnapshot = dayBlockFocusSnapshot();
@@ -5047,78 +5149,7 @@ function renderDayBlocks(day = currentDay()) {
   refreshDayBlocksStatusText(blocks);
   const blocksHtml = blocks.length
     ? blocks
-        .map((block, index) => {
-          const doneClass = block.done ? " is-done" : "";
-          const typeClass = ` is-${block.type || "todo"}`;
-          const collapsed = collapsedDayBlockIds.has(block.id);
-          const collapsedClass = collapsed ? " is-collapsed" : "";
-          const selected = selectedDayBlockIds.has(block.id);
-          const selectedClass = selected ? " is-selected" : "";
-          const previewMode = previewDayBlockIds.has(block.id);
-          const previewClass = previewMode ? " is-previewing" : "";
-          const remoteSelectors = remoteSelectorsForBlock(block.id);
-          const remoteSelectedClass = remoteSelectors.length ? " is-remote-selected" : "";
-          const comments = normalizeComments(block.comments || []);
-          const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
-          const commentPanelId = `block-comments-${block.id}`;
-          const meta = block.updatedBy || block.createdBy
-            ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
-            : dayBlockTypeLabel(block.type);
-          const upDisabled = isReadonlyMode || index === 0 ? " disabled" : "";
-          const downDisabled = isReadonlyMode || index === blocks.length - 1 ? " disabled" : "";
-          const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
-          const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
-          const presenceHtml = renderDayBlockPresence(block);
-          const rows = dayBlockRowsForType(block.type);
-          const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
-          const toggleDisabled = block.type === "divider" ? " disabled" : disabledAttr;
-          const toggleLabel = block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成";
-          const textPlaceholder = dayBlockPlaceholderForType(block.type);
-          return `
-            <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}${previewClass}${remoteSelectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
-              <label class="day-block-select" title="选择协作块">
-                <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="选择协作块"${selected ? " checked" : ""} />
-              </label>
-              <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
-              <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${toggleLabel}"${toggleDisabled}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
-              <span class="day-block-text-wrap">
-                <span class="day-block-format-toolbar" role="toolbar" aria-label="协作块文字格式">
-                  <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="bold" title="加粗" aria-label="加粗"${disabledAttr}>${icon("bold")}</button>
-                  <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="italic" title="斜体" aria-label="斜体"${disabledAttr}>${icon("italic")}</button>
-                  <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="code" title="行内代码" aria-label="行内代码"${disabledAttr}>${icon("code-2")}</button>
-                  <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="link" title="链接" aria-label="链接"${disabledAttr}>${icon("link")}</button>
-                  <button type="button" data-toggle-day-block-preview="${escapeHtml(block.id)}" title="${previewMode ? "编辑" : "预览"}" aria-label="${previewMode ? "切回编辑" : "预览富文本"}">${icon(previewMode ? "pencil" : "eye")}</button>
-                </span>
-                <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}" placeholder="${escapeHtml(textPlaceholder)}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
-                ${renderDayBlockMarkdownPreview(block, previewMode)}
-                ${renderChecklistPreview(block)}
-                ${renderDayBlockTextPresence(block)}
-              </span>
-              <button type="button" class="day-block-collapsed-text" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="展开协作块">${escapeHtml(collapsedPreview)}</button>
-              <label class="day-block-type-control" title="切换块类型">
-                <span>类型</span>
-                <select data-day-block-type="${escapeHtml(block.id)}" aria-label="切换协作块类型"${disabledAttr}>${dayBlockTypeOptions(block.type)}</select>
-              </label>
-              <span class="day-block-meta">${escapeHtml(meta)}</span>
-              ${presenceHtml}
-              <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
-              <span class="day-block-order">
-                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
-                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
-                <button type="button" class="icon-btn subtle" data-duplicate-day-block="${escapeHtml(block.id)}" aria-label="复制协作块"${disabledAttr}>${icon("copy")}</button>
-                <button type="button" class="icon-btn subtle" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="${collapsed ? "展开协作块" : "折叠协作块"}">${icon(collapsed ? "chevrons-down-up" : "chevrons-up-down")}</button>
-              </span>
-              <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
-              <div class="day-block-comment-panel" id="${escapeHtml(commentPanelId)}">
-                ${renderDayBlockComments(block)}
-                <form class="comment-form day-block-comment-form" data-block-comment-form="${escapeHtml(block.id)}">
-                  <input data-block-comment-input="${escapeHtml(block.id)}" placeholder="${escapeHtml(placeholder)}"${disabledAttr} />
-                  <button class="primary-btn" type="submit" aria-label="${replyTarget ? "回复块级评论" : "添加块级评论"}"${disabledAttr}>${icon(replyTarget ? "reply" : "send")}</button>
-                </form>
-              </div>
-            </article>
-          `;
-        })
+        .map((block, index) => renderDayBlockHtml(block, index, blocks, disabledAttr))
         .join("")
     : `<div class="empty-state">还没有协作块，可以添加待办、备注、决定、标题或提醒。</div>`;
   dom.dayBlockList.innerHTML = `${renderDayBlockBulkBar(blocks)}${blocksHtml}`;
@@ -5510,6 +5541,7 @@ async function duplicateSelectedDayBlocks(day) {
   let workingBlocks = blocks;
   let insertedCount = 0;
   let lastAddedId = "";
+  const insertedIds = [];
   for (const block of selectedBlocks) {
     const sourceIndex = workingBlocks.findIndex((item) => item.id === block.id);
     if (sourceIndex < 0) continue;
@@ -5523,6 +5555,7 @@ async function duplicateSelectedDayBlocks(day) {
     workingBlocks = insertDayBlockList(workingBlocks, addedBlock, insertIndex);
     insertedCount += 1;
     lastAddedId = addedBlock.id;
+    insertedIds.push(addedBlock.id);
   }
   if (!insertedCount) {
     let fallbackBlocks = blocks;
@@ -5534,6 +5567,7 @@ async function duplicateSelectedDayBlocks(day) {
       fallbackBlocks = insertDayBlockList(fallbackBlocks, duplicateBlock, sourceIndex + 1);
       insertedCount += 1;
       lastAddedId = duplicateBlock.id;
+      insertedIds.push(duplicateBlock.id);
     }
     if (insertedCount && mutate("批量复制协作块", () => {
       currentDay().blocks = fallbackBlocks;
@@ -5550,7 +5584,7 @@ async function duplicateSelectedDayBlocks(day) {
   day.blocks = normalizeDayBlocks(workingBlocks);
   clearSelectedDayBlocks();
   activeBlockPresenceId = lastAddedId || activeBlockPresenceId;
-  renderDayBlocks(day);
+  if (!refreshDayBlockInsertDom(day, insertedIds, lastAddedId)) renderDayBlocks(day);
   schedulePresenceTrack(0);
   if (lastAddedId) focusDayBlockInput(lastAddedId);
   await logActivity(`批量复制 ${insertedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-duplicate" } });
@@ -13038,7 +13072,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (added) {
       const addedBlock = added === true ? duplicateBlock : added;
       day.blocks = insertDayBlockList(day.blocks || [], addedBlock, insertIndex);
-      renderDayBlocks(day);
+      if (!refreshDayBlockInsertDom(day, [addedBlock.id], addedBlock.id)) renderDayBlocks(day);
       focusDayBlockInput(addedBlock.id);
       await logActivity(`复制协作块「${sourceBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: "duplicate", sourceBlockId }) });
       await saveCollaborativePlanChange("已复制协作块");
@@ -13049,7 +13083,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       currentDay().blocks = insertDayBlockList(currentDay().blocks || [], duplicateBlock, insertIndex);
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-duplicate-fallback");
-    renderDayBlocks(currentDay());
+    if (!refreshDayBlockInsertDom(currentDay(), [duplicateBlock.id], duplicateBlock.id)) renderDayBlocks(currentDay());
     focusDayBlockInput(duplicateBlock.id);
     await logActivity(`复制协作块「${sourceBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, duplicateBlock.id, { action: "duplicate", sourceBlockId }) });
     await saveCollaborativePlanChange("已复制协作块");
@@ -13411,7 +13445,8 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
         item.id === blockId ? { ...item, ...visibleSplitPatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
       )));
       day.blocks = insertDayBlockList(withSplitText, addedBlock, insertIndex);
-      renderDayBlocks(day);
+      if (!refreshDayBlockTextDom(day, [blockId])) renderDayBlocks(day);
+      if (!refreshDayBlockInsertDom(day, [addedBlock.id], addedBlock.id)) renderDayBlocks(day);
       focusDayBlockInput(addedBlock.id);
       await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
       await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
@@ -13425,7 +13460,8 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       currentDay().blocks = insertDayBlockList(splitBlocks, newBlock, insertIndex);
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-add-fallback");
-    renderDayBlocks(currentDay());
+    if (!refreshDayBlockTextDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
+    if (!refreshDayBlockInsertDom(currentDay(), [newBlock.id], newBlock.id)) renderDayBlocks(currentDay());
     focusDayBlockInput(newBlock.id);
     await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
     await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
@@ -13439,7 +13475,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-delete-empty")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       activeBlockPresenceId = previousBlockId;
-      renderDayBlocks(day);
+      if (!refreshDayBlockDeleteDom(day, [blockId])) renderDayBlocks(day);
       focusDayBlockInput(previousBlockId);
       await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
       await saveCollaborativePlanChange("已删除空白协作块");
@@ -13451,7 +13487,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-delete-empty-fallback");
     activeBlockPresenceId = previousBlockId;
-    renderDayBlocks(currentDay());
+    if (!refreshDayBlockDeleteDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     focusDayBlockInput(previousBlockId);
     await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
     await saveCollaborativePlanChange("已删除空白协作块");
