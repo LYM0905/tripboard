@@ -4307,6 +4307,17 @@ function refreshDayCommentMutationViews(day = currentDay()) {
   return true;
 }
 
+function refreshStopInteractionViews(stop = currentStop()) {
+  if (!stop) return false;
+  dom.favoriteBtn?.classList.toggle("selected", Boolean(stop.favorite));
+  dom.mustVote?.classList.toggle("is-active", Boolean(stop.userVoted));
+  if (dom.voteCount) dom.voteCount.textContent = stop.votes || 0;
+  if (dom.commentCount) dom.commentCount.textContent = (stop.comments || []).length;
+  renderTimeline();
+  refreshIcons();
+  return true;
+}
+
 function dayBlockTypeLabel(type = "todo") {
   if (type === "checklist") return "检查清单";
   if (type === "divider") return "分隔线";
@@ -12580,7 +12591,7 @@ dom.mustVote.addEventListener("click", async () => {
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-vote-toggle-fallback");
   await saveCollaborativeTextChange("更新必去投票");
-  render();
+  refreshStopInteractionViews(currentStop());
 });
 
 dom.favoriteBtn.addEventListener("click", async () => {
@@ -12597,7 +12608,7 @@ dom.favoriteBtn.addEventListener("click", async () => {
   }, { save: false, render: false })) return;
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-favorite-toggle-fallback");
   await saveCollaborativeTextChange("更新收藏");
-  render();
+  refreshStopInteractionViews(currentStop());
 });
 
 dom.commentForm.addEventListener("submit", async (event) => {
