@@ -4619,6 +4619,21 @@ async function saveDayBlockTextChange(day, block, nextText, action = "text-forma
   return true;
 }
 
+async function formatDayBlockInput(day, block, input, format = "bold") {
+  if (!day || !block?.id || !input) return false;
+  const formatted = dayBlockFormattedText(input.value, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, format);
+  const saved = await saveDayBlockTextChange(day, block, formatted.text, `format-${format}`, "已格式化协作块文本");
+  if (saved) {
+    requestAnimationFrame(() => {
+      const nextInput = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(block.id)}"]`);
+      if (!nextInput) return;
+      nextInput.focus();
+      nextInput.setSelectionRange?.(formatted.selectionStart, formatted.selectionEnd);
+    });
+  }
+  return saved;
+}
+
 async function saveChecklistTextChange(day, block, nextText, action = "checklist-update") {
   if (!day || !block?.id || block.type !== "checklist" || !requireEdit("更新检查清单")) return false;
   activeBlockPresenceId = block.id;
@@ -11801,16 +11816,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const input = blockElement?.querySelector("[data-edit-day-block]");
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!input || !block) return;
-    const formatted = dayBlockFormattedText(input.value, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, formatButton.dataset.format || "bold");
-    const saved = await saveDayBlockTextChange(day, block, formatted.text, `format-${formatButton.dataset.format || "bold"}`, "已格式化协作块文本");
-    if (saved) {
-      requestAnimationFrame(() => {
-        const nextInput = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(blockId)}"]`);
-        if (!nextInput) return;
-        nextInput.focus();
-        nextInput.setSelectionRange?.(formatted.selectionStart, formatted.selectionEnd);
-      });
-    }
+    await formatDayBlockInput(day, block, input, formatButton.dataset.format || "bold");
     return;
   }
   const deleteChecklistButton = event.target.closest("[data-delete-checklist-item]");
@@ -12329,6 +12335,21 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   const blockIndex = blocks.findIndex((block) => block.id === blockId);
   const block = blockIndex >= 0 ? blocks[blockIndex] : null;
   if (!day || !block) return;
+  const shortcutKey = String(event.key || "").toLowerCase();
+  const formatShortcut = (event.ctrlKey || event.metaKey) && !event.altKey
+    ? shortcutKey === "b"
+      ? "bold"
+      : shortcutKey === "i"
+        ? "italic"
+        : shortcutKey === "e" || event.key === "`"
+          ? "code"
+          : ""
+    : "";
+  if (formatShortcut) {
+    event.preventDefault();
+    await formatDayBlockInput(day, block, input, formatShortcut);
+    return;
+  }
   if (event.key === "Tab") {
     event.preventDefault();
     if (!requireEdit(event.shiftKey ? "减少协作块缩进" : "增加协作块缩进")) return;
