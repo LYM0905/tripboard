@@ -4659,6 +4659,34 @@ function refreshDayBlockDoneDom(day = currentDay(), blockIds = []) {
   return updated;
 }
 
+function refreshDayBlockLevelDom(day = currentDay(), blockIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let updated = false;
+  for (const blockId of blockIds) {
+    const block = blocks.find((item) => item.id === blockId);
+    const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+    if (!block || !blockElement) return false;
+    const level = Math.max(0, Math.min(Number(block.level) || 0, 3));
+    blockElement.dataset.blockLevel = String(level);
+    blockElement.style.setProperty("--block-level", String(level));
+    const metaElement = blockElement.querySelector(".day-block-meta");
+    if (metaElement) {
+      metaElement.textContent = block.updatedBy || block.createdBy
+        ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+        : dayBlockTypeLabel(block.type);
+    }
+    refreshDayBlockOverlayDom(block);
+    updated = true;
+  }
+  if (updated) {
+    refreshDayBlockSelectionDom(day);
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return updated;
+}
+
 function refreshDayBlockPreviewDom(day = currentDay(), blockId = "") {
   if (!day || !dom.dayBlockList || !blockId) return false;
   const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
@@ -5219,7 +5247,11 @@ async function indentSelectedDayBlocks(day, delta = 1) {
     dom.saveState.textContent = delta > 0 ? "所选块已经达到最大缩进" : "所选块已经没有缩进";
     return false;
   }
-  renderDayBlocks(day);
+  const changedIds = selectedBlocks.map((block) => block.id).filter((blockId) => {
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    return block && selectedDayBlockIds.has(block.id);
+  });
+  if (!refreshDayBlockLevelDom(day, changedIds)) renderDayBlocks(day);
   await logActivity(`${delta > 0 ? "批量增加" : "批量减少"} ${changedCount} 个协作块缩进`, { target: { type: "day", dayId: day.id || "", action: delta > 0 ? "bulk-block-indent" : "bulk-block-outdent" } });
   await saveCollaborativePlanChange(delta > 0 ? "已批量增加协作块缩进" : "已批量减少协作块缩进");
   dom.saveState.textContent = delta > 0 ? `已缩进 ${changedCount} 个块` : `已取消缩进 ${changedCount} 个块`;
@@ -12925,7 +12957,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     const patch = { level: nextLevel };
     if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-indent")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
+      if (!refreshDayBlockLevelDom(day, [blockId])) renderDayBlocks(day);
       focusDayBlockInput(blockId);
       await logActivity(`${event.shiftKey ? "减少" : "增加"}协作块缩进`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
       await saveCollaborativePlanChange("已调整协作块缩进");
@@ -12936,7 +12968,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-indent-fallback");
-    renderDayBlocks(currentDay());
+    if (!refreshDayBlockLevelDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     focusDayBlockInput(blockId);
     await logActivity(`${event.shiftKey ? "减少" : "增加"}协作块缩进`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
     await saveCollaborativePlanChange("已调整协作块缩进");
