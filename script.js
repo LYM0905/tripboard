@@ -4198,12 +4198,18 @@ function checklistTextWithToggledItem(text = "", sourceIndex = 0) {
   return lines.join("\n").trim();
 }
 
+function checklistTextWithAddedItem(text = "", itemText = "") {
+  const cleanText = String(itemText || "").trim();
+  if (!cleanText) return String(text || "").trim();
+  return [...String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean), checklistLineWithDone(cleanText, false)].join("\n").trim();
+}
+
 function renderChecklistPreview(block) {
   if (block.type !== "checklist") return "";
   const items = checklistLineParts(block.text || "");
-  if (!items.length) return `<div class="day-block-checklist-preview is-empty">每行一个检查项，可用 [x] 标记完成</div>`;
   return `
-    <div class="day-block-checklist-preview" aria-label="检查清单项">
+    <div class="day-block-checklist-preview${items.length ? "" : " is-empty"}" aria-label="检查清单项">
+      ${items.length ? "" : `<p>每行一个检查项，可用 [x] 标记完成</p>`}
       ${items.slice(0, 6).map((item) => `
         <button type="button" class="${item.done ? "is-done" : ""}" data-toggle-checklist-item="${item.sourceIndex}" aria-label="${item.done ? "取消完成" : "标记完成"}：${escapeHtml(item.text)}">
           ${icon(item.done ? "check-square" : "square")}
@@ -4211,6 +4217,10 @@ function renderChecklistPreview(block) {
         </button>
       `).join("")}
       ${items.length > 6 ? `<small>还有 ${items.length - 6} 项</small>` : ""}
+      <form class="day-block-checklist-add" data-add-checklist-item="${escapeHtml(block.id)}">
+        <input type="text" data-add-checklist-input="${escapeHtml(block.id)}" placeholder="新增检查项" />
+        <button type="submit" aria-label="新增检查项">${icon("plus")}</button>
+      </form>
     </div>
   `;
 }
@@ -4508,6 +4518,32 @@ async function applyDayBlockCommandSelection(input, index = activeDayBlockComman
     requireLabel: "使用协作块命令",
     status: "已使用协作块命令",
   });
+}
+
+async function saveChecklistTextChange(day, block, nextText, action = "checklist-update") {
+  if (!day || !block?.id || block.type !== "checklist" || !requireEdit("更新检查清单")) return false;
+  activeBlockPresenceId = block.id;
+  schedulePresenceTrack(0);
+  noteRemoteBlockEditors(block.id, "更新检查清单");
+  const origin = `local-day-block-${action}`;
+  const updatedText = await updateDayBlockTextInDoc(day.id, block.id, nextText, origin);
+  if (updatedText) {
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+      item.id === block.id ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+    )));
+    renderDayBlocks(day);
+    await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+    await saveCollaborativePlanChange("已更新检查清单");
+    return true;
+  }
+  if (!mutate("更新检查清单", () => {
+    currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, text: nextText } : item)));
+  }, { requireUnlocked: false, save: false, render: false })) return false;
+  await syncDayBlocksToDoc(day.id, `${origin}-fallback`);
+  await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+  await saveCollaborativePlanChange("已更新检查清单");
+  render();
+  return true;
 }
 
 async function setSelectedDayBlockType(day, nextType) {
@@ -11666,26 +11702,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!block || block.type !== "checklist" || !requireEdit("更新检查清单")) return;
     const nextText = checklistTextWithToggledItem(block.text || "", checklistButton.dataset.toggleChecklistItem);
-    activeBlockPresenceId = blockId;
-    schedulePresenceTrack(0);
-    noteRemoteBlockEditors(blockId, "更新检查清单");
-    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, nextText, "local-day-block-checklist-toggle");
-    if (updatedText) {
-      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
-        item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
-      )));
-      renderDayBlocks(day);
-      await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "checklist-toggle" }) });
-      await saveCollaborativePlanChange("已更新检查清单");
-      return;
-    }
-    if (!mutate("更新检查清单", () => {
-      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, text: nextText } : item)));
-    }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(day.id, "local-day-block-checklist-toggle-fallback");
-    await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "checklist-toggle" }) });
-    await saveCollaborativePlanChange("已更新检查清单");
-    render();
+    await saveChecklistTextChange(day, block, nextText, "checklist-toggle");
     return;
   }
   const bulkButton = event.target.closest("[data-day-block-bulk]");
@@ -11979,6 +11996,24 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
 });
 
 dom.dayBlockList?.addEventListener("submit", async (event) => {
+  const checklistForm = event.target.closest("[data-add-checklist-item]");
+  if (checklistForm) {
+    event.preventDefault();
+    const day = currentDay();
+    const blockId = checklistForm.dataset.addChecklistItem || "";
+    const input = checklistForm.querySelector("[data-add-checklist-input]");
+    const text = input?.value?.trim() || "";
+    const block = normalizeDayBlocks(day?.blocks || []).find((item) => item.id === blockId);
+    if (!text || !day || !block) return;
+    const saved = await saveChecklistTextChange(day, block, checklistTextWithAddedItem(block.text || "", text), "checklist-add-item");
+    if (saved && input) {
+      input.value = "";
+      requestAnimationFrame(() => {
+        dom.dayBlockList?.querySelector(`[data-add-checklist-input="${CSS.escape(blockId)}"]`)?.focus();
+      });
+    }
+    return;
+  }
   const form = event.target.closest("[data-block-comment-form]");
   if (!form) return;
   event.preventDefault();
