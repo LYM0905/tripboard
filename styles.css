@@ -353,6 +353,21 @@ button {
   font-size: 12px;
 }
 
+.budget-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.budget-actions .text-btn {
+  width: 100%;
+  min-height: 34px;
+  justify-content: center;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 .budget-tools {
   display: grid;
   gap: 8px;

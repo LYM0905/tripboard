@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260619-activity-day-stop-local" />
+    <link rel="stylesheet" href="styles.css?v=20260619-budget-weather-media-local" />
   </head>
   <body>
     <div class="app-shell">
@@ -84,6 +84,10 @@
           </div>
           <div class="meter" aria-hidden="true"><span id="budgetMeter"></span></div>
           <div class="budget-grid" id="budgetGrid"></div>
+          <div class="budget-actions">
+            <button type="button" class="text-btn" id="budgetAdoptEstimatesBtn"><i data-lucide="ticket-check"></i>采用门票估算</button>
+            <button type="button" class="text-btn" id="budgetEnrichPlacesBtn"><i data-lucide="image-plus"></i>补全地点图片</button>
+          </div>
           <div class="budget-tools">
             <label>
               同行人数
@@ -715,7 +719,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260619-activity-day-stop-local"></script>
-    <script src="script.js?v=20260619-activity-day-stop-local"></script>
+    <script src="config.js?v=20260619-budget-weather-media-local"></script>
+    <script src="script.js?v=20260619-budget-weather-media-local"></script>
   </body>
 </html>

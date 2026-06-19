@@ -8124,6 +8124,8 @@ const dom = {
   budgetTotal: document.querySelector("#budgetTotal"),
   budgetMeter: document.querySelector("#budgetMeter"),
   budgetGrid: document.querySelector("#budgetGrid"),
+  budgetAdoptEstimatesBtn: document.querySelector("#budgetAdoptEstimatesBtn"),
+  budgetEnrichPlacesBtn: document.querySelector("#budgetEnrichPlacesBtn"),
   partySizeInput: document.querySelector("#partySizeInput"),
   budgetLimitInput: document.querySelector("#budgetLimitInput"),
   budgetSettlement: document.querySelector("#budgetSettlement"),
@@ -10946,8 +10948,12 @@ function renderBudgetCombo() {
     <span>已选交通 ${selectedTransportCount} 项 · 预选备选 ${selectedCandidateCount} 项</span>
     <div class="budget-combo-categories">${categoryRows || "<span>暂无可汇总项目</span>"}</div>
     <div class="budget-combo-items">${itemRows || "<span>勾选交通或备选地点后显示组合明细</span>"}${extraCount ? `<span>还有 ${extraCount} 项已纳入组合</span>` : ""}</div>
-    ${estimateRows ? `<div class="budget-ticket-hints">${estimateRows}</div>` : ""}
+    ${estimateRows ? `<div class="budget-ticket-hints">${estimateRows}</div>` : "<div class=\"budget-ticket-hints\"><span><b>当前没有待采用的门票估算</b></span></div>"}
   `;
+}
+
+function budgetEstimateEntries() {
+  return budgetComboSummary().estimates.filter((item) => item.refType === "stop" || item.refType === "candidate");
 }
 
 async function applyBudgetEstimateFromToken(token = "") {
@@ -10996,6 +11002,152 @@ async function applyBudgetEstimateFromToken(token = "") {
     return;
   }
   dom.saveState.textContent = "这条预算估算暂时不能自动采用。";
+}
+
+async function adoptAllBudgetEstimates() {
+  if (!requireEdit("批量采用门票估算")) return;
+  const entries = budgetEstimateEntries();
+  if (!entries.length) {
+    dom.saveState.textContent = "当前没有可采用的门票估算。";
+    return;
+  }
+  saveVersionSnapshot("批量采用门票估算前版本");
+  let stopCount = 0;
+  let candidateCount = 0;
+  const changedDayIds = new Set();
+  for (const item of entries) {
+    if (item.refType === "stop") {
+      const day = state.days.find((entry) => entry.id === item.dayId);
+      const stop = day?.stops?.find((entry) => entry.id === item.itemId);
+      const estimate = inferTicketPrice(stop);
+      if (!day || !stop || !estimate || numberValue(stop.budget)) continue;
+      stop.budget = estimate;
+      stop.tags = Array.from(new Set([...(stop.tags || []), "门票估算待确认"]));
+      changedDayIds.add(day.id);
+      stopCount += 1;
+    } else if (item.refType === "candidate") {
+      const candidate = (state.candidates || []).find((entry) => entry.id === item.itemId);
+      const estimate = inferTicketPrice(candidate);
+      if (!candidate || !estimate || numberValue(candidate.budget)) continue;
+      candidate.budget = estimate;
+      candidate.tags = Array.from(new Set([...(candidate.tags || []), "门票估算待确认"]));
+      candidateCount += 1;
+    }
+  }
+  if (!stopCount && !candidateCount) {
+    dom.saveState.textContent = "没有新的门票估算需要写入。";
+    return;
+  }
+  for (const dayId of changedDayIds) {
+    await syncStopListToDoc(dayId, "local-budget-estimates-batch");
+  }
+  if (candidateCount) await syncCandidatesToDoc("local-candidate-budget-estimates-batch");
+  await logActivity(`批量采用门票估算 ${stopCount + candidateCount} 项`, { target: budgetSettingActivityTarget("budgetLimit", { action: "batch-estimate" }) });
+  await saveCollaborativePlanChange("批量采用门票估算");
+  render();
+  dom.saveState.textContent = `已采用 ${stopCount + candidateCount} 项门票估算，请出行前核对官方票价。`;
+}
+
+function stopPlaceLookupKeyword(stop = {}) {
+  return [stop.amapKeyword, stop.address, stop.title]
+    .map((value) => String(value || "").trim())
+    .find(Boolean) || "";
+}
+
+function isDefaultTripboardImage(value = "") {
+  const url = String(value || "").trim();
+  if (!url) return true;
+  return Object.values(images).includes(url) || /images\.unsplash\.com/.test(url);
+}
+
+function applyPlaceToStop(stop, place) {
+  if (!stop || !place) return false;
+  let changed = false;
+  if (!stop.address && place.address) {
+    stop.address = place.address;
+    changed = true;
+  }
+  if (!stop.lng && place.lng) {
+    stop.lng = place.lng;
+    changed = true;
+  }
+  if (!stop.lat && place.lat) {
+    stop.lat = place.lat;
+    changed = true;
+  }
+  if (place.image && isDefaultTripboardImage(stop.image)) {
+    stop.image = place.image;
+    changed = true;
+  }
+  if (!stop.amapKeyword && (place.title || stop.title)) {
+    stop.amapKeyword = place.title || stop.title;
+    changed = true;
+  }
+  return changed;
+}
+
+async function enrichPlacesFromAmap() {
+  if (!requireEdit("补全地点图片")) return;
+  if (!serviceConfig.amapEndpoint) {
+    dom.saveState.textContent = "请先在服务配置里填写高德地点代理地址，才能自动补全地点图片和坐标。";
+    return;
+  }
+  const candidates = [];
+  state.days.forEach((day) => {
+    (day.stops || []).forEach((stop) => {
+      const needsPlace = !stop.lng || !stop.lat || !stop.address || isDefaultTripboardImage(stop.image);
+      const keyword = stopPlaceLookupKeyword(stop);
+      if (needsPlace && keyword) candidates.push({ type: "stop", day, stop, keyword });
+    });
+  });
+  (state.candidates || []).forEach((stop) => {
+    const needsPlace = !stop.lng || !stop.lat || !stop.address || isDefaultTripboardImage(stop.image);
+    const keyword = stopPlaceLookupKeyword(stop);
+    if (needsPlace && keyword) candidates.push({ type: "candidate", stop, keyword });
+  });
+  if (!candidates.length) {
+    dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
+    return;
+  }
+  saveVersionSnapshot("补全地点图片前版本");
+  dom.saveState.textContent = `正在通过高德补全 ${Math.min(candidates.length, 12)} 个地点...`;
+  const changedDayIds = new Set();
+  let changedStops = 0;
+  let changedCandidates = 0;
+  let imageCount = 0;
+  let checked = 0;
+  for (const item of candidates.slice(0, 12)) {
+    checked += 1;
+    try {
+      const places = await lookupAmapPlaces(item.keyword, { limit: 3 });
+      const place = Array.isArray(places) ? places.find((entry) => entry.image) || places[0] : null;
+      if (!place) continue;
+      const hadRealImage = !isDefaultTripboardImage(item.stop.image);
+      if (applyPlaceToStop(item.stop, place)) {
+        if (item.type === "stop") {
+          changedDayIds.add(item.day.id);
+          changedStops += 1;
+        } else {
+          changedCandidates += 1;
+        }
+        if (!hadRealImage && item.stop.image && !isDefaultTripboardImage(item.stop.image)) imageCount += 1;
+      }
+    } catch (error) {
+      console.warn("Amap place enrichment failed", item.keyword, error);
+    }
+  }
+  for (const dayId of changedDayIds) {
+    await syncStopListToDoc(dayId, "local-amap-place-enrich");
+  }
+  if (changedCandidates) await syncCandidatesToDoc("local-amap-candidate-enrich");
+  if (!changedStops && !changedCandidates) {
+    dom.saveState.textContent = `已查询 ${checked} 个地点，高德没有返回可写入的新坐标或图片。`;
+    return;
+  }
+  await logActivity(`补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张`);
+  await saveCollaborativePlanChange("补全地点图片和坐标");
+  render();
+  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张；图片来自高德 POI 返回，请按需核对。`;
 }
 
 function categoryBudget() {
@@ -11067,6 +11219,15 @@ function renderShell() {
     ${settlement.missingPayer ? `<span>未指定付款人 ${money(settlement.missingPayer)}，建议先补充付款人</span>` : ""}
   `;
   if (dom.budgetCombo) dom.budgetCombo.innerHTML = renderBudgetCombo();
+  if (dom.budgetAdoptEstimatesBtn) {
+    const estimateCount = budgetEstimateEntries().length;
+    dom.budgetAdoptEstimatesBtn.disabled = !canEdit() || !estimateCount;
+    dom.budgetAdoptEstimatesBtn.innerHTML = `${icon("ticket-check")}<span>${estimateCount ? `采用 ${estimateCount} 项估算` : "无待采用估算"}</span>`;
+  }
+  if (dom.budgetEnrichPlacesBtn) {
+    dom.budgetEnrichPlacesBtn.disabled = !canEdit();
+    dom.budgetEnrichPlacesBtn.innerHTML = `${icon("image-plus")}<span>补全地点图片</span>`;
+  }
 
 }
 
@@ -14080,6 +14241,9 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
   await syncTransportQuotesToDoc("local-transport-quote-fallback");
   await saveCollaborativePlanChange(`保存交通报价「${code}」`);
 });
+
+dom.budgetAdoptEstimatesBtn?.addEventListener("click", adoptAllBudgetEstimates);
+dom.budgetEnrichPlacesBtn?.addEventListener("click", enrichPlacesFromAmap);
 
 dom.partySizeInput.addEventListener("change", async () => {
   if (!requireEdit("更新同行人数")) return;
