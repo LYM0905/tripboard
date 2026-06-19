@@ -12437,7 +12437,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     blockCommentFilters[blockId] = filterBlockCommentButton.dataset.blockCommentFilter || "all";
-    renderDayBlocks(day);
+    if (!refreshDayBlockCommentsDom(day, blockId)) renderDayBlocks(day);
     return;
   }
   const blockAnchorButton = event.target.closest("[data-block-comment-anchor]");
