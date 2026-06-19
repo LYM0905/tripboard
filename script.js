@@ -4211,6 +4211,17 @@ function checklistTextWithoutItem(text = "", sourceIndex = 0) {
   return lines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
 }
 
+function checklistTextWithMovedItem(text = "", sourceIndex = 0, direction = "down") {
+  const lines = String(text || "").split(/\r?\n/);
+  const index = Math.max(0, Math.min(Number(sourceIndex) || 0, lines.length - 1));
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= lines.length) return lines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
+  const nextLines = [...lines];
+  const [item] = nextLines.splice(index, 1);
+  nextLines.splice(targetIndex, 0, item);
+  return nextLines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
+}
+
 function renderChecklistPreview(block) {
   if (block.type !== "checklist") return "";
   const items = checklistLineParts(block.text || "");
@@ -4223,6 +4234,10 @@ function renderChecklistPreview(block) {
             ${icon(item.done ? "check-square" : "square")}
             <b>${escapeHtml(item.text)}</b>
           </button>
+          <span class="day-block-checklist-move">
+            <button type="button" data-move-checklist-item="${item.sourceIndex}" data-direction="up" aria-label="上移检查项：${escapeHtml(item.text)}"${item.visibleIndex === 0 ? " disabled" : ""}>${icon("chevron-up")}</button>
+            <button type="button" data-move-checklist-item="${item.sourceIndex}" data-direction="down" aria-label="下移检查项：${escapeHtml(item.text)}"${item.visibleIndex === items.length - 1 ? " disabled" : ""}>${icon("chevron-down")}</button>
+          </span>
           <button type="button" class="day-block-checklist-delete" data-delete-checklist-item="${item.sourceIndex}" aria-label="删除检查项：${escapeHtml(item.text)}">${icon("x")}</button>
         </span>
       `).join("")}
@@ -11714,6 +11729,18 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!block || block.type !== "checklist") return;
     const nextText = checklistTextWithoutItem(block.text || "", deleteChecklistButton.dataset.deleteChecklistItem);
     await saveChecklistTextChange(day, block, nextText, "checklist-delete-item");
+    return;
+  }
+  const moveChecklistButton = event.target.closest("[data-move-checklist-item]");
+  if (moveChecklistButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const blockElement = moveChecklistButton.closest("[data-day-block]");
+    const blockId = blockElement?.dataset.dayBlock || "";
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || block.type !== "checklist") return;
+    const nextText = checklistTextWithMovedItem(block.text || "", moveChecklistButton.dataset.moveChecklistItem, moveChecklistButton.dataset.direction || "down");
+    await saveChecklistTextChange(day, block, nextText, "checklist-move-item");
     return;
   }
   const checklistButton = event.target.closest("[data-toggle-checklist-item]");

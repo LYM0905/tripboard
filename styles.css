@@ -2551,7 +2551,7 @@ button:disabled {
 
 .day-block-checklist-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px;
+  grid-template-columns: minmax(0, 1fr) 46px 24px;
   gap: 6px;
   align-items: center;
 }
@@ -2588,6 +2588,30 @@ button:disabled {
 .day-block-checklist-delete:hover {
   color: var(--danger);
   background: rgba(194, 83, 83, 0.08);
+}
+
+.day-block-checklist-move {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+}
+
+.day-block-checklist-move button {
+  display: grid;
+  place-items: center;
+  min-height: 24px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.day-block-checklist-move button:hover:not(:disabled) {
+  color: var(--green);
+  background: rgba(49, 111, 91, 0.08);
+}
+
+.day-block-checklist-move button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .day-block-checklist-preview i {
