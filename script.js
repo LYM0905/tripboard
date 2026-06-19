@@ -100,7 +100,7 @@ const PLAN_SETTING_FIELDS = [
   { field: "editKeyHint", type: "string" },
 ];
 const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "dateRange", "startDate", "endDate", "cover", "editKeyHint"];
-const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading", "callout", "quote"];
+const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading", "callout", "quote", "divider"];
 const DAY_BLOCK_COMMANDS = [
   { type: "todo", command: "/todo", aliases: ["/待办", "/task"], label: "待办", description: "确认事项、清单、办理步骤", keywords: ["待办", "任务", "清单", "todo", "task"] },
   { type: "note", command: "/note", aliases: ["/备注", "/memo"], label: "备注", description: "普通文字、补充信息、想法", keywords: ["备注", "笔记", "文字", "note", "memo"] },
@@ -108,6 +108,7 @@ const DAY_BLOCK_COMMANDS = [
   { type: "heading", command: "/heading", aliases: ["/h", "/h2", "/标题"], label: "标题", description: "分隔当天行程段落", keywords: ["标题", "分组", "heading", "h2"] },
   { type: "callout", command: "/callout", aliases: ["/tip", "/提醒", "/提示", "/注意"], label: "提醒", description: "证件、预约、天气、避峰提示", keywords: ["提醒", "提示", "注意", "callout", "tip"] },
   { type: "quote", command: "/quote", aliases: ["/引用", "/摘录"], label: "引用", description: "资料摘录、攻略原文、参考信息", keywords: ["引用", "摘录", "攻略", "quote"] },
+  { type: "divider", command: "/divider", aliases: ["/line", "/hr", "/分隔线", "/分割线"], label: "分隔线", description: "把当天行程拆成清晰段落", keywords: ["分隔", "分割", "段落", "divider", "line", "hr"] },
 ];
 
 const images = {
@@ -2521,7 +2522,7 @@ function normalizeDayBlock(block = {}) {
     level,
     text,
     textYjs: block.textYjs || "",
-    done: Boolean(block.done),
+    done: type === "divider" ? false : Boolean(block.done),
     comments,
     createdBy: block.createdBy || "",
     createdAt: block.createdAt || new Date().toISOString(),
@@ -4071,6 +4072,7 @@ function renderDayComments(day = currentDay()) {
 }
 
 function dayBlockTypeLabel(type = "todo") {
+  if (type === "divider") return "分隔线";
   if (type === "quote") return "引用";
   if (type === "callout") return "提醒";
   if (type === "heading") return "标题";
@@ -4080,6 +4082,7 @@ function dayBlockTypeLabel(type = "todo") {
 }
 
 function dayBlockIcon(type = "todo") {
+  if (type === "divider") return "minus";
   if (type === "quote") return "quote";
   if (type === "callout") return "info";
   if (type === "heading") return "heading-2";
@@ -4168,6 +4171,8 @@ function dayBlockMarkdownShortcut(value = "") {
   const shortcuts = {
     "#": "heading",
     "##": "heading",
+    "---": "divider",
+    "***": "divider",
     ">": "callout",
     ">>": "quote",
     "\"": "quote",
@@ -4324,17 +4329,20 @@ function renderDayBlocks(day = currentDay()) {
           const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
           const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
           const presenceHtml = renderDayBlockPresence(block);
-          const rows = block.type === "heading" ? 1 : 2;
+          const rows = block.type === "heading" || block.type === "divider" ? 1 : 2;
           const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+          const toggleDisabled = block.type === "divider" ? " disabled" : disabledAttr;
+          const toggleLabel = block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成";
+          const textPlaceholder = block.type === "divider" ? "分隔线标题（可选）" : "";
           return `
             <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}${remoteSelectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
               <label class="day-block-select" title="选择协作块">
                 <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="选择协作块"${selected ? " checked" : ""} />
               </label>
               <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
-              <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
+              <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${toggleLabel}"${toggleDisabled}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <span class="day-block-text-wrap">
-                <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
+                <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}" placeholder="${escapeHtml(textPlaceholder)}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
                 ${renderDayBlockTextPresence(block)}
               </span>
               <button type="button" class="day-block-collapsed-text" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="展开协作块">${escapeHtml(collapsedPreview)}</button>
@@ -11694,6 +11702,10 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const blockId = toggleButton.dataset.toggleDayBlock;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!block || !requireEdit("更新协作块")) return;
+    if (block.type === "divider") {
+      dom.saveState.textContent = "分隔线不需要完成状态";
+      return;
+    }
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     const nextDone = !block.done;

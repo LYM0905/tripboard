@@ -2524,6 +2524,36 @@ button:disabled {
   font-style: italic;
 }
 
+.day-block.is-divider {
+  background: transparent;
+  border-style: dashed;
+}
+
+.day-block.is-divider .day-block-toggle {
+  color: var(--muted);
+  background: #eef1ed;
+}
+
+.day-block.is-divider .day-block-text {
+  min-height: 34px;
+  border-color: transparent;
+  background:
+    linear-gradient(90deg, transparent 0, transparent 12px, rgba(88, 111, 97, 0.32) 12px, rgba(88, 111, 97, 0.32) calc(100% - 12px), transparent calc(100% - 12px));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  resize: none;
+}
+
+.day-block.is-divider .day-block-text:not(:placeholder-shown) {
+  background:
+    linear-gradient(90deg, transparent 0, transparent 12px, rgba(88, 111, 97, 0.2) 12px, rgba(88, 111, 97, 0.2) 36%, transparent 36%, transparent 64%, rgba(88, 111, 97, 0.2) 64%, rgba(88, 111, 97, 0.2) calc(100% - 12px), transparent calc(100% - 12px));
+}
+
 .day-block-text-wrap {
   position: relative;
   display: block;
