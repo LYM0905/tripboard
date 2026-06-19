@@ -3,94 +3,94 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>???? - ???????</title>
+    <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-amap-sdk" />
+    <link rel="stylesheet" href="styles.css?v=20260619-budget-weather-image" />
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar" aria-label="????">
+      <aside class="sidebar" aria-label="旅行概览">
         <div class="brand-row">
           <div class="brand-mark" aria-hidden="true"><i data-lucide="map"></i></div>
           <div>
             <p class="eyebrow">Tripboard</p>
-            <h1 id="tripName">?? 6 ?????</h1>
+            <h1 id="tripName">京都 6 日同行计划</h1>
           </div>
         </div>
 
         <section class="trip-card">
-          <div class="trip-cover" id="tripCover" role="img" aria-label="????"></div>
+          <div class="trip-cover" id="tripCover" role="img" aria-label="旅行封面"></div>
           <div class="trip-meta">
-            <span><i data-lucide="calendar-days"></i><span id="tripDateRange">6?4? - 6?9?</span></span>
-            <span><i data-lucide="users-round"></i><span id="onlineCountText">??????</span></span>
+            <span><i data-lucide="calendar-days"></i><span id="tripDateRange">6月4日 - 6月9日</span></span>
+            <span><i data-lucide="users-round"></i><span id="onlineCountText">等待成员加入</span></span>
           </div>
-          <div class="avatar-row" id="onlineAvatars" aria-label="??????"></div>
+          <div class="avatar-row" id="onlineAvatars" aria-label="当前在线成员"></div>
         </section>
 
         <section class="collab-panel">
           <div class="section-title">
-            <span>????</span>
-            <strong id="collabMode">????</strong>
+            <span>多人协作</span>
+            <strong id="collabMode">本地模式</strong>
           </div>
           <form class="member-form" id="memberForm">
             <label class="collab-field">
-              ????
-              <input id="collabName" required placeholder="????" />
+              你的名字
+              <input id="collabName" required placeholder="例如：林" />
             </label>
             <label class="collab-field">
-              ??/??
-              <input id="collabRole" placeholder="??????????????" />
+              身份/备注
+              <input id="collabRole" placeholder="例如：路线规划、订酒店、摄影" />
             </label>
-            <button class="primary-btn" type="submit"><i data-lucide="user-round-check"></i>????</button>
+            <button class="primary-btn" type="submit"><i data-lucide="user-round-check"></i>加入协作</button>
           </form>
-          <div class="member-list" id="memberList" aria-label="??????"></div>
+          <div class="member-list" id="memberList" aria-label="在线成员列表"></div>
           <div class="collab-actions">
-            <button class="text-btn" id="createSharedTripBtn"><i data-lucide="cloud-upload"></i>??????</button>
-            <button class="text-btn" id="copySharedLinkBtn"><i data-lucide="key-round"></i>????????</button>
-            <button class="text-btn" id="copyInviteLinkBtn"><i data-lucide="user-plus"></i>??????</button>
-            <button class="text-btn" id="copyReadonlyLinkBtn"><i data-lucide="eye"></i>??????</button>
+            <button class="text-btn" id="createSharedTripBtn"><i data-lucide="cloud-upload"></i>创建共享计划</button>
+            <button class="text-btn" id="copySharedLinkBtn"><i data-lucide="key-round"></i>复制口令编辑链接</button>
+            <button class="text-btn" id="copyInviteLinkBtn"><i data-lucide="user-plus"></i>复制直入邀请</button>
+            <button class="text-btn" id="copyReadonlyLinkBtn"><i data-lucide="eye"></i>复制只读链接</button>
           </div>
           <form class="access-form" id="editAccessForm">
             <label class="collab-field">
-              ????
-              <input id="editAccessInput" type="password" placeholder="?????????" autocomplete="off" />
+              编辑口令
+              <input id="editAccessInput" type="password" placeholder="设置或输入编辑口令" autocomplete="off" />
             </label>
-            <button class="text-btn" id="editAccessBtn" type="submit"><i data-lucide="key-round"></i>??/??</button>
+            <button class="text-btn" id="editAccessBtn" type="submit"><i data-lucide="key-round"></i>解锁/更新</button>
           </form>
-          <p class="helper-text" id="editAccessStatus">??????????????????</p>
-          <p class="helper-text" id="collabStatus">???????????????????</p>
+          <p class="helper-text" id="editAccessStatus">未设置编辑口令，编辑链接可直接修改。</p>
+          <p class="helper-text" id="collabStatus">未配置云端时，计划只保存在当前浏览器。</p>
           <div class="conflict-panel" id="conflictPanel" hidden>
             <div class="conflict-head">
               <i data-lucide="git-merge"></i>
-              <strong>??????</strong>
+              <strong>发现协作冲突</strong>
             </div>
-            <p id="conflictText">???????????????????</p>
+            <p id="conflictText">云端计划和你的本地修改同时发生了变化。</p>
             <div class="conflict-diff" id="conflictDiff"></div>
             <div class="conflict-actions">
-              <button class="primary-btn" id="mergeConflictBtn" type="button"><i data-lucide="combine"></i>????</button>
-              <button class="text-btn" id="keepLocalConflictBtn" type="button"><i data-lucide="cloud-upload"></i>????</button>
-              <button class="text-btn" id="useRemoteConflictBtn" type="button"><i data-lucide="cloud-download"></i>????</button>
+              <button class="primary-btn" id="mergeConflictBtn" type="button"><i data-lucide="combine"></i>智能合并</button>
+              <button class="text-btn" id="keepLocalConflictBtn" type="button"><i data-lucide="cloud-upload"></i>保留我的</button>
+              <button class="text-btn" id="useRemoteConflictBtn" type="button"><i data-lucide="cloud-download"></i>使用云端</button>
             </div>
-            <p class="helper-text" id="conflictDetail">???????????????????????</p>
+            <p class="helper-text" id="conflictDetail">合并会尽量保留双方新增的地点、评论和交通报价。</p>
           </div>
         </section>
 
-        <nav class="day-list" id="dayList" aria-label="????"></nav>
+        <nav class="day-list" id="dayList" aria-label="日期列表"></nav>
 
         <section class="side-block">
           <div class="section-title">
-            <span>??</span>
-            <strong id="budgetTotal">?0 / ?10,000</strong>
+            <span>预算</span>
+            <strong id="budgetTotal">¥0 / ¥10,000</strong>
           </div>
           <div class="meter" aria-hidden="true"><span id="budgetMeter"></span></div>
           <div class="budget-grid" id="budgetGrid"></div>
           <div class="budget-tools">
             <label>
-              ????
+              同行人数
               <input id="partySizeInput" type="number" min="1" step="1" value="1" />
             </label>
             <label>
-              ????
+              预算上限
               <input id="budgetLimitInput" type="number" min="0" step="100" value="10000" />
             </label>
             <div class="budget-settlement" id="budgetSettlement"></div>
@@ -100,8 +100,8 @@
 
         <section class="side-block version-panel">
           <div class="section-title">
-            <span>????</span>
-            <strong id="versionCount">0 ?</strong>
+            <span>历史版本</span>
+            <strong id="versionCount">0 条</strong>
           </div>
           <div class="version-preview" id="versionPreview" hidden></div>
           <div class="version-list" id="versionList"></div>
@@ -109,13 +109,13 @@
 
         <section class="side-block comment-index-panel">
           <div class="section-title">
-            <span>????</span>
-            <strong id="commentIndexCount">0 ?</strong>
+            <span>批注总览</span>
+            <strong id="commentIndexCount">0 条</strong>
           </div>
           <div class="comment-index-filters" id="commentIndexFilters">
-            <button type="button" class="comment-filter is-active" data-comment-index-filter="open">???<span>0</span></button>
-            <button type="button" class="comment-filter" data-comment-index-filter="all">??<span>0</span></button>
-            <button type="button" class="comment-filter" data-comment-index-filter="resolved">???<span>0</span></button>
+            <button type="button" class="comment-filter is-active" data-comment-index-filter="open">未解决<span>0</span></button>
+            <button type="button" class="comment-filter" data-comment-index-filter="all">全部<span>0</span></button>
+            <button type="button" class="comment-filter" data-comment-index-filter="resolved">已解决<span>0</span></button>
           </div>
           <div class="comment-index-list" id="commentIndexList"></div>
         </section>
@@ -125,71 +125,71 @@
         <header class="topbar">
           <div>
             <p class="eyebrow" id="routeLabel">Day 1</p>
-            <h2 id="dayTitle">?1?</h2>
-            <p class="save-state" id="saveState">??????</p>
+            <h2 id="dayTitle">第1天</h2>
+            <p class="save-state" id="saveState">已保存到本地</p>
           </div>
           <div class="top-actions">
-            <button class="icon-btn" id="resetBtn" title="????"><i data-lucide="rotate-ccw"></i></button>
-            <button class="icon-btn" id="exportBtn" title="?? JSON"><i data-lucide="download"></i></button>
-            <button class="icon-btn" id="importJsonBtn" title="?? JSON"><i data-lucide="upload"></i></button>
+            <button class="icon-btn" id="resetBtn" title="重置示例"><i data-lucide="rotate-ccw"></i></button>
+            <button class="icon-btn" id="exportBtn" title="导出 JSON"><i data-lucide="download"></i></button>
+            <button class="icon-btn" id="importJsonBtn" title="导入 JSON"><i data-lucide="upload"></i></button>
             <input id="importJsonInput" type="file" accept="application/json,.json" hidden />
-            <button class="primary-btn" id="shareBtn"><i data-lucide="share-2"></i>??</button>
+            <button class="primary-btn" id="shareBtn"><i data-lucide="share-2"></i>分享</button>
           </div>
         </header>
 
         <section class="day-summary">
           <div id="dayPills"></div>
-          <button class="text-btn" id="addStopBtn"><i data-lucide="plus"></i>????</button>
+          <button class="text-btn" id="addStopBtn"><i data-lucide="plus"></i>新增地点</button>
         </section>
 
         <section class="day-editor-panel">
           <div class="section-title">
-            <span>????</span>
-            <strong id="dayEditorStatus">?????</strong>
+            <span>当天设置</span>
+            <strong id="dayEditorStatus">可协作编辑</strong>
           </div>
           <form class="day-form" id="dayForm">
-            <label>??<input id="fieldDayDate" type="date" /></label>
-            <label>??<input id="fieldDayTitle" required placeholder="????????" /><span class="text-presence" id="fieldDayTitlePresence" hidden></span></label>
-            <label>??<input id="fieldDayRoute" placeholder="????? ? ?????" /><span class="text-presence" id="fieldDayRoutePresence" hidden></span></label>
-            <label>??<input id="fieldDayWeather" placeholder="???25?C ?" /><span class="text-presence" id="fieldDayWeatherPresence" hidden></span></label>
-            <label>??<input id="fieldDayTransport" placeholder="????? + ??" /><span class="text-presence" id="fieldDayTransportPresence" hidden></span></label>
+            <label>日期<input id="fieldDayDate" type="date" /></label>
+            <label>标题<input id="fieldDayTitle" required placeholder="例如：兰州抵达日" /><span class="text-presence" id="fieldDayTitlePresence" hidden></span></label>
+            <label>路线<input id="fieldDayRoute" placeholder="例如：兰州 · 黄河风情线" /><span class="text-presence" id="fieldDayRoutePresence" hidden></span></label>
+            <label>天气<input id="fieldDayWeather" placeholder="例如：25°C 晴" /><span class="text-presence" id="fieldDayWeatherPresence" hidden></span></label>
+            <label>交通<input id="fieldDayTransport" placeholder="例如：高铁 + 打车" /><span class="text-presence" id="fieldDayTransportPresence" hidden></span></label>
             <div class="day-form-actions">
-              <button type="button" class="text-btn" id="addDayBtn"><i data-lucide="calendar-plus"></i>????</button>
-              <button type="button" class="text-btn" id="moveDayUpBtn"><i data-lucide="arrow-up"></i>????</button>
-              <button type="button" class="text-btn" id="moveDayDownBtn"><i data-lucide="arrow-down"></i>????</button>
-              <button type="button" class="danger-btn" id="deleteDayBtn"><i data-lucide="calendar-x"></i>????</button>
-              <button type="submit" class="primary-btn"><i data-lucide="save"></i>????</button>
+              <button type="button" class="text-btn" id="addDayBtn"><i data-lucide="calendar-plus"></i>新增一天</button>
+              <button type="button" class="text-btn" id="moveDayUpBtn"><i data-lucide="arrow-up"></i>上移当天</button>
+              <button type="button" class="text-btn" id="moveDayDownBtn"><i data-lucide="arrow-down"></i>下移当天</button>
+              <button type="button" class="danger-btn" id="deleteDayBtn"><i data-lucide="calendar-x"></i>删除当天</button>
+              <button type="submit" class="primary-btn"><i data-lucide="save"></i>保存当天</button>
             </div>
           </form>
         </section>
 
         <section class="day-comments-panel">
           <div class="section-title">
-            <span>????</span>
-            <strong id="dayCommentTitle">????</strong>
+            <span>当天批注</span>
+            <strong id="dayCommentTitle">当前日期</strong>
           </div>
           <div class="comment-list day-comment-list" id="dayCommentList"></div>
           <div class="comment-anchor-hint" id="dayCommentAnchorHint" hidden></div>
           <form class="comment-form" id="dayCommentForm">
-            <input id="dayCommentInput" placeholder="??????????????????" />
+            <input id="dayCommentInput" placeholder="给当天标题、路线、天气或交通添加批注" />
             <button class="primary-btn" type="submit"><i data-lucide="send"></i></button>
           </form>
         </section>
 
         <section class="day-blocks-panel">
           <div class="section-title">
-            <span>???</span>
-            <strong id="dayBlocksStatus">????</strong>
+            <span>协作块</span>
+            <strong id="dayBlocksStatus">按天保存</strong>
           </div>
           <form class="day-block-form" id="dayBlockForm">
-            <select id="dayBlockType" aria-label="???">
-              <option value="todo">??</option>
-              <option value="note">??</option>
-              <option value="decision">??</option>
-              <option value="heading">??</option>
-              <option value="callout">??</option>
+            <select id="dayBlockType" aria-label="块类型">
+              <option value="todo">待办</option>
+              <option value="note">备注</option>
+              <option value="decision">决定</option>
+              <option value="heading">标题</option>
+              <option value="callout">提醒</option>
             </select>
-            <input id="dayBlockInput" placeholder="?????????? / ??????" />
+            <input id="dayBlockInput" placeholder="例如：预约莫高窟门票 / 确认包车司机" />
             <button class="primary-btn" type="submit"><i data-lucide="plus"></i></button>
           </form>
           <div class="day-block-list" id="dayBlockList"></div>
@@ -199,77 +199,77 @@
           <div class="guide-head">
             <div>
               <p class="eyebrow">Guided setup</p>
-              <h3>??????????</h3>
+              <h3>从模板生成可编辑计划</h3>
             </div>
-            <span class="guide-progress">???</span>
+            <span class="guide-progress">可保存</span>
           </div>
           <div class="guide-layout">
             <div class="template-card">
-              <span class="template-label">????</span>
-              <strong id="templateName">?? 6 ?????</strong>
-              <p id="guideResult">????????????????????</p>
+              <span class="template-label">当前计划</span>
+              <strong id="templateName">京都 6 日同行计划</strong>
+              <p id="guideResult">输入目的地后生成，生成结果可以继续编辑。</p>
             </div>
-            <div class="guide-controls" aria-label="????">
+            <div class="guide-controls" aria-label="定制选项">
               <div class="control-group destination-field">
-                <span>???</span>
+                <span>目的地</span>
                 <label class="input-shell">
                   <i data-lucide="map-pin"></i>
-                  <input id="destinationInput" value="??" aria-label="???" />
+                  <input id="destinationInput" value="甘肃" aria-label="目的地" />
                   <span class="text-presence plan-text-presence" id="destinationInputPresence" hidden></span>
                 </label>
               </div>
               <div class="control-group">
-                <span>????</span>
+                <span>出发城市</span>
                 <label class="input-shell">
                   <i data-lucide="navigation"></i>
-                  <input id="originInput" value="??" aria-label="????" />
+                  <input id="originInput" value="上海" aria-label="出发城市" />
                   <span class="text-presence plan-text-presence" id="originInputPresence" hidden></span>
                 </label>
               </div>
               <div class="control-group">
-                <span>????</span>
+                <span>出发日期</span>
                 <label class="input-shell">
                   <i data-lucide="calendar-days"></i>
-                  <input id="startDateInput" type="date" aria-label="????" />
+                  <input id="startDateInput" type="date" aria-label="出发日期" />
                   <span class="text-presence plan-text-presence" id="startDateInputPresence" hidden></span>
                 </label>
               </div>
               <div class="control-group">
-                <span>????</span>
+                <span>返程日期</span>
                 <label class="input-shell">
                   <i data-lucide="calendar-check"></i>
-                  <input id="endDateInput" type="date" aria-label="????" />
+                  <input id="endDateInput" type="date" aria-label="返程日期" />
                   <span class="text-presence plan-text-presence" id="endDateInputPresence" hidden></span>
                 </label>
               </div>
-              <p class="date-range-note" id="tripLengthHint">? 6 ?????????</p>
+              <p class="date-range-note" id="tripLengthHint">共 6 天，按自然日生成。</p>
               <div class="control-group">
-                <span>????</span>
+                <span>旅行节奏</span>
                 <div class="segmented" data-guide-group="pace">
-                  <button class="is-active" data-guide-option="??">??</button>
-                  <button data-guide-option="??">??</button>
-                  <button data-guide-option="???">???</button>
+                  <button class="is-active" data-guide-option="轻松">轻松</button>
+                  <button data-guide-option="均衡">均衡</button>
+                  <button data-guide-option="高强度">高强度</button>
                 </div>
               </div>
               <div class="control-group">
-                <span>????</span>
+                <span>兴趣偏好</span>
                 <div class="chip-row" data-guide-group="interest">
-                  <button class="chip is-active" data-guide-option="??">??</button>
-                  <button class="chip is-active" data-guide-option="??">??</button>
-                  <button class="chip" data-guide-option="??">??</button>
-                  <button class="chip" data-guide-option="??">??</button>
+                  <button class="chip is-active" data-guide-option="文化">文化</button>
+                  <button class="chip is-active" data-guide-option="美食">美食</button>
+                  <button class="chip" data-guide-option="自然">自然</button>
+                  <button class="chip" data-guide-option="亲子">亲子</button>
                 </div>
               </div>
               <div class="control-group">
-                <span>????</span>
+                <span>预算档位</span>
                 <div class="segmented" data-guide-group="budget">
-                  <button data-guide-option="??">??</button>
-                  <button class="is-active" data-guide-option="??">??</button>
-                  <button data-guide-option="??">??</button>
+                  <button data-guide-option="节省">节省</button>
+                  <button class="is-active" data-guide-option="舒适">舒适</button>
+                  <button data-guide-option="品质">品质</button>
                 </div>
               </div>
               <button class="primary-btn guide-apply" id="applyGuideBtn">
-                <i data-lucide="sparkles"></i>????
+                <i data-lucide="sparkles"></i>创建计划
               </button>
             </div>
           </div>
@@ -277,79 +277,79 @@
 
         <section class="transport-panel">
           <div class="section-title">
-            <span>??????</span>
-            <strong id="transportProviderStatus">????</strong>
+            <span>当日交通价格</span>
+            <strong id="transportProviderStatus">示例报价</strong>
           </div>
           <div class="transport-summary">
             <div>
-              <span>????</span>
-              <strong id="flightAvgPrice">?--</strong>
+              <span>机票均价</span>
+              <strong id="flightAvgPrice">¥--</strong>
             </div>
             <div>
-              <span>??/????</span>
-              <strong id="trainAvgPrice">?--</strong>
+              <span>动车/高铁均价</span>
+              <strong id="trainAvgPrice">¥--</strong>
             </div>
-            <p id="transportDayHint">?????????? Amadeus ???????????/??????????????</p>
+            <p id="transportDayHint">按当前日期生成；配置 Amadeus 后可同步航班报价，动车/高铁先用官方查询或手动保存。</p>
           </div>
           <form class="transport-controls" id="transportFilterForm">
             <label>
-              ??
+              类型
               <select id="transportType">
-                <option value="all">??</option>
-                <option value="flight">??</option>
-                <option value="train">??/??</option>
+                <option value="all">全部</option>
+                <option value="flight">机票</option>
+                <option value="train">动车/高铁</option>
               </select>
             </label>
             <label>
-              ???
-              <input id="transportFrom" placeholder="?????" />
+              出发地
+              <input id="transportFrom" placeholder="例如：上海" />
             </label>
             <label>
-              ???
-              <input id="transportTo" placeholder="?????" />
+              到达地
+              <input id="transportTo" placeholder="例如：兰州" />
             </label>
             <label>
-              ????
+              起始时间
               <input id="transportStartTime" type="time" />
             </label>
             <label>
-              ????
+              结束时间
               <input id="transportEndTime" type="time" />
             </label>
-            <button class="primary-btn" type="submit"><i data-lucide="list-filter"></i>??</button>
+            <button class="primary-btn" type="submit"><i data-lucide="list-filter"></i>筛选</button>
           </form>
           <div class="multi-origin-panel">
             <label>
-              ?????
-              <textarea id="multiOriginInput" rows="2" placeholder="????: SHA; ?: PEK; ?: CAN"></textarea>
+              多人出发地
+              <textarea id="multiOriginInput" rows="2" placeholder="例如：林: SHA; 王: PEK; 周: CAN"></textarea>
             </label>
             <div class="multi-origin-actions">
-              <button type="button" class="text-btn" id="multiOriginExampleBtn"><i data-lucide="users"></i>??</button>
-              <button type="button" class="primary-btn" id="compareOriginsBtn"><i data-lucide="git-compare-arrows"></i>????</button>
+              <button type="button" class="text-btn" id="multiOriginExampleBtn"><i data-lucide="users"></i>示例</button>
+              <button type="button" class="primary-btn" id="compareOriginsBtn"><i data-lucide="git-compare-arrows"></i>综合比较</button>
             </div>
           </div>
           <div class="multi-origin-results" id="multiOriginResults"></div>
           <div class="transport-manual">
             <div class="official-links">
-              <a class="text-btn" id="openCtripSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>????</a>
-              <a class="text-btn" id="openTripSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Trip.com ??</a>
-              <a class="text-btn" id="openRailSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>12306 ??</a>
+              <a class="text-btn" id="openCtripSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>携程查询</a>
+              <a class="text-btn" id="openTripSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Trip.com 查询</a>
+              <a class="text-btn" id="openRailSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="external-link"></i>12306 查询</a>
             </div>
             <form class="manual-quote-form" id="manualQuoteForm">
               <label>
-                ??
+                类型
                 <select id="manualQuoteType">
-                  <option value="flight">??</option>
-                  <option value="train">??/??</option>
+                  <option value="flight">机票</option>
+                  <option value="train">动车/高铁</option>
                 </select>
               </label>
-              <label>??/??<input id="manualQuoteCode" placeholder="???MU1234 / G318" required /></label>
-              <label>??<input id="manualQuoteDepart" type="time" /></label>
-              <label>??<input id="manualQuoteArrive" type="time" /></label>
-              <label>??<input id="manualQuotePrice" type="number" min="0" step="1" placeholder="860" required /></label>
+              <label>班次/航班<input id="manualQuoteCode" placeholder="例如：MU1234 / G318" required /></label>
+              <label>出发<input id="manualQuoteDepart" type="time" /></label>
+              <label>到达<input id="manualQuoteArrive" type="time" /></label>
+              <label>价格<input id="manualQuotePrice" type="number" min="0" step="1" placeholder="860" required /></label>
               <div class="manual-quote-actions">
-                <button class="primary-btn" id="manualQuoteSubmitBtn" type="submit"><i data-lucide="plus"></i><span>????</span></button>
-                <button class="text-btn" id="cancelQuoteEditBtn" type="button" hidden><i data-lucide="x"></i>??</button>
+                <button class="primary-btn" id="manualQuoteSubmitBtn" type="submit"><i data-lucide="plus"></i><span>保存报价</span></button>
+                <button class="text-btn" id="cancelQuoteEditBtn" type="button" hidden><i data-lucide="x"></i>取消</button>
               </div>
             </form>
           </div>
@@ -358,132 +358,132 @@
 
         <section class="quick-add-panel">
           <div class="section-title">
-            <span>??????</span>
-            <strong>???????</strong>
+            <span>快速加入景点</span>
+            <strong>可用高德关键词</strong>
           </div>
           <form class="quick-add-form" id="quickAddForm">
             <label>
-              ????
-              <input id="quickPlaceName" placeholder="????????????" required />
+              景点名称
+              <input id="quickPlaceName" placeholder="例如：莫高窟、嘉峪关关城" required />
             </label>
             <label>
-              ???????
-              <input id="quickAmapKeyword" placeholder="????? ???" />
+              高德地点关键词
+              <input id="quickAmapKeyword" placeholder="例如：甘肃 莫高窟" />
             </label>
             <label>
-              ????
+              预计时间
               <input id="quickTime" placeholder="09:30" />
             </label>
             <label>
-              ??
+              预算
               <input id="quickBudget" type="number" min="0" step="1" placeholder="240" />
             </label>
             <label class="full">
-              ??/??
-              <input id="quickAddress" placeholder="??????????????????" />
+              地址/备注
+              <input id="quickAddress" placeholder="可粘贴高德地址、集合点或订单里的地点" />
             </label>
             <div class="quick-actions full">
-              <button type="button" class="text-btn" id="openAmapBtn"><i data-lucide="map-pinned"></i>??????</button>
-              <button type="button" class="text-btn" id="addCandidateBtn"><i data-lucide="bookmark-plus"></i><span>?????</span></button>
-              <button type="button" class="text-btn" id="cancelCandidateEditBtn" hidden><i data-lucide="x"></i>????</button>
-              <button type="submit" class="primary-btn"><i data-lucide="map-pin-plus"></i>????</button>
-              <button type="button" class="text-btn" id="optimizeRouteBtn"><i data-lucide="wand-sparkles"></i>AI ????</button>
+              <button type="button" class="text-btn" id="openAmapBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
+              <button type="button" class="text-btn" id="addCandidateBtn"><i data-lucide="bookmark-plus"></i><span>加入备选池</span></button>
+              <button type="button" class="text-btn" id="cancelCandidateEditBtn" hidden><i data-lucide="x"></i>取消编辑</button>
+              <button type="submit" class="primary-btn"><i data-lucide="map-pin-plus"></i>加入当天</button>
+              <button type="button" class="text-btn" id="optimizeRouteBtn"><i data-lucide="wand-sparkles"></i>AI 优化路径</button>
             </div>
           </form>
-          <p class="helper-text" id="optimizeHint">???????? AI ?????????????????????????</p>
+          <p class="helper-text" id="optimizeHint">优化会先请求后端 AI 代理；未配置模型密钥时会自动使用本地距离排序兜底。</p>
           <div class="amap-place-results" id="quickAmapCandidates" hidden></div>
           <div class="ai-route-report" id="aiRouteReport" hidden></div>
           <div class="amap-route-tools">
-            <select id="amapRouteMode" aria-label="??????">
-              <option value="walking">??</option>
-              <option value="driving">??</option>
-              <option value="transit">??/??</option>
+            <select id="amapRouteMode" aria-label="高德路线方式">
+              <option value="walking">步行</option>
+              <option value="driving">驾车</option>
+              <option value="transit">公交/地铁</option>
             </select>
-            <select id="amapRouteStrategy" aria-label="??????">
-              <option value="default">????</option>
-              <option value="fastest">????</option>
-              <option value="avoid_tolls">???</option>
-              <option value="avoid_congestion">????</option>
-              <option value="least_walking">???</option>
-              <option value="least_transfer">???</option>
+            <select id="amapRouteStrategy" aria-label="高德路线偏好">
+              <option value="default">默认路线</option>
+              <option value="fastest">时间优先</option>
+              <option value="avoid_tolls">少收费</option>
+              <option value="avoid_congestion">躲避拥堵</option>
+              <option value="least_walking">少步行</option>
+              <option value="least_transfer">少换乘</option>
             </select>
-            <button type="button" class="text-btn" id="amapRouteBtn"><i data-lucide="route"></i>??????</button>
-            <button type="button" class="text-btn" id="amapRouteRetryBtn" hidden><i data-lucide="refresh-cw"></i>??</button>
+            <button type="button" class="text-btn" id="amapRouteBtn"><i data-lucide="route"></i>高德规划路线</button>
+            <button type="button" class="text-btn" id="amapRouteRetryBtn" hidden><i data-lucide="refresh-cw"></i>重试</button>
           </div>
           <div class="amap-route-report" id="amapRouteReport" hidden></div>
-          <a class="map-link" id="quickAmapLink" href="#" target="_blank" rel="noopener">??????????</a>
+          <a class="map-link" id="quickAmapLink" href="#" target="_blank" rel="noopener">高德链接会显示在这里</a>
         </section>
 
         <section class="service-panel">
           <div class="section-title">
-            <span>???????</span>
-            <strong id="serviceConfigStatus">????</strong>
+            <span>智能与实时数据</span>
+            <strong id="serviceConfigStatus">本地兜底</strong>
           </div>
           <div class="connector-grid">
             <label>
-              AI ????
+              AI 路径代理
               <input id="aiRouteEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/ai-route-optimize" />
             </label>
             <label>
-              AI ????
-              <input id="aiRouteTokenInput" type="password" placeholder="?????????" autocomplete="off" />
+              AI 访问令牌
+              <input id="aiRouteTokenInput" type="password" placeholder="可选，不填模型密钥" autocomplete="off" />
             </label>
             <label>
-              ??????
+              高德地点代理
               <input id="amapEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/amap-place-search" />
             </label>
             <label>
-              ??????
+              高德路线代理
               <input id="amapRouteEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/amap-route-plan" />
             </label>
             <label>
-              ?? JS Key
-              <input id="amapJsKeyInput" type="password" placeholder="Web ? JS API Key" autocomplete="off" />
+              高德 JS Key
+              <input id="amapJsKeyInput" type="password" placeholder="Web 端 JS API Key" autocomplete="off" />
             </label>
             <label>
-              JS ????
+              JS 安全密钥
               <input id="amapSecurityCodeInput" type="password" placeholder="securityJsCode" autocomplete="off" />
             </label>
             <label>
-              ????
-              <input id="weatherEndpointInput" type="url" placeholder="???????? Open-Meteo" />
+              天气代理
+              <input id="weatherEndpointInput" type="url" placeholder="可选；不填则使用 Open-Meteo" />
             </label>
             <div class="connector-actions">
-              <button type="button" class="primary-btn" id="saveServiceConfigBtn"><i data-lucide="save"></i>????</button>
-              <button type="button" class="text-btn" id="syncWeatherBtn"><i data-lucide="cloud-sun"></i>????</button>
+              <button type="button" class="primary-btn" id="saveServiceConfigBtn"><i data-lucide="save"></i>保存接口</button>
+              <button type="button" class="text-btn" id="syncWeatherBtn"><i data-lucide="cloud-sun"></i>同步天气</button>
             </div>
           </div>
-          <p class="helper-text" id="serviceStatusText">AI ?????????????????? Key ?????????????????? Open-Meteo?</p>
+          <p class="helper-text" id="serviceStatusText">AI 和高德密钥只放在后端代理；高德未配置 Key 时保留搜索链接，天气未配置代理时使用 Open-Meteo。</p>
         </section>
 
         <section class="timeline-wrap">
           <div class="timeline-head">
             <div>
               <p class="eyebrow">Itinerary</p>
-              <h3>????</h3>
+              <h3>当日行程</h3>
             </div>
-            <div class="edit-presence"><span class="pulse"></span><span id="presenceText">???????</span></div>
+            <div class="edit-presence"><span class="pulse"></span><span id="presenceText">你正在编辑计划</span></div>
           </div>
           <div class="timeline" id="timeline"></div>
         </section>
 
         <section class="candidate-panel">
           <div class="section-title">
-            <span>???</span>
-            <strong>??????</strong>
+            <span>备选池</span>
+            <strong>点击加入当天</strong>
           </div>
           <div class="candidate-grid" id="candidateGrid"></div>
         </section>
       </main>
 
-      <aside class="detail-panel" aria-label="???????">
+      <aside class="detail-panel" aria-label="地点详情与编辑">
         <section class="map-panel">
           <div class="map-toolbar">
             <span><i data-lucide="route"></i><span id="routeDistance">7.6 km</span></span>
             <span><i data-lucide="clock-3"></i><span id="routeDuration">58 min</span></span>
-            <span><i data-lucide="map-pinned"></i><span id="mapProviderStatus">????</span></span>
+            <span><i data-lucide="map-pinned"></i><span id="mapProviderStatus">坐标预览</span></span>
           </div>
-          <div class="map-canvas" id="mapCanvas" aria-label="????"></div>
+          <div class="map-canvas" id="mapCanvas" aria-label="行程地图"></div>
         </section>
 
         <section class="place-detail">
@@ -492,135 +492,135 @@
             <div class="place-title-row">
               <div>
                 <p class="eyebrow" id="placeType">Place</p>
-                <h3 id="placeTitle">????</h3>
+                <h3 id="placeTitle">选择地点</h3>
               </div>
-              <button class="icon-btn selected" id="favoriteBtn" title="??"><i data-lucide="star"></i></button>
+              <button class="icon-btn selected" id="favoriteBtn" title="收藏"><i data-lucide="star"></i></button>
             </div>
             <p class="place-address" id="placeAddress"></p>
             <p class="place-note" id="placeNote"></p>
             <div class="decision-row">
-              <button class="vote-btn" id="mustVote"><i data-lucide="thumbs-up"></i>?? <span id="voteCount">0</span></button>
-              <button class="vote-btn" id="commentFocusBtn"><i data-lucide="message-square"></i>?? <span id="commentCount">0</span></button>
+              <button class="vote-btn" id="mustVote"><i data-lucide="thumbs-up"></i>必去 <span id="voteCount">0</span></button>
+              <button class="vote-btn" id="commentFocusBtn"><i data-lucide="message-square"></i>评论 <span id="commentCount">0</span></button>
             </div>
           </div>
         </section>
 
         <section class="editor-panel">
           <div class="section-title">
-            <span>????</span>
-            <strong id="editorLockState">???????</strong>
+            <span>编辑地点</span>
+            <strong id="editorLockState">保存后立即更新</strong>
           </div>
           <div class="edit-lock-banner" id="editLockBanner" hidden>
             <i data-lucide="lock"></i>
-            <span id="editLockText">????????????</span>
+            <span id="editLockText">其他成员正在编辑这个地点</span>
           </div>
           <form class="edit-form" id="stopForm">
-            <label>??<input id="fieldTime" name="time" placeholder="09:00" /><span class="text-presence" id="fieldTimePresence" hidden></span></label>
-            <label>??<input id="fieldTitle" name="title" placeholder="????" required /><span class="text-presence" id="fieldTitlePresence" hidden></span></label>
-            <label>??<input id="fieldType" name="type" placeholder="Museum / Food" /><span class="text-presence" id="fieldTypePresence" hidden></span></label>
-            <label>??<input id="fieldBudget" name="budget" type="number" min="0" step="1" placeholder="???????" /><span class="text-presence" id="fieldBudgetPresence" hidden></span></label>
-            <label>??<input id="fieldPaid" name="paid" type="number" min="0" step="1" placeholder="?????" /><span class="text-presence" id="fieldPaidPresence" hidden></span></label>
-            <label>???<input id="fieldPayer" name="payer" placeholder="???? / AA" /><span class="text-presence" id="fieldPayerPresence" hidden></span></label>
-            <label class="full">??<input id="fieldAddress" name="address" placeholder="??????" /><span class="text-presence" id="fieldAddressPresence" hidden></span></label>
-            <label class="full">???????<input id="fieldAmapKeyword" name="amapKeyword" placeholder="????? ???" /><span class="text-presence" id="fieldAmapKeywordPresence" hidden></span></label>
-            <label>??<input id="fieldLng" name="lng" type="number" step="0.000001" placeholder="??" /><span class="text-presence" id="fieldLngPresence" hidden></span></label>
-            <label>??<input id="fieldLat" name="lat" type="number" step="0.000001" placeholder="??" /><span class="text-presence" id="fieldLatPresence" hidden></span></label>
-            <label class="full">?? URL<input id="fieldImage" name="image" type="url" placeholder="???????????????????" /><span class="text-presence" id="fieldImagePresence" hidden></span></label>
-            <label class="full">??<input id="fieldTags" name="tags" placeholder="???????? ??,??,???" /><span class="text-presence" id="fieldTagsPresence" hidden></span></label>
-            <label class="full">??<textarea id="fieldNote" name="note" rows="4" placeholder="????????????"></textarea><span class="text-presence" id="fieldNotePresence" hidden></span><small class="field-hint" id="noteCollabStatus">???????????????????????</small></label>
-            <a class="map-link full" id="fieldAmapLink" href="#" target="_blank" rel="noopener">??????????</a>
+            <label>时间<input id="fieldTime" name="time" placeholder="09:00" /><span class="text-presence" id="fieldTimePresence" hidden></span></label>
+            <label>名称<input id="fieldTitle" name="title" placeholder="地点名称" required /><span class="text-presence" id="fieldTitlePresence" hidden></span></label>
+            <label>类型<input id="fieldType" name="type" placeholder="Museum / Food" /><span class="text-presence" id="fieldTypePresence" hidden></span></label>
+            <label>预算<input id="fieldBudget" name="budget" type="number" min="0" step="1" placeholder="人均或项目预算" /><span class="text-presence" id="fieldBudgetPresence" hidden></span></label>
+            <label>已付<input id="fieldPaid" name="paid" type="number" min="0" step="1" placeholder="已支付金额" /><span class="text-presence" id="fieldPaidPresence" hidden></span></label>
+            <label>付款人<input id="fieldPayer" name="payer" placeholder="例如：林 / AA" /><span class="text-presence" id="fieldPayerPresence" hidden></span></label>
+            <label class="full">地址<input id="fieldAddress" name="address" placeholder="地址或集合点" /><span class="text-presence" id="fieldAddressPresence" hidden></span></label>
+            <label class="full">高德地点关键词<input id="fieldAmapKeyword" name="amapKeyword" placeholder="例如：甘肃 莫高窟" /><span class="text-presence" id="fieldAmapKeywordPresence" hidden></span></label>
+            <label>经度<input id="fieldLng" name="lng" type="number" step="0.000001" placeholder="可选" /><span class="text-presence" id="fieldLngPresence" hidden></span></label>
+            <label>纬度<input id="fieldLat" name="lat" type="number" step="0.000001" placeholder="可选" /><span class="text-presence" id="fieldLatPresence" hidden></span></label>
+            <label class="full">图片 URL<input id="fieldImage" name="image" type="url" placeholder="可粘贴景点官方图或自己上传后的图片地址" /><span class="text-presence" id="fieldImagePresence" hidden></span></label>
+            <label class="full">标签<input id="fieldTags" name="tags" placeholder="用逗号分隔，比如 必去,日落,需预约" /><span class="text-presence" id="fieldTagsPresence" hidden></span></label>
+            <label class="full">备注<textarea id="fieldNote" name="note" rows="4" placeholder="写下预订、交通、注意事项"></textarea><span class="text-presence" id="fieldNotePresence" hidden></span><small class="field-hint" id="noteCollabStatus">名称、类型、地址、高德关键词和备注会随计划保存</small></label>
+            <a class="map-link full" id="fieldAmapLink" href="#" target="_blank" rel="noopener">生成后可打开高德搜索</a>
             <div class="amap-place-results full" id="fieldAmapCandidates" hidden></div>
             <div class="form-actions full">
-              <button type="button" class="text-btn" id="amapLookupBtn"><i data-lucide="map-pinned"></i>??????</button>
-              <a class="text-btn" id="officialImageSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="image-search"></i>????</a>
-              <button type="button" class="text-btn" id="moveUpBtn"><i data-lucide="arrow-up"></i>??</button>
-              <button type="button" class="text-btn" id="moveDownBtn"><i data-lucide="arrow-down"></i>??</button>
-              <button type="button" class="danger-btn" id="deleteStopBtn"><i data-lucide="trash-2"></i>??</button>
-              <button type="submit" class="primary-btn"><i data-lucide="save"></i>??</button>
+              <button type="button" class="text-btn" id="amapLookupBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
+              <a class="text-btn" id="officialImageSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="image-search"></i>查官方图</a>
+              <button type="button" class="text-btn" id="moveUpBtn"><i data-lucide="arrow-up"></i>上移</button>
+              <button type="button" class="text-btn" id="moveDownBtn"><i data-lucide="arrow-down"></i>下移</button>
+              <button type="button" class="danger-btn" id="deleteStopBtn"><i data-lucide="trash-2"></i>删除</button>
+              <button type="submit" class="primary-btn"><i data-lucide="save"></i>保存</button>
             </div>
           </form>
         </section>
 
         <section class="comments-panel">
           <div class="section-title">
-            <span>??</span>
-            <strong id="commentTitle">????</strong>
+            <span>评论</span>
+            <strong id="commentTitle">当前地点</strong>
           </div>
           <div class="comment-list" id="commentList"></div>
           <div class="comment-anchor-hint" id="commentAnchorHint" hidden></div>
           <form class="comment-form" id="commentForm">
-            <input id="commentInput" placeholder="?????????" />
+            <input id="commentInput" placeholder="添加同行意见或提醒" />
             <button class="primary-btn" type="submit"><i data-lucide="send"></i></button>
           </form>
         </section>
 
         <section class="sync-panel">
           <div class="section-title">
-            <span>????</span>
-            <strong id="syncBadge">?????</strong>
+            <span>外部同步</span>
+            <strong id="syncBadge">可手动导入</strong>
           </div>
           <button class="provider-login" id="ctripLoginBtn" type="button">
             <i data-lucide="plane"></i>
-            <strong>Google Flights ????</strong>
-            <span>?????? SearchApi ????????????/???????????????</span>
+            <strong>Google Flights 报价接入</strong>
+            <span>个人账号先接 SearchApi 获取航班班次和价格；动车/高铁继续用官方查询或手动保存。</span>
           </button>
           <div class="provider-connect-panel" id="ctripConnectPanel" hidden>
             <div class="provider-connect-head">
-              <strong>????</strong>
-              <a href="https://www.searchapi.io/users/sign_up" target="_blank" rel="noopener">?? SearchApi</a>
+              <strong>接入配置</strong>
+              <a href="https://www.searchapi.io/users/sign_up" target="_blank" rel="noopener">注册 SearchApi</a>
             </div>
-            <p class="helper-text">SearchApi API Key ??? Supabase Edge Function ?????????????????????</p>
+            <p class="helper-text">SearchApi API Key 只放在 Supabase Edge Function 的环境变量里；公开网页只保存后端代理地址。</p>
             <form class="provider-form" id="ctripConnectForm">
               <label>
-                ??????
+                后端代理接口
                 <input id="ctripEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/searchapi-flight-offers" />
               </label>
               <label>
-                ??????????
-                <input id="ctripTokenInput" type="password" placeholder="???????????????? SearchApi Key" autocomplete="off" />
+                前端访问令牌（可选）
+                <input id="ctripTokenInput" type="password" placeholder="只填你的后端需要的访问令牌，不填 SearchApi Key" autocomplete="off" />
               </label>
               <div class="connection-actions">
-                <button type="submit" class="primary-btn"><i data-lucide="plug-zap"></i>????</button>
-                <button type="button" class="text-btn" id="ctripTestBtn"><i data-lucide="activity"></i>????</button>
-                <button type="button" class="text-btn" id="ctripSyncTransportBtn"><i data-lucide="refresh-cw"></i>??????</button>
-                <button type="button" class="text-btn" id="ctripSpecBtn"><i data-lucide="copy"></i>??????</button>
+                <button type="submit" class="primary-btn"><i data-lucide="plug-zap"></i>保存接入</button>
+                <button type="button" class="text-btn" id="ctripTestBtn"><i data-lucide="activity"></i>测试连接</button>
+                <button type="button" class="text-btn" id="ctripSyncTransportBtn"><i data-lucide="refresh-cw"></i>同步当天航班</button>
+                <button type="button" class="text-btn" id="ctripSpecBtn"><i data-lucide="copy"></i>复制接口规范</button>
               </div>
             </form>
-            <pre class="api-spec" id="ctripSpecBox">POST ??????
-Request: { "date": "2026-07-10", "from": "?? SHA", "to": "?? LHW", "type": "flight", "startTime": "", "endTime": "" }
-Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", "code": "MU1234", "from": "?? SHA", "to": "?? LHW", "depart": "09:30", "arrive": "12:20", "duration": 170, "price": 860, "source": "Google Flights / SearchApi" }] }</pre>
+            <pre class="api-spec" id="ctripSpecBox">POST 你的后端接口
+Request: { "date": "2026-07-10", "from": "上海 SHA", "to": "兰州 LHW", "type": "flight", "startTime": "", "endTime": "" }
+Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", "code": "MU1234", "from": "上海 SHA", "to": "兰州 LHW", "depart": "09:30", "arrive": "12:20", "duration": 170, "price": 860, "source": "Google Flights / SearchApi" }] }</pre>
           </div>
           <div class="sync-grid">
-            <button class="sync-card" data-provider="??/??">
+            <button class="sync-card" data-provider="美团/点评">
               <i data-lucide="utensils"></i>
-              <strong>??/??</strong>
-              <span>???????????????</span>
+              <strong>美团/点评</strong>
+              <span>录入餐厅预约、团购券、到店时间</span>
             </button>
-            <button class="sync-card" data-provider="??/??">
+            <button class="sync-card" data-provider="民宿/酒店">
               <i data-lucide="house"></i>
-              <strong>??/??</strong>
-              <span>????????????</span>
+              <strong>民宿/酒店</strong>
+              <span>录入入住时间、地址、房费</span>
             </button>
-            <button class="sync-card" data-provider="??/??">
+            <button class="sync-card" data-provider="分享/截图">
               <i data-lucide="file-input"></i>
-              <strong>??/??</strong>
-              <span>????????????????</span>
+              <strong>分享/截图</strong>
+              <span>粘贴链接、短信、邮件里的订单信息</span>
             </button>
           </div>
           <div class="sync-status" id="syncStatus">
             <i data-lucide="shield-check"></i>
-            <span>????????? AI ???????????? App ???????????? API?</span>
+            <span>可粘贴订单文本并用 AI 解析后写入计划；自动读取 App 账号仍需要平台授权或官方 API。</span>
           </div>
           <div class="sync-status provider-status" id="ctripStatus">
             <i data-lucide="info"></i>
-            <span>SearchApi ???????? Google Flights ???????/?????? 12306 ????????</span>
+            <span>SearchApi 可用个人账号测试 Google Flights 航班报价；动车/高铁暂时使用 12306 查询或手动保存。</span>
           </div>
         </section>
 
         <section class="activity-panel">
           <div class="section-title">
-            <span>????</span>
-            <strong>??</strong>
+            <span>操作记录</span>
+            <strong>本地</strong>
           </div>
           <div class="activity-filters" id="activityFilters"></div>
           <div class="activity-list" id="activityList"></div>
@@ -631,36 +631,36 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
     <div class="permission-modal" id="importModal" aria-hidden="true">
       <div class="modal-backdrop" data-close-import></div>
       <section class="permission-dialog" role="dialog" aria-modal="true" aria-labelledby="importTitle">
-        <button class="icon-btn modal-close" data-close-import title="??"><i data-lucide="x"></i></button>
+        <button class="icon-btn modal-close" data-close-import title="关闭"><i data-lucide="x"></i></button>
         <p class="eyebrow">Import</p>
-        <h3 id="importTitle">??????</h3>
-        <p class="permission-copy" id="importCopy">?????????????????</p>
+        <h3 id="importTitle">导入外部记录</h3>
+        <p class="permission-copy" id="importCopy">把订单里和行程有关的信息录入计划。</p>
         <form class="import-form" id="importForm">
           <label>
-            ??
+            类别
             <select id="importCategory">
-              <option value="??">??</option>
-              <option value="??">??</option>
-              <option value="??">??</option>
-              <option value="??">??</option>
-              <option value="??">??</option>
+              <option value="餐饮">餐饮</option>
+              <option value="住宿">住宿</option>
+              <option value="交通">交通</option>
+              <option value="景点">景点</option>
+              <option value="其他">其他</option>
             </select>
           </label>
-          <label>??<input id="importDate" type="date" /></label>
-          <label>??<input id="importName" required placeholder="???? / ????" /></label>
-          <label>??<input id="importTime" placeholder="18:30" /></label>
-          <label>??<input id="importBudget" type="number" min="0" step="1" placeholder="320" /></label>
-          <label>??<input id="importPaid" type="number" min="0" step="1" placeholder="?????" /></label>
-          <label>???<input id="importPayer" placeholder="???? / AA" /></label>
-          <label>??<input id="importAddress" placeholder="??????" /></label>
-          <label>???<input id="importOrderNo" placeholder="?? / ??? / ????" /></label>
-          <label>????<input id="importSourceUrl" type="url" placeholder="???????" /></label>
-          <label class="full">?? / ??<textarea id="importNote" rows="5" placeholder="?????????????????????????"></textarea></label>
+          <label>日期<input id="importDate" type="date" /></label>
+          <label>名称<input id="importName" required placeholder="餐厅预约 / 民宿入住" /></label>
+          <label>时间<input id="importTime" placeholder="18:30" /></label>
+          <label>金额<input id="importBudget" type="number" min="0" step="1" placeholder="320" /></label>
+          <label>已付<input id="importPaid" type="number" min="0" step="1" placeholder="已支付金额" /></label>
+          <label>付款人<input id="importPayer" placeholder="例如：林 / AA" /></label>
+          <label>地点<input id="importAddress" placeholder="地址或集合点" /></label>
+          <label>订单号<input id="importOrderNo" placeholder="券码 / 确认号 / 订单编号" /></label>
+          <label>来源链接<input id="importSourceUrl" type="url" placeholder="分享链接，可选" /></label>
+          <label class="full">备注 / 原文<textarea id="importNote" rows="5" placeholder="可粘贴美团、点评、酒店、民宿、短信、邮件或分享内容"></textarea></label>
           <div class="import-preview full" id="importPreview" hidden></div>
           <div class="modal-actions">
-            <button type="button" class="text-btn" data-close-import>??</button>
-            <button type="button" class="text-btn" id="parseImportBtn"><i data-lucide="scan-text"></i>????</button>
-            <button type="submit" class="primary-btn"><i data-lucide="file-plus-2"></i>?????</button>
+            <button type="button" class="text-btn" data-close-import>取消</button>
+            <button type="button" class="text-btn" id="parseImportBtn"><i data-lucide="scan-text"></i>解析文本</button>
+            <button type="submit" class="primary-btn"><i data-lucide="file-plus-2"></i>导入到计划</button>
           </div>
         </form>
       </section>
@@ -669,31 +669,31 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
     <div class="permission-modal" id="createChoiceModal" aria-hidden="true">
       <div class="modal-backdrop" data-close-create></div>
       <section class="permission-dialog create-dialog" role="dialog" aria-modal="true" aria-labelledby="createChoiceTitle">
-        <button class="icon-btn modal-close" data-close-create title="??"><i data-lucide="x"></i></button>
+        <button class="icon-btn modal-close" data-close-create title="关闭"><i data-lucide="x"></i></button>
         <p class="eyebrow">Create plan</p>
-        <h3 id="createChoiceTitle">??????????</h3>
-        <p class="permission-copy" id="createChoiceCopy">??????????????????????????????</p>
+        <h3 id="createChoiceTitle">要如何开始这次旅行？</h3>
+        <p class="permission-copy" id="createChoiceCopy">可以先生成一份推荐行程作为参考，也可以创建空白模板自己填写。</p>
         <div class="choice-grid">
           <button class="choice-card" id="recommendedPlanBtn">
             <i data-lucide="sparkles"></i>
-            <strong>??????</strong>
-            <span>??????????????????????????</span>
+            <strong>生成推荐计划</strong>
+            <span>根据目的地、起止日期、节奏、兴趣和预算生成参考路线。</span>
           </button>
           <button class="choice-card" id="blankPlanBtn">
             <i data-lucide="file-plus-2"></i>
-            <strong>??????</strong>
-            <span>?????????????????????</span>
+            <strong>生成空白模板</strong>
+            <span>只创建日期和待填写地点，适合自己逐步录入。</span>
           </button>
         </div>
         <div class="modal-actions">
-          <button type="button" class="text-btn" data-close-create>??</button>
+          <button type="button" class="text-btn" data-close-create>取消</button>
         </div>
       </section>
     </div>
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-amap-sdk"></script>
-    <script src="script.js?v=20260617-amap-sdk"></script>
+    <script src="config.js?v=20260619-budget-weather-image"></script>
+    <script src="script.js?v=20260619-budget-weather-image"></script>
   </body>
 </html>

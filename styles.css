@@ -407,6 +407,7 @@ button {
 
 .budget-combo > span,
 .budget-combo-categories span,
+.budget-combo-items span,
 .budget-ticket-hints span {
   display: block;
   padding: 8px;
@@ -419,9 +420,15 @@ button {
 }
 
 .budget-combo-categories,
+.budget-combo-items,
 .budget-ticket-hints {
   display: grid;
   gap: 6px;
+}
+
+.budget-combo-items {
+  max-height: 190px;
+  overflow: auto;
 }
 
 .budget-ticket-hints span {

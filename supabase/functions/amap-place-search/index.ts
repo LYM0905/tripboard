@@ -14,6 +14,8 @@ type AmapPlace = {
   adcode?: string;
   city?: string;
   type?: string;
+  image?: string;
+  photos?: Array<{ title?: string; url: string }>;
   source: string;
 };
 
@@ -38,10 +40,26 @@ function normalizeAddress(value: unknown) {
   return String(value || "");
 }
 
+function normalizePhotos(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((photo) => {
+      const record = photo as Record<string, unknown>;
+      const url = String(record.url || "").trim();
+      if (!url) return null;
+      return {
+        title: String(record.title || "").trim(),
+        url,
+      };
+    })
+    .filter(Boolean) as Array<{ title?: string; url: string }>;
+}
+
 function normalizePlace(poi: Record<string, any>): AmapPlace | null {
   const location = String(poi.location || "");
   const [lng = "", lat = ""] = location.split(",");
   if (!lng || !lat) return null;
+  const photos = normalizePhotos(poi.photos);
   return {
     id: String(poi.id || ""),
     title: String(poi.name || ""),
@@ -51,6 +69,8 @@ function normalizePlace(poi: Record<string, any>): AmapPlace | null {
     adcode: String(poi.adcode || ""),
     city: normalizeAddress(poi.cityname),
     type: String(poi.type || ""),
+    image: photos[0]?.url || "",
+    photos,
     source: "高德 Web服务",
   };
 }

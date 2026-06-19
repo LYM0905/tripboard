@@ -10518,12 +10518,18 @@ function renderBudgetCombo() {
     .slice(0, 4)
     .map((item) => `<span>${escapeHtml(item.label)} 门票待确认 ${money(item.amount)}</span>`)
     .join("");
+  const itemRows = summary.items
+    .slice(0, 8)
+    .map((item) => `<span>${escapeHtml(item.source)} · ${escapeHtml(item.category)} · ${escapeHtml(item.label)} ${money(item.amount)}${item.estimated ? " 估" : ""}</span>`)
+    .join("");
+  const extraCount = Math.max(0, summary.items.length - 8);
   return `
     <strong>预选组合</strong>
     <span>组合总额 ${money(summary.total)} · 人均 ${money(Math.round(summary.total / people))}</span>
     <span>已付 ${money(summary.paid)} · 待付 ${money(summary.unpaid)}</span>
     <span>已选交通 ${selectedTransportCount} 项 · 预选备选 ${selectedCandidateCount} 项</span>
     <div class="budget-combo-categories">${categoryRows || "<span>暂无可汇总项目</span>"}</div>
+    <div class="budget-combo-items">${itemRows || "<span>勾选交通或备选地点后显示组合明细</span>"}${extraCount ? `<span>还有 ${extraCount} 项已纳入组合</span>` : ""}</div>
     ${estimateRows ? `<div class="budget-ticket-hints">${estimateRows}</div>` : ""}
   `;
 }
