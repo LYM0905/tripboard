@@ -11452,6 +11452,20 @@ function dayBlockActivityTarget(dayId = "", blockId = "", extra = {}) {
   };
 }
 
+function focusDayBlockElement(blockId = "", options = {}) {
+  const block = blockId ? dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+  const target = block || document.querySelector(".day-blocks-panel");
+  if (!target) return false;
+  target.scrollIntoView({ block: options.block || "center", behavior: options.behavior || "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  if (options.focusInput !== false) {
+    const input = block?.querySelector("[data-edit-day-block]");
+    input?.focus();
+  }
+  return Boolean(block);
+}
+
 function focusDayBlockActivityTarget(detail = null) {
   if (!detail || typeof detail !== "object") return false;
   const blockId = detail.blockId || "";
@@ -11460,19 +11474,23 @@ function focusDayBlockActivityTarget(detail = null) {
     return blockId && normalizeDayBlocks(day.blocks || []).some((block) => block.id === blockId);
   });
   if (dayIndex < 0) return false;
+  if (dayIndex === activeDay) {
+    activeStop = 0;
+    activeBlockPresenceId = blockId || activeBlockPresenceId;
+    const focusedBlock = focusDayBlockElement(blockId);
+    if (focusedBlock || !blockId) {
+      refreshDayBlockPresenceDom(currentDay());
+      renderActivities();
+      dom.saveState.textContent = focusedBlock ? "已定位到活动对应协作块" : "协作块已不存在，已定位到当天协作块区域";
+      return true;
+    }
+  }
   activeDay = dayIndex;
   activeStop = 0;
   activeBlockPresenceId = blockId || activeBlockPresenceId;
   render();
-  const block = blockId ? dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
-  const target = block || document.querySelector(".day-blocks-panel");
-  if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "smooth" });
-  target.classList.add("activity-target-pulse");
-  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  const input = block?.querySelector("[data-edit-day-block]");
-  input?.focus();
-  dom.saveState.textContent = block ? "已定位到活动对应协作块" : "协作块已不存在，已定位到当天协作块区域";
+  const focusedBlock = focusDayBlockElement(blockId);
+  dom.saveState.textContent = focusedBlock ? "已定位到活动对应协作块" : "协作块已不存在，已定位到当天协作块区域";
   return true;
 }
 
