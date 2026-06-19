@@ -2141,6 +2141,12 @@ function upsertOnlineMember(member = {}) {
   onlineMembers = onlineMembers.filter((item) => freshMember(item));
 }
 
+function refreshTextSelectionPresenceViews() {
+  renderMembers();
+  renderTextPresence();
+  renderEditorLockState();
+}
+
 function currentTextRoomId(stopId = currentStop()?.id) {
   return tripId && stopId ? `text:${tripId}:${stopId}` : "";
 }
@@ -8888,9 +8894,7 @@ function subscribeRemoteState() {
       if (!payload || payload.memberId === (memberProfile?.id || sessionId)) return;
       if (payload.roomId !== currentTextRoomId(payload.stopId)) return;
       upsertOnlineMember(payload);
-      renderMembers();
-      renderDayBlocks(currentDay());
-      renderEditorLockState();
+      refreshTextSelectionPresenceViews();
     })
     .on("broadcast", { event: "stop-created" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
