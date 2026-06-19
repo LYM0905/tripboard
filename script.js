@@ -3212,6 +3212,14 @@ async function saveCollaborativePlanChange(label = "计划结构协作内容已�
   await saveState(label);
 }
 
+function scheduleCollaborativePlanSave(label = "计划结构协作内容已实时同步", delay = 900) {
+  clearTimeout(collabPlanSaveTimer);
+  collabPlanSaveTimer = setTimeout(() => {
+    if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
+    pushRemoteState(label);
+  }, Math.max(0, Number(delay) || 0));
+}
+
 async function saveCollaborativeTextChange(label = "地点协作内容已实时同步") {
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = null;
@@ -4628,6 +4636,40 @@ async function saveDayBlockTextChange(day, block, nextText, action = "text-forma
   await saveCollaborativePlanChange(label);
   render();
   return true;
+}
+
+async function syncDayBlockInputText(day, blockId, text, input = null) {
+  if (!day || !blockId) return false;
+  const syncTask = async () => {
+    const currentBlocks = normalizeDayBlocks(day.blocks || []);
+    const baseText = Object.prototype.hasOwnProperty.call(dayBlockTextBaselines, blockId)
+      ? dayBlockTextBaselines[blockId]
+      : (currentBlocks.find((item) => item.id === blockId)?.text || "");
+    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, text, "local-day-block-text-realtime", { baseText });
+    if (updatedText) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      dayBlockTextBaselines[blockId] = updatedText.text || "";
+      if (input && input.value.trim() !== (updatedText.text || "")) input.value = updatedText.text || "";
+      const blockElement = dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+      const metaElement = blockElement?.querySelector(".day-block-meta");
+      if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;
+      scheduleCollaborativePlanSave("协作块已更新", 1000);
+      return updatedText;
+    }
+    const block = currentBlocks.find((item) => item.id === blockId);
+    if (!block) return false;
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text } : item)));
+    await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback");
+    dayBlockTextBaselines[blockId] = text || "";
+    scheduleCollaborativePlanSave("协作块已更新", 1000);
+    return { text };
+  };
+  const previous = dayBlockTextSyncChains[blockId] || Promise.resolve();
+  const next = previous.catch(() => false).then(syncTask);
+  dayBlockTextSyncChains[blockId] = next.finally(() => {
+    if (dayBlockTextSyncChains[blockId] === next) delete dayBlockTextSyncChains[blockId];
+  });
+  return next;
 }
 
 async function formatDayBlockInput(day, block, input, format = "bold") {
@@ -7630,6 +7672,7 @@ let dayBlockEditTimer = null;
 let blockReplyingCommentId = "";
 let blockCommentFilters = {};
 let dayBlockTextBaselines = {};
+let dayBlockTextSyncChains = {};
 let activeBlockPresenceId = "";
 let draggingDayBlockId = "";
 let selectedDayBlockIds = new Set();
@@ -12707,39 +12750,24 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   }
 });
 
-dom.dayBlockList?.addEventListener("input", (event) => {
+dom.dayBlockList?.addEventListener("input", async (event) => {
   const input = event.target.closest("[data-edit-day-block]");
   if (!input || !canEdit() || isReadonlyMode) return;
   activeBlockPresenceId = input.closest("[data-day-block]")?.dataset.dayBlock || activeBlockPresenceId;
   renderDayBlockCommandMenu(input);
   schedulePresenceTrack(0);
+  const day = currentDay();
+  const blockId = input.dataset.editDayBlock;
+  const text = input.value.trim();
+  if (!day || !blockId) return;
+  await syncDayBlockInputText(day, blockId, text, input);
   clearTimeout(dayBlockEditTimer);
   dayBlockEditTimer = setTimeout(async () => {
-    const day = currentDay();
-    const blockId = input.dataset.editDayBlock;
-    const text = input.value.trim();
-    if (!day || !blockId) return;
-    const baseText = Object.prototype.hasOwnProperty.call(dayBlockTextBaselines, blockId)
-      ? dayBlockTextBaselines[blockId]
-      : (normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId)?.text || "");
-    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, text, "local-day-block-text-crdt", { baseText });
-    if (updatedText) {
-      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      dayBlockTextBaselines[blockId] = updatedText.text || "";
-      if (input.value.trim() !== (updatedText.text || "")) input.value = updatedText.text || "";
-      const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
-      const metaElement = blockElement?.querySelector(".day-block-meta");
-      if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;
-      await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
-      await saveCollaborativePlanChange("协作块已更新");
-      return;
-    }
-    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
-    if (!block) return;
-    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text } : item)));
-    await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback");
-    await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
-    await saveCollaborativePlanChange("协作块已更新");
+    const latestDay = currentDay();
+    const latestText = input.value.trim();
+    if (!latestDay || !blockId) return;
+    await logActivity(`编辑协作块「${latestText.slice(0, 18)}」`, { target: dayBlockActivityTarget(latestDay.id, blockId, { action: "text" }) });
+    scheduleCollaborativePlanSave("协作块已更新", 250);
   }, 650);
 });
 
