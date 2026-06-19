@@ -11689,6 +11689,34 @@ function focusDeletedCommentActivityTarget(detail = null) {
   }
   const dayIndex = state.days.findIndex((day) => (detail.dayId && day.id === detail.dayId) || (detail.stopId && (day.stops || []).some((stop) => stop.id === detail.stopId)));
   if (dayIndex < 0) return false;
+  if (dayIndex === activeDay) {
+    if (detail.scope === "day") {
+      renderDayComments(currentDay());
+      renderCommentIndex();
+      renderActivities();
+      refreshIcons();
+      const target = document.querySelector(".comment-index-panel") || document.querySelector(".day-comments-panel");
+      if (!target) return false;
+      pulseActivityTarget(target);
+      dom.saveState.textContent = "批注已删除，已定位到当天批注总览";
+      return true;
+    }
+    if (detail.scope === "stop") {
+      const day = state.days[dayIndex];
+      const stopIndex = (day.stops || []).findIndex((stop) => stop.id === detail.stopId);
+      if (stopIndex >= 0 && stopIndex === activeStop) {
+        renderStopComments(currentStop());
+        renderCommentIndex();
+        renderActivities();
+        refreshIcons();
+        const target = dom.commentList || document.querySelector(".comments-panel") || document.querySelector(".editor-panel");
+        if (!target) return false;
+        pulseActivityTarget(target);
+        dom.saveState.textContent = "评论已删除，已定位到原地点评论区";
+        return true;
+      }
+    }
+  }
   activeDay = dayIndex;
   if (detail.scope === "stop") {
     const day = state.days[dayIndex];
