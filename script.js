@@ -4595,6 +4595,13 @@ function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
     const nextPreview = renderDayBlockMarkdownPreview(block, previewMode);
     if (oldPreview) oldPreview.remove();
     if (nextPreview && input) input.insertAdjacentHTML("afterend", nextPreview);
+    const oldChecklistPreview = textWrap?.querySelector(".day-block-checklist-preview");
+    const nextChecklistPreview = renderChecklistPreview(block);
+    if (oldChecklistPreview) oldChecklistPreview.remove();
+    if (nextChecklistPreview) {
+      const previewElement = textWrap?.querySelector(".day-block-markdown-preview");
+      (previewElement || input).insertAdjacentHTML("afterend", nextChecklistPreview);
+    }
     const collapsedPreview = blockElement.querySelector(".day-block-collapsed-text");
     if (collapsedPreview) collapsedPreview.textContent = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
     const metaElement = blockElement.querySelector(".day-block-meta");
@@ -4922,7 +4929,7 @@ async function saveDayBlockTextChange(day, block, nextText, action = "text-forma
     day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
       item.id === block.id ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
     )));
-    renderDayBlocks(day);
+    if (!refreshDayBlockTextDom(day, [block.id])) renderDayBlocks(day);
     await logActivity(`编辑协作块「${String(nextText || "").slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
     await saveCollaborativePlanChange(label);
     return true;
@@ -5009,7 +5016,7 @@ async function saveChecklistTextChange(day, block, nextText, action = "checklist
     day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
       item.id === block.id ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
     )));
-    renderDayBlocks(day);
+    if (!refreshDayBlockTextDom(day, [block.id])) renderDayBlocks(day);
     await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
     await saveCollaborativePlanChange("已更新检查清单");
     return true;
