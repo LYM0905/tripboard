@@ -2570,6 +2570,23 @@ function sameDayBlockSetAndContent(a = [], b = []) {
   });
 }
 
+function dayBlockDeleteDiff(a = [], b = []) {
+  const previous = normalizeDayBlocks(a);
+  const next = normalizeDayBlocks(b);
+  if (!previous.length || previous.length <= next.length) return null;
+  const nextById = new Map(next.map((block) => [block.id, block]));
+  const deletedIds = [];
+  for (const block of previous) {
+    const nextBlock = nextById.get(block.id);
+    if (!nextBlock) {
+      deletedIds.push(block.id);
+      continue;
+    }
+    if (!sameSerialized(block, nextBlock)) return null;
+  }
+  return deletedIds.length ? deletedIds : null;
+}
+
 function moveDayBlockList(blocks = [], blockId = "", direction = "down", patch = {}) {
   const normalized = normalizeDayBlocks(blocks);
   const index = normalized.findIndex((block) => block.id === blockId);
@@ -3198,6 +3215,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const changedDayBlockTextKeys = new Set();
   const changedDayBlockCommentKeys = new Set();
   const changedDayBlockOrderKeys = new Set();
+  const changedDayBlockDeleteKeys = new Map();
   if (dayBlocksChanged) {
     const currentBlocks = normalizeDayBlocksFromDays(state.days || []);
     const nextBlocksByDay = nextDayBlocks || {};
@@ -3207,6 +3225,8 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
       if (!sameSerialized(currentDayBlocks, nextDayBlocksForDay)) {
         changedDayBlockKeys.add(dayId);
         if (sameDayBlockSetAndContent(currentDayBlocks, nextDayBlocksForDay)) changedDayBlockOrderKeys.add(dayId);
+        const deletedIds = dayBlockDeleteDiff(currentDayBlocks, nextDayBlocksForDay);
+        if (deletedIds?.length) changedDayBlockDeleteKeys.set(dayId, deletedIds);
       }
       const currentById = new Map(currentDayBlocks.map((block) => [block.id, block]));
       nextDayBlocksForDay.forEach((nextBlock) => {
@@ -3267,12 +3287,15 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
       const textOnlyCurrentDayChange = !dayBlocksChanged && currentDayChangedTextBlockIds.length > 0;
       const commentsOnlyCurrentDayChange = dayBlocksChanged && currentDayChangedCommentBlockIds.length > 0 && changedDayBlockKeys.size === 1 && changedDayBlockKeys.has(currentDayId) && currentDayChangedCommentBlockIds.length === changedDayBlockCommentKeys.size && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
       const orderOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockOrderKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
+      const deleteOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockDeleteKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
       if (textOnlyCurrentDayChange && refreshDayBlockTextDom(currentDay(), currentDayChangedTextBlockIds)) {
         // Text-only update handled without rebuilding the block list.
       } else if (commentsOnlyCurrentDayChange && currentDayChangedCommentBlockIds.every((blockId) => refreshDayBlockCommentsDom(currentDay(), blockId))) {
         // Comment-only update handled without rebuilding the block list.
       } else if (orderOnlyCurrentDayChange && refreshDayBlockOrderDom(currentDay())) {
         // Order-only update handled by moving existing block nodes.
+      } else if (deleteOnlyCurrentDayChange && refreshDayBlockDeleteDom(currentDay(), changedDayBlockDeleteKeys.get(currentDayId))) {
+        // Delete-only update handled by removing affected block nodes.
       } else {
         renderDayBlocks(currentDay());
       }
@@ -4738,6 +4761,34 @@ function refreshDayBlockOrderDom(day = currentDay(), focusBlockId = "") {
   return true;
 }
 
+function refreshDayBlockDeleteDom(day = currentDay(), deletedIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(deletedIds) || !deletedIds.length) return false;
+  let removed = false;
+  deletedIds.forEach((blockId) => {
+    if (!blockId) return;
+    const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+    if (!blockElement) return;
+    blockElement.remove();
+    removed = true;
+  });
+  if (!removed) return false;
+  deletedIds.forEach((blockId) => {
+    selectedDayBlockIds.delete(blockId);
+    previewDayBlockIds.delete(blockId);
+    collapsedDayBlockIds.delete(blockId);
+    delete blockCommentFilters[blockId];
+  });
+  if (deletedIds.includes(lastSelectedDayBlockId)) lastSelectedDayBlockId = "";
+  if (deletedIds.includes(activeBlockPresenceId)) activeBlockPresenceId = "";
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  if (!blocks.length) {
+    renderDayBlocks(day);
+    return true;
+  }
+  refreshDayBlockOrderDom(day);
+  return true;
+}
+
 function dayBlockRowsForType(type = "todo") {
   if (type === "heading" || type === "divider") return 1;
   if (type === "checklist") return 3;
@@ -5468,7 +5519,7 @@ async function deleteSelectedDayBlocks(day) {
   day.blocks = normalizeDayBlocks((day.blocks || []).filter((block) => !deletedIds.has(block.id)));
   clearSelectedDayBlocks();
   activeBlockPresenceId = "";
-  renderDayBlocks(day);
+  if (!refreshDayBlockDeleteDom(day, [...deletedIds])) renderDayBlocks(day);
   schedulePresenceTrack(0);
   await logActivity(`批量删除 ${deletedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-delete", deleted: true } });
   await saveCollaborativePlanChange("已批量删除协作块");
@@ -12842,7 +12893,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     noteRemoteBlockEditors(blockId, "删除");
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
-      renderDayBlocks(day);
+      if (!refreshDayBlockDeleteDom(day, [blockId])) renderDayBlocks(day);
       await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { deleted: true }) });
       await saveCollaborativePlanChange("已删除协作块");
       return;
@@ -12853,7 +12904,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-delete-fallback");
     await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { deleted: true }) });
     await saveCollaborativePlanChange("已删除协作块");
-    render();
+    if (!refreshDayBlockDeleteDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
   }
 });
 
