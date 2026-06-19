@@ -4497,6 +4497,39 @@ function renderDayBlockBulkBar(blocks = []) {
   `;
 }
 
+function refreshDayBlockSelectionDom(day = currentDay()) {
+  if (!day || !dom.dayBlockList) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  syncSelectedDayBlocks(blocks);
+  let allBlocksFound = true;
+  for (const block of blocks) {
+    if (!block?.id) continue;
+    const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(block.id)}"]`);
+    if (!blockElement) {
+      allBlocksFound = false;
+      continue;
+    }
+    const selected = selectedDayBlockIds.has(block.id);
+    blockElement.classList.toggle("is-selected", selected);
+    const checkbox = blockElement.querySelector(`[data-select-day-block="${CSS.escape(block.id)}"]`);
+    if (checkbox) checkbox.checked = selected;
+  }
+  const existingBulkBar = dom.dayBlockList.querySelector(".day-block-bulk-bar");
+  const nextBulkBarHtml = renderDayBlockBulkBar(blocks);
+  if (nextBulkBarHtml) {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = nextBulkBarHtml.trim();
+    const nextBulkBar = wrapper.firstElementChild;
+    if (!nextBulkBar) return false;
+    if (existingBulkBar) existingBulkBar.replaceWith(nextBulkBar);
+    else dom.dayBlockList.insertAdjacentElement("afterbegin", nextBulkBar);
+  } else if (existingBulkBar) {
+    existingBulkBar.remove();
+  }
+  refreshIcons();
+  return allBlocksFound;
+}
+
 function dayBlockFocusSnapshot() {
   const input = dom.dayBlockList?.querySelector("[data-edit-day-block]:focus");
   if (!input) return null;
@@ -12211,7 +12244,7 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
       selectedDayBlockIds.delete(blockId);
     }
     if (blockId) lastSelectedDayBlockId = blockId;
-    renderDayBlocks(currentDay());
+    if (!refreshDayBlockSelectionDom(currentDay())) renderDayBlocks(currentDay());
     schedulePresenceTrack(0);
     dom.saveState.textContent = selectedDayBlockIds.size ? `已选择 ${selectedDayBlockIds.size} 个协作块` : "已取消协作块选择";
     return;
@@ -12316,14 +12349,14 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const action = bulkButton.dataset.dayBlockBulk || "";
     if (action === "all") {
       selectAllDayBlocks(normalizeDayBlocks(day.blocks || []));
-      renderDayBlocks(day);
+      if (!refreshDayBlockSelectionDom(day)) renderDayBlocks(day);
       schedulePresenceTrack(0);
       dom.saveState.textContent = `已全选 ${selectedDayBlockIds.size} 个协作块`;
       return;
     }
     if (action === "clear") {
       clearSelectedDayBlocks();
-      renderDayBlocks(day);
+      if (!refreshDayBlockSelectionDom(day)) renderDayBlocks(day);
       schedulePresenceTrack(0);
       dom.saveState.textContent = "已取消协作块选择";
       return;
