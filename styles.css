@@ -432,9 +432,38 @@ button {
 }
 
 .budget-ticket-hints span {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
   color: #7a4b07;
   background: rgba(246, 184, 77, 0.16);
   border-color: rgba(246, 184, 77, 0.35);
+}
+
+.budget-ticket-hints b {
+  min-width: 0;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.mini-action {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 9px;
+  color: var(--green);
+  background: #fff;
+  border: 1px solid rgba(36, 115, 92, 0.24);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mini-action:hover,
+.mini-action:focus-visible {
+  background: var(--green-2);
+  outline: 0;
 }
 
 .version-item {

@@ -10,7 +10,7 @@ type AmapWeatherRequest = {
   city?: string;
   startDate?: string;
   endDate?: string;
-  days?: Array<{ id?: string; date?: string; title?: string }>;
+  days?: number | Array<{ id?: string; date?: string; title?: string }>;
   testOnly?: boolean;
 };
 
@@ -48,6 +48,33 @@ function cityCandidates(keyword: string) {
   return Array.from(new Set(candidates.filter(Boolean)));
 }
 
+const knownAdcodes: Record<string, { adcode: string; city: string }> = {
+  北京: { adcode: "110000", city: "北京市" },
+  上海: { adcode: "310000", city: "上海市" },
+  广州: { adcode: "440100", city: "广州市" },
+  深圳: { adcode: "440300", city: "深圳市" },
+  甘肃: { adcode: "620100", city: "兰州市" },
+  兰州: { adcode: "620100", city: "兰州市" },
+  张掖: { adcode: "620700", city: "张掖市" },
+  敦煌: { adcode: "620982", city: "敦煌市" },
+  嘉峪关: { adcode: "620200", city: "嘉峪关市" },
+  酒泉: { adcode: "620900", city: "酒泉市" },
+  西安: { adcode: "610100", city: "西安市" },
+  成都: { adcode: "510100", city: "成都市" },
+  重庆: { adcode: "500000", city: "重庆市" },
+  杭州: { adcode: "330100", city: "杭州市" },
+  南京: { adcode: "320100", city: "南京市" },
+  青岛: { adcode: "370200", city: "青岛市" },
+};
+
+function knownCityAdcode(keyword: string) {
+  const normalized = keyword.replace(/\s+/g, "").replace(/[市省]$/, "");
+  const exact = knownAdcodes[normalized];
+  if (exact) return exact;
+  const match = Object.entries(knownAdcodes).find(([name]) => normalized.includes(name));
+  return match ? match[1] : null;
+}
+
 function addDays(date: Date, amount: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
@@ -62,7 +89,8 @@ function formatDate(date: Date) {
 }
 
 function dateList(request: AmapWeatherRequest, count: number) {
-  const explicit = (request.days || []).map((day) => cleanText(day.date)).filter(Boolean);
+  const requestDays = Array.isArray(request.days) ? request.days : [];
+  const explicit = requestDays.map((day) => cleanText(day.date)).filter(Boolean);
   if (explicit.length) return explicit.slice(0, count);
   const start = request.startDate ? new Date(`${request.startDate}T00:00:00`) : new Date();
   return Array.from({ length: count }, (_, index) => formatDate(addDays(start, index)));
@@ -121,10 +149,22 @@ async function placeAdcode(key: string, keyword: string) {
 async function cityAdcode(keyword: string) {
   const key = Deno.env.get("AMAP_WEB_SERVICE_KEY");
   if (!key) throw new Error("Missing AMAP_WEB_SERVICE_KEY in Supabase secrets.");
-  const fromDistrict = await districtAdcode(key, keyword);
-  if (fromDistrict) return fromDistrict;
-  const fromPlace = await placeAdcode(key, keyword);
-  if (fromPlace) return fromPlace;
+  const known = knownCityAdcode(keyword);
+  if (known) return known;
+  try {
+    const fromDistrict = await districtAdcode(key, keyword);
+    if (fromDistrict) return fromDistrict;
+  } catch (error) {
+    console.warn("Amap district lookup failed", error);
+  }
+  try {
+    const fromPlace = await placeAdcode(key, keyword);
+    if (fromPlace) return fromPlace;
+  } catch (error) {
+    console.warn("Amap place adcode lookup failed", error);
+  }
+  const fallbackKnown = knownCityAdcode(keyword);
+  if (fallbackKnown) return fallbackKnown;
   throw new Error("Amap did not find a matching city adcode.");
 }
 

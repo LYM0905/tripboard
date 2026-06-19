@@ -801,6 +801,49 @@ function officialImageSearchUrl(stopOrKeyword = "") {
   return `https://www.baidu.com/s?wd=${encodeURIComponent(keyword || "景点 官方 图片")}`;
 }
 
+function uniqueTexts(values = []) {
+  const seen = new Set();
+  return values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function amapCityHint(keyword = "") {
+  const text = `${keyword || ""} ${state.destination || ""}`;
+  const rules = [
+    [/兰州|甘肃省博物馆|黄河铁桥|中山桥|张掖路/, "兰州"],
+    [/敦煌|莫高窟|鸣沙山|月牙泉|阳关|玉门关|雅丹/, "敦煌"],
+    [/张掖|七彩丹霞|马蹄寺|平山湖/, "张掖"],
+    [/嘉峪关|关城|悬壁长城/, "嘉峪关"],
+    [/酒泉/, "酒泉"],
+  ];
+  const matched = rules.find(([pattern]) => pattern.test(text));
+  if (matched) return matched[1];
+  const cityMatch = text.match(/([\u4e00-\u9fa5]{2,12}(?:市|州|盟|县|区))/);
+  if (cityMatch) return cityMatch[1].replace(/[县区]$/, "");
+  if (state.destination && !/[省自治区]$/.test(state.destination)) return state.destination;
+  return "";
+}
+
+function amapKeywordVariants(keyword = "") {
+  const value = String(keyword || "").replace(/\s+/g, " ").trim();
+  const destination = String(state.destination || "").trim();
+  const parts = value.split(/\s+/).filter(Boolean);
+  return uniqueTexts([
+    value,
+    destination && value.startsWith(destination) ? value.slice(destination.length).trim() : "",
+    destination ? value.replace(destination, "").trim() : "",
+    parts.length > 1 ? parts.at(-1) : "",
+    value.replace(/^(甘肃|甘肃省|兰州|兰州市|敦煌|敦煌市|张掖|张掖市|嘉峪关|嘉峪关市)\s*/, "").trim(),
+  ]);
+}
+
 function normalizeAmapPlace(place, keyword = "") {
   if (!place) return null;
   const photos = Array.isArray(place.photos) ? place.photos : [];
@@ -815,21 +858,44 @@ function normalizeAmapPlace(place, keyword = "") {
     city: place.city || "",
     type: place.type || "",
     image: place.image || place.photo || firstPhoto?.url || firstPhoto?.src || firstPhoto?.image || "",
+    photos,
     source: place.source || "高德 Web服务",
   };
 }
 
 async function lookupAmapPlaces(keyword, { limit = 6 } = {}) {
   if (!serviceConfig.amapEndpoint || !keyword) return null;
-  const response = await fetch(serviceConfig.amapEndpoint, {
-    method: "POST",
-    headers: serviceHeaders("", serviceConfig.amapEndpoint),
-    body: JSON.stringify({ keyword, city: state.destination || "", limit }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
-  const places = Array.isArray(data.places) ? data.places : [data.place || data].filter(Boolean);
-  return places.map((place) => normalizeAmapPlace(place, keyword)).filter(Boolean);
+  const variants = amapKeywordVariants(keyword);
+  const cityHints = uniqueTexts([amapCityHint(keyword), state.destination]).concat("");
+  const seen = new Set();
+  let lastError = "";
+  for (const variant of variants) {
+    for (const city of cityHints) {
+      try {
+        const response = await fetch(serviceConfig.amapEndpoint, {
+          method: "POST",
+          headers: serviceHeaders("", serviceConfig.amapEndpoint),
+          body: JSON.stringify({ keyword: variant, city, limit }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+        const places = (Array.isArray(data.places) ? data.places : [data.place || data].filter(Boolean))
+          .map((place) => normalizeAmapPlace(place, variant))
+          .filter(Boolean)
+          .filter((place) => {
+            const key = place.id || `${place.title}:${place.lng}:${place.lat}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        if (places.length) return places.slice(0, limit);
+      } catch (error) {
+        lastError = error.message;
+      }
+    }
+  }
+  if (lastError) throw new Error(lastError);
+  return [];
 }
 
 async function lookupAmapPlace(keyword) {
@@ -2475,7 +2541,12 @@ function normalizeCandidateStops(candidates = []) {
       note: stop.note || "备选池地点，可加入任意一天继续编辑。",
       tags: normalizeTags(stop.tags || ["备选"]),
       budget: numberValue(stop.budget),
+      paid: numberValue(stop.paid),
+      payer: String(stop.payer || "").trim(),
       selected: Boolean(stop.selected || stop.preselected),
+      lng: String(stop.lng || "").trim(),
+      lat: String(stop.lat || "").trim(),
+      amapKeyword: String(stop.amapKeyword || "").trim(),
       image: stop.image || state.cover || images.city,
       createdBy: stop.createdBy || "",
       createdAt: stop.createdAt || new Date().toISOString(),
@@ -10472,6 +10543,14 @@ function totalPaid() {
   return state.days.reduce((sum, day) => sum + day.stops.reduce((daySum, stop) => daySum + numberValue(stop.paid), 0), 0);
 }
 
+function totalPlannedBudget() {
+  return Math.max(totalBudget(), budgetComboSummary().total);
+}
+
+function totalPlannedPaid() {
+  return Math.max(totalPaid(), budgetComboSummary().paid);
+}
+
 function partySize() {
   return Math.max(1, Number.parseInt(dom.partySizeInput.value || state.partySize || 1, 10) || 1);
 }
@@ -10486,11 +10565,18 @@ function payerBudget() {
       groups[payer] = (groups[payer] || 0) + paid;
     });
   });
+  (state.candidates || []).forEach((candidate) => {
+    if (!candidate.selected) return;
+    const paid = numberValue(candidate.paid);
+    if (!paid) return;
+    const payer = String(candidate.payer || "未指定").trim() || "未指定";
+    groups[payer] = (groups[payer] || 0) + paid;
+  });
   return groups;
 }
 
 function settlementSuggestions() {
-  const total = totalBudget();
+  const total = totalPlannedBudget();
   const people = partySize();
   const perPerson = people ? Math.round(total / people) : 0;
   const paidBy = payerBudget();
@@ -10567,20 +10653,28 @@ function transportBudgetLabel(item = {}) {
 
 function budgetComboItems() {
   const confirmedStops = (state.days || []).flatMap((day) =>
-    (day.stops || []).map((stop) => ({
-      id: `stop-${day.id || day.label}-${stop.id || stop.title}`,
-      label: stop.title || "地点",
-      category: budgetCategoryForItem(stop),
-      amount: numberValue(stop.budget) || inferTicketPrice(stop),
-      paid: numberValue(stop.paid),
-      source: "行程",
-      estimated: !numberValue(stop.budget) && inferTicketPrice(stop) > 0,
-    })),
+    (day.stops || []).map((stop) => {
+      const estimate = inferTicketPrice(stop);
+      return {
+        id: `stop-${day.id || day.label}-${stop.id || stop.title}`,
+        refType: "stop",
+        dayId: day.id || "",
+        itemId: stop.id || "",
+        label: stop.title || "地点",
+        category: budgetCategoryForItem(stop),
+        amount: numberValue(stop.budget) || estimate,
+        paid: numberValue(stop.paid),
+        source: "行程",
+        estimated: !numberValue(stop.budget) && estimate > 0,
+      };
+    }),
   );
   const selectedQuotes = (state.transportQuotes || [])
     .filter((quote) => quote.selected)
     .map((quote) => ({
       id: `quote-${quote.id}`,
+      refType: "quote",
+      itemId: quote.id || "",
       label: transportBudgetLabel(quote),
       category: "交通",
       amount: numberValue(quote.price),
@@ -10590,15 +10684,20 @@ function budgetComboItems() {
     }));
   const selectedCandidates = (state.candidates || [])
     .filter((candidate) => candidate.selected)
-    .map((candidate) => ({
-      id: `candidate-${candidate.id}`,
-      label: candidate.title || "备选地点",
-      category: budgetCategoryForItem(candidate),
-      amount: numberValue(candidate.budget) || inferTicketPrice(candidate),
-      paid: numberValue(candidate.paid),
-      source: "预选",
-      estimated: !numberValue(candidate.budget) && inferTicketPrice(candidate) > 0,
-    }));
+    .map((candidate) => {
+      const estimate = inferTicketPrice(candidate);
+      return {
+        id: `candidate-${candidate.id}`,
+        refType: "candidate",
+        itemId: candidate.id || "",
+        label: candidate.title || "备选地点",
+        category: budgetCategoryForItem(candidate),
+        amount: numberValue(candidate.budget) || estimate,
+        paid: numberValue(candidate.paid),
+        source: "预选",
+        estimated: !numberValue(candidate.budget) && estimate > 0,
+      };
+    });
   return [...confirmedStops, ...selectedQuotes, ...selectedCandidates].filter((item) => item.amount || item.paid);
 }
 
@@ -10624,7 +10723,12 @@ function renderBudgetCombo() {
     .join("");
   const estimateRows = summary.estimates
     .slice(0, 4)
-    .map((item) => `<span>${escapeHtml(item.label)} 门票待确认 ${money(item.amount)}</span>`)
+    .map((item) => `
+      <span>
+        <b>${escapeHtml(item.label)} 门票待确认 ${money(item.amount)}</b>
+        ${canEdit() ? `<button type="button" class="mini-action" data-apply-budget-estimate="${escapeHtml(item.refType)}:${escapeHtml(item.dayId || "")}:${escapeHtml(item.itemId || "")}">采用</button>` : ""}
+      </span>
+    `)
     .join("");
   const itemRows = summary.items
     .slice(0, 8)
@@ -10642,6 +10746,54 @@ function renderBudgetCombo() {
   `;
 }
 
+async function applyBudgetEstimateFromToken(token = "") {
+  const [refType, dayId, itemId] = String(token || "").split(":");
+  if (!requireEdit("采用预算估算")) return;
+  if (refType === "stop") {
+    const day = state.days.find((item) => item.id === dayId);
+    const stop = day?.stops?.find((item) => item.id === itemId);
+    const estimate = inferTicketPrice(stop);
+    if (!day || !stop || !estimate) {
+      dom.saveState.textContent = "没有找到可采用的门票估算。";
+      return;
+    }
+    stop.budget = estimate;
+    stop.tags = Array.from(new Set([...(stop.tags || []), "门票估算待确认"]));
+    if (!(await syncStopSnapshotToPlanDoc(stop.id, "local-budget-estimate-stop"))) {
+      await syncStopListToDoc(day.id, "local-budget-estimate-stop-fallback");
+    }
+    await logActivity(`采用门票估算「${stop.title}」${money(estimate)}`, { target: stopActivityTarget(day.id, stop.id, { action: "budget-estimate" }) });
+    await saveCollaborativePlanChange(`采用门票估算「${stop.title}」`);
+    render();
+    dom.saveState.textContent = `已把「${stop.title}」预算设为 ${money(estimate)}，请出行前确认官方票价。`;
+    return;
+  }
+  if (refType === "candidate") {
+    const candidate = (state.candidates || []).find((item) => item.id === itemId);
+    const estimate = inferTicketPrice(candidate);
+    if (!candidate || !estimate) {
+      dom.saveState.textContent = "没有找到可采用的备选估算。";
+      return;
+    }
+    const patch = {
+      budget: estimate,
+      tags: Array.from(new Set([...(candidate.tags || []), "门票估算待确认"])),
+    };
+    if (await updateCandidateInDoc(candidate.id, patch)) {
+      persistCurrentPlanFromDoc("备选预算估算已实时同步");
+    } else {
+      state.candidates = mergedCandidatesWithPatch("update", patch, candidate.id);
+      await syncCandidatesToDoc("local-budget-estimate-candidate-fallback");
+    }
+    await logActivity(`采用备选门票估算「${candidate.title}」${money(estimate)}`, { target: candidateActivityTarget(candidate.id, { action: "budget-estimate" }) });
+    await saveCollaborativePlanChange(`采用备选门票估算「${candidate.title}」`);
+    render();
+    dom.saveState.textContent = `已把备选「${candidate.title}」预算设为 ${money(estimate)}，请出行前确认官方票价。`;
+    return;
+  }
+  dom.saveState.textContent = "这条预算估算暂时不能自动采用。";
+}
+
 function categoryBudget() {
   const groups = { 交通: 0, 餐饮: 0, 门票: 0, 住宿: 0 };
   state.days.forEach((day) => {
@@ -10654,13 +10806,27 @@ function categoryBudget() {
       else groups.门票 += value;
     });
   });
+  (state.transportQuotes || []).forEach((quote) => {
+    if (quote.selected) groups.交通 += numberValue(quote.price);
+  });
+  (state.candidates || []).forEach((candidate) => {
+    if (!candidate.selected) return;
+    const value = numberValue(candidate.budget) || inferTicketPrice(candidate);
+    const category = budgetCategoryForItem(candidate);
+    if (category === "住宿") groups.住宿 += value;
+    else if (category === "餐饮") groups.餐饮 += value;
+    else if (category === "交通") groups.交通 += value;
+    else groups.门票 += value;
+  });
   return groups;
 }
 
 function renderShell() {
   ensurePlanOrigin(state);
-  const total = totalBudget();
-  const paid = totalPaid();
+  const total = totalPlannedBudget();
+  const confirmedTotal = totalBudget();
+  const paid = totalPlannedPaid();
+  const confirmedPaid = totalPaid();
   const people = partySize();
   const limit = Number(state.budgetLimit || 10000);
   const percent = Math.min(100, Math.round((total / limit) * 100));
@@ -10689,6 +10855,8 @@ function renderShell() {
     <span>已付 ${money(paid)}</span>
     <span>待付 ${money(Math.max(0, total - paid))}</span>
     <span>人均 ${money(Math.round(total / people))}</span>
+    ${total !== confirmedTotal ? `<span>行程已确定 ${money(confirmedTotal)} · 已选组合 ${money(total)}</span>` : ""}
+    ${paid !== confirmedPaid ? `<span>行程已付 ${money(confirmedPaid)} · 组合已付 ${money(paid)}</span>` : ""}
     ${payerRows || "<span>暂无付款记录</span>"}
     <strong>AA 结算建议</strong>
     ${transferRows || "<span>当前无需转账或付款人信息不足</span>"}
@@ -11308,6 +11476,12 @@ dom.mapCanvas.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
+  const budgetEstimateButton = event.target.closest("[data-apply-budget-estimate]");
+  if (budgetEstimateButton) {
+    applyBudgetEstimateFromToken(budgetEstimateButton.dataset.applyBudgetEstimate);
+    return;
+  }
+
   const option = event.target.closest("[data-amap-place-index]");
   if (!option) return;
   const target = option.dataset.amapTarget || "quick";
