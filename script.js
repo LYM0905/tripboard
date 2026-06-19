@@ -4204,6 +4204,13 @@ function checklistTextWithAddedItem(text = "", itemText = "") {
   return [...String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean), checklistLineWithDone(cleanText, false)].join("\n").trim();
 }
 
+function checklistTextWithoutItem(text = "", sourceIndex = 0) {
+  const lines = String(text || "").split(/\r?\n/);
+  const index = Math.max(0, Math.min(Number(sourceIndex) || 0, lines.length - 1));
+  lines.splice(index, 1);
+  return lines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
+}
+
 function renderChecklistPreview(block) {
   if (block.type !== "checklist") return "";
   const items = checklistLineParts(block.text || "");
@@ -4211,10 +4218,13 @@ function renderChecklistPreview(block) {
     <div class="day-block-checklist-preview${items.length ? "" : " is-empty"}" aria-label="检查清单项">
       ${items.length ? "" : `<p>每行一个检查项，可用 [x] 标记完成</p>`}
       ${items.slice(0, 6).map((item) => `
-        <button type="button" class="${item.done ? "is-done" : ""}" data-toggle-checklist-item="${item.sourceIndex}" aria-label="${item.done ? "取消完成" : "标记完成"}：${escapeHtml(item.text)}">
-          ${icon(item.done ? "check-square" : "square")}
-          <b>${escapeHtml(item.text)}</b>
-        </button>
+        <span class="day-block-checklist-row">
+          <button type="button" class="${item.done ? "is-done" : ""}" data-toggle-checklist-item="${item.sourceIndex}" aria-label="${item.done ? "取消完成" : "标记完成"}：${escapeHtml(item.text)}">
+            ${icon(item.done ? "check-square" : "square")}
+            <b>${escapeHtml(item.text)}</b>
+          </button>
+          <button type="button" class="day-block-checklist-delete" data-delete-checklist-item="${item.sourceIndex}" aria-label="删除检查项：${escapeHtml(item.text)}">${icon("x")}</button>
+        </span>
       `).join("")}
       ${items.length > 6 ? `<small>还有 ${items.length - 6} 项</small>` : ""}
       <form class="day-block-checklist-add" data-add-checklist-item="${escapeHtml(block.id)}">
@@ -11692,6 +11702,18 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const input = blockElement?.querySelector("[data-edit-day-block]");
     const index = Number(commandButton.dataset.commandIndex) || 0;
     if (input) await applyDayBlockCommandSelection(input, index);
+    return;
+  }
+  const deleteChecklistButton = event.target.closest("[data-delete-checklist-item]");
+  if (deleteChecklistButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const blockElement = deleteChecklistButton.closest("[data-day-block]");
+    const blockId = blockElement?.dataset.dayBlock || "";
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || block.type !== "checklist") return;
+    const nextText = checklistTextWithoutItem(block.text || "", deleteChecklistButton.dataset.deleteChecklistItem);
+    await saveChecklistTextChange(day, block, nextText, "checklist-delete-item");
     return;
   }
   const checklistButton = event.target.closest("[data-toggle-checklist-item]");

@@ -2549,11 +2549,14 @@ button:disabled {
   border-radius: 8px;
 }
 
-.day-block-checklist-preview button {
+.day-block-checklist-row {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 24px;
   gap: 6px;
   align-items: center;
+}
+
+.day-block-checklist-preview button {
   min-height: 24px;
   padding: 2px 3px;
   color: var(--ink);
@@ -2567,6 +2570,24 @@ button:disabled {
 
 .day-block-checklist-preview button:hover {
   background: rgba(49, 111, 91, 0.08);
+}
+
+.day-block-checklist-row > button:first-child {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.day-block-checklist-delete {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.day-block-checklist-delete:hover {
+  color: var(--danger);
+  background: rgba(194, 83, 83, 0.08);
 }
 
 .day-block-checklist-preview i {
