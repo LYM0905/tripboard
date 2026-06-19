@@ -4240,6 +4240,30 @@ function dayBlockFormattedText(value = "", start = 0, end = 0, format = "bold") 
   return { text: nextText, selectionStart, selectionEnd };
 }
 
+function renderInlineMarkdown(text = "") {
+  const placeholders = [];
+  const token = (html) => {
+    const key = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(html);
+    return key;
+  };
+  let escaped = escapeHtml(String(text || ""));
+  escaped = escaped.replace(/`([^`\n]+)`/g, (_, value) => token(`<code>${value}</code>`));
+  escaped = escaped.replace(/\*\*([^*\n]+)\*\*/g, (_, value) => token(`<strong>${value}</strong>`));
+  escaped = escaped.replace(/(^|[^*])\*([^*\n]+)\*/g, (_, prefix, value) => `${prefix}${token(`<em>${value}</em>`)}`);
+  placeholders.forEach((html, index) => {
+    escaped = escaped.replaceAll(`\u0000${index}\u0000`, html);
+  });
+  return escaped;
+}
+
+function renderDayBlockMarkdownPreview(block) {
+  if (!block?.text || block.type === "checklist" || block.type === "divider") return "";
+  const hasMarkup = /(\*\*[^*\n]+\*\*|(^|[^*])\*[^*\n]+\*|`[^`\n]+`)/.test(block.text);
+  if (!hasMarkup) return "";
+  return `<div class="day-block-markdown-preview">${String(block.text).split(/\r?\n/).map((line) => `<p>${renderInlineMarkdown(line)}</p>`).join("")}</div>`;
+}
+
 function renderChecklistPreview(block) {
   if (block.type !== "checklist") return "";
   const items = checklistLineParts(block.text || "");
@@ -4453,6 +4477,7 @@ function renderDayBlocks(day = currentDay()) {
                   <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="code" title="行内代码" aria-label="行内代码"${disabledAttr}>${icon("code-2")}</button>
                 </span>
                 <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}" placeholder="${escapeHtml(textPlaceholder)}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
+                ${renderDayBlockMarkdownPreview(block)}
                 ${renderChecklistPreview(block)}
                 ${renderDayBlockTextPresence(block)}
               </span>

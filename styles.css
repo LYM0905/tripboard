@@ -2764,6 +2764,41 @@ button:disabled {
   width: 100%;
 }
 
+.day-block-markdown-preview {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 7px 9px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px dashed rgba(49, 111, 91, 0.18);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.day-block-markdown-preview p {
+  margin: 0;
+}
+
+.day-block-markdown-preview strong {
+  font-weight: 900;
+}
+
+.day-block-markdown-preview em {
+  color: #52645a;
+}
+
+.day-block-markdown-preview code {
+  padding: 1px 5px;
+  color: #2f5c49;
+  background: #edf8f4;
+  border: 1px solid rgba(49, 111, 91, 0.16);
+  border-radius: 5px;
+  font-family: Consolas, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+}
+
 .day-block-text-presence {
   top: 0;
   bottom: 0;
