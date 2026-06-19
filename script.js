@@ -5049,6 +5049,15 @@ function refreshDayBlockCommentsDom(day = currentDay(), blockId = "") {
   return true;
 }
 
+function refreshDayBlockCommentMutationViews(day = currentDay(), blockId = "") {
+  const refreshed = refreshDayBlockCommentsDom(day, blockId);
+  if (!refreshed) return false;
+  refreshDayBlocksStatusText(normalizeDayBlocks(day.blocks || []));
+  renderCommentIndex();
+  refreshIcons();
+  return true;
+}
+
 function refreshDayBlockPresenceDom(day = currentDay()) {
   if (!day || !dom.dayBlockList) return false;
   const blocks = normalizeDayBlocks(day.blocks || []);
@@ -13137,7 +13146,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback");
     await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "toggle" }) });
     await saveCollaborativePlanChange("已更新协作块");
-    render();
+    if (!refreshDayBlockDoneDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     return;
   }
   const replyBlockCommentButton = event.target.closest("[data-reply-block-comment]");
@@ -13178,7 +13187,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-resolve-fallback");
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
     await saveCollaborativePlanChange("已更新块级评论");
-    render();
+    if (!refreshDayBlockCommentMutationViews(currentDay(), block.id)) renderDayBlocks(currentDay());
     return;
   }
   const deleteBlockCommentButton = event.target.closest("[data-delete-block-comment]");
@@ -13204,7 +13213,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-delete-fallback");
     await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "", deleted: true } });
     await saveCollaborativePlanChange("已删除块级评论");
-    render();
+    if (!refreshDayBlockCommentMutationViews(currentDay(), block.id)) renderDayBlocks(currentDay());
     return;
   }
   const moveButton = event.target.closest("[data-move-day-block]");
@@ -13358,7 +13367,7 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
   await syncDayBlocksToDoc(currentDay().id, parentId ? "local-day-block-comment-reply-fallback" : "local-day-block-comment-add-fallback");
   await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || fallbackComment.id, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
   await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
-  render();
+  if (!refreshDayBlockCommentMutationViews(currentDay(), block.id)) renderDayBlocks(currentDay());
 });
 
 dom.dayBlockList?.addEventListener("focusin", (event) => {
