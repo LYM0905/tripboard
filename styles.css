@@ -2549,13 +2549,24 @@ button:disabled {
   border-radius: 8px;
 }
 
-.day-block-checklist-preview span {
+.day-block-checklist-preview button {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
   gap: 6px;
   align-items: center;
+  min-height: 24px;
+  padding: 2px 3px;
   color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
   font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.day-block-checklist-preview button:hover {
+  background: rgba(49, 111, 91, 0.08);
 }
 
 .day-block-checklist-preview i {
@@ -2572,11 +2583,11 @@ button:disabled {
   white-space: nowrap;
 }
 
-.day-block-checklist-preview span.is-done {
+.day-block-checklist-preview button.is-done {
   color: var(--muted);
 }
 
-.day-block-checklist-preview span.is-done b {
+.day-block-checklist-preview button.is-done b {
   text-decoration: line-through;
 }
 

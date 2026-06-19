@@ -4172,13 +4172,30 @@ function renderDayBlockCommandMenu(input) {
 function checklistLineParts(text = "") {
   return String(text || "")
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const done = /^[-*]?\s*\[[xX✓]\]\s*/.test(line);
-      const clean = line.replace(/^[-*]?\s*\[[ xX✓]\]\s*/, "").replace(/^[-*]\s+/, "").trim();
-      return { text: clean || line, done };
+    .map((line, sourceIndex) => ({ line, sourceIndex, trimmed: line.trim() }))
+    .filter((item) => item.trimmed)
+    .map((item, visibleIndex) => {
+      const done = /^[-*]?\s*\[[xX✓]\]\s*/.test(item.trimmed);
+      const clean = item.trimmed.replace(/^[-*]?\s*\[[ xX✓]\]\s*/, "").replace(/^[-*]\s+/, "").trim();
+      return { text: clean || item.trimmed, done, sourceIndex: item.sourceIndex, visibleIndex };
     });
+}
+
+function checklistLineWithDone(line = "", done = false) {
+  const text = String(line || "").trim()
+    .replace(/^[-*]?\s*\[[ xX✓]\]\s*/, "")
+    .replace(/^[-*]\s+/, "")
+    .trim();
+  return `- [${done ? "x" : " "}] ${text || "检查项"}`;
+}
+
+function checklistTextWithToggledItem(text = "", sourceIndex = 0) {
+  const lines = String(text || "").split(/\r?\n/);
+  const index = Math.max(0, Math.min(Number(sourceIndex) || 0, lines.length - 1));
+  const current = lines[index] || "";
+  const done = /^[-*]?\s*\[[xX✓]\]\s*/.test(current.trim());
+  lines[index] = checklistLineWithDone(current, !done);
+  return lines.join("\n").trim();
 }
 
 function renderChecklistPreview(block) {
@@ -4186,12 +4203,12 @@ function renderChecklistPreview(block) {
   const items = checklistLineParts(block.text || "");
   if (!items.length) return `<div class="day-block-checklist-preview is-empty">每行一个检查项，可用 [x] 标记完成</div>`;
   return `
-    <div class="day-block-checklist-preview" aria-hidden="true">
+    <div class="day-block-checklist-preview" aria-label="检查清单项">
       ${items.slice(0, 6).map((item) => `
-        <span class="${item.done ? "is-done" : ""}">
+        <button type="button" class="${item.done ? "is-done" : ""}" data-toggle-checklist-item="${item.sourceIndex}" aria-label="${item.done ? "取消完成" : "标记完成"}：${escapeHtml(item.text)}">
           ${icon(item.done ? "check-square" : "square")}
           <b>${escapeHtml(item.text)}</b>
-        </span>
+        </button>
       `).join("")}
       ${items.length > 6 ? `<small>还有 ${items.length - 6} 项</small>` : ""}
     </div>
@@ -11639,6 +11656,36 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const input = blockElement?.querySelector("[data-edit-day-block]");
     const index = Number(commandButton.dataset.commandIndex) || 0;
     if (input) await applyDayBlockCommandSelection(input, index);
+    return;
+  }
+  const checklistButton = event.target.closest("[data-toggle-checklist-item]");
+  if (checklistButton) {
+    event.preventDefault();
+    const blockElement = checklistButton.closest("[data-day-block]");
+    const blockId = blockElement?.dataset.dayBlock || "";
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || block.type !== "checklist" || !requireEdit("更新检查清单")) return;
+    const nextText = checklistTextWithToggledItem(block.text || "", checklistButton.dataset.toggleChecklistItem);
+    activeBlockPresenceId = blockId;
+    schedulePresenceTrack(0);
+    noteRemoteBlockEditors(blockId, "更新检查清单");
+    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, nextText, "local-day-block-checklist-toggle");
+    if (updatedText) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+        item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+      )));
+      renderDayBlocks(day);
+      await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "checklist-toggle" }) });
+      await saveCollaborativePlanChange("已更新检查清单");
+      return;
+    }
+    if (!mutate("更新检查清单", () => {
+      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, text: nextText } : item)));
+    }, { requireUnlocked: false, save: false, render: false })) return;
+    await syncDayBlocksToDoc(day.id, "local-day-block-checklist-toggle-fallback");
+    await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "checklist-toggle" }) });
+    await saveCollaborativePlanChange("已更新检查清单");
+    render();
     return;
   }
   const bulkButton = event.target.closest("[data-day-block-bulk]");
