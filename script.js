@@ -4474,6 +4474,7 @@ function dayBlockFocusSnapshot() {
   const end = typeof input.selectionEnd === "number" ? input.selectionEnd : start;
   return {
     blockId,
+    value: String(input.value || ""),
     start: Math.max(0, Math.min(start, valueLength)),
     end: Math.max(0, Math.min(end, valueLength)),
     scrollTop: input.scrollTop || 0,
@@ -4485,11 +4486,14 @@ function restoreDayBlockFocus(snapshot = null) {
   requestAnimationFrame(() => {
     const input = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(snapshot.blockId)}"]`);
     if (!input) return;
-    const valueLength = String(input.value || "").length;
-    const start = Math.max(0, Math.min(Number(snapshot.start) || 0, valueLength));
-    const end = Math.max(start, Math.min(Number(snapshot.end) || start, valueLength));
+    const value = String(input.value || "");
+    const valueLength = value.length;
+    const start = transformTextPosition(snapshot.value || "", value, Number(snapshot.start) || 0);
+    const end = transformTextPosition(snapshot.value || "", value, Number(snapshot.end) || start);
+    const safeStart = Math.max(0, Math.min(start, valueLength));
+    const safeEnd = Math.max(safeStart, Math.min(end, valueLength));
     input.focus({ preventScroll: true });
-    input.setSelectionRange?.(start, end);
+    input.setSelectionRange?.(safeStart, safeEnd);
     input.scrollTop = snapshot.scrollTop || 0;
     activeBlockPresenceId = snapshot.blockId;
     schedulePresenceTrack(90);
@@ -7000,6 +7004,21 @@ function textDiffParts(baseValue = "", nextValue = "") {
     insertText: nextText.slice(prefixLength, nextText.length - suffixLength),
     changed: true,
   };
+}
+
+function transformTextPosition(baseValue = "", nextValue = "", position = 0) {
+  const baseText = String(baseValue || "");
+  const nextText = String(nextValue || "");
+  const boundedPosition = Math.max(0, Math.min(Number(position) || 0, baseText.length));
+  if (baseText === nextText) return boundedPosition;
+  const diff = textDiffParts(baseText, nextText);
+  if (!diff.changed) return Math.max(0, Math.min(boundedPosition, nextText.length));
+  const changeStart = diff.index;
+  const changeEnd = diff.index + diff.deleteLength;
+  const insertedLength = diff.insertText.length;
+  if (boundedPosition < changeStart) return boundedPosition;
+  if (boundedPosition > changeEnd) return Math.max(0, Math.min(boundedPosition + insertedLength - diff.deleteLength, nextText.length));
+  return Math.max(0, Math.min(changeStart + insertedLength, nextText.length));
 }
 
 function anchoredTextPatchPosition(currentValue = "", baseValue = "", diff = {}) {
