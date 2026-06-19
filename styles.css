@@ -2777,6 +2777,24 @@ button:disabled {
   line-height: 1.45;
 }
 
+.day-block.is-previewing .day-block-text,
+.day-block.is-previewing .day-block-checklist-preview {
+  display: none;
+}
+
+.day-block.is-previewing .day-block-markdown-preview {
+  margin-top: 0;
+}
+
+.day-block-markdown-preview.is-full-preview {
+  min-height: 42px;
+  padding: 10px 11px;
+  background: #fbf7ed;
+  border-style: solid;
+  border-color: rgba(49, 111, 91, 0.2);
+  font-size: 13px;
+}
+
 .day-block-markdown-preview p {
   margin: 0;
 }

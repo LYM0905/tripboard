@@ -4302,11 +4302,11 @@ function renderInlineMarkdown(text = "") {
   return escaped;
 }
 
-function renderDayBlockMarkdownPreview(block) {
+function renderDayBlockMarkdownPreview(block, force = false) {
   if (!block?.text || block.type === "checklist" || block.type === "divider") return "";
   const hasMarkup = /(\[[^\]\n]+\]\([^)]+\)|\*\*[^*\n]+\*\*|(^|[^*])\*[^*\n]+\*|`[^`\n]+`)/.test(block.text);
-  if (!hasMarkup) return "";
-  return `<div class="day-block-markdown-preview">${String(block.text).split(/\r?\n/).map((line) => `<p>${renderInlineMarkdown(line)}</p>`).join("")}</div>`;
+  if (!force && !hasMarkup) return "";
+  return `<div class="day-block-markdown-preview${force ? " is-full-preview" : ""}">${String(block.text).split(/\r?\n/).map((line) => `<p>${renderInlineMarkdown(line)}</p>`).join("")}</div>`;
 }
 
 function renderChecklistPreview(block) {
@@ -4510,6 +4510,9 @@ function renderDayBlocks(day = currentDay()) {
   Object.keys(blockCommentFilters).forEach((blockId) => {
     if (!blockIds.has(blockId)) delete blockCommentFilters[blockId];
   });
+  previewDayBlockIds.forEach((blockId) => {
+    if (!blockIds.has(blockId)) previewDayBlockIds.delete(blockId);
+  });
   if (blockReplyingCommentId && !blocks.some((block) => normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId))) {
     blockReplyingCommentId = "";
   }
@@ -4528,6 +4531,8 @@ function renderDayBlocks(day = currentDay()) {
           const collapsedClass = collapsed ? " is-collapsed" : "";
           const selected = selectedDayBlockIds.has(block.id);
           const selectedClass = selected ? " is-selected" : "";
+          const previewMode = previewDayBlockIds.has(block.id);
+          const previewClass = previewMode ? " is-previewing" : "";
           const remoteSelectors = remoteSelectorsForBlock(block.id);
           const remoteSelectedClass = remoteSelectors.length ? " is-remote-selected" : "";
           const comments = normalizeComments(block.comments || []);
@@ -4547,7 +4552,7 @@ function renderDayBlocks(day = currentDay()) {
           const toggleLabel = block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成";
           const textPlaceholder = block.type === "divider" ? "分隔线标题（可选）" : block.type === "checklist" ? "每行一个检查项，可写 [x] 表示已完成" : "";
           return `
-            <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}${remoteSelectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
+            <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}${previewClass}${remoteSelectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
               <label class="day-block-select" title="选择协作块">
                 <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="选择协作块"${selected ? " checked" : ""} />
               </label>
@@ -4559,9 +4564,10 @@ function renderDayBlocks(day = currentDay()) {
                   <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="italic" title="斜体" aria-label="斜体"${disabledAttr}>${icon("italic")}</button>
                   <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="code" title="行内代码" aria-label="行内代码"${disabledAttr}>${icon("code-2")}</button>
                   <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="link" title="链接" aria-label="链接"${disabledAttr}>${icon("link")}</button>
+                  <button type="button" data-toggle-day-block-preview="${escapeHtml(block.id)}" title="${previewMode ? "编辑" : "预览"}" aria-label="${previewMode ? "切回编辑" : "预览富文本"}">${icon(previewMode ? "pencil" : "eye")}</button>
                 </span>
                 <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}" placeholder="${escapeHtml(textPlaceholder)}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
-                ${renderDayBlockMarkdownPreview(block)}
+                ${renderDayBlockMarkdownPreview(block, previewMode)}
                 ${renderChecklistPreview(block)}
                 ${renderDayBlockTextPresence(block)}
               </span>
@@ -7762,6 +7768,7 @@ let selectedDayBlockIds = new Set();
 let lastSelectedDayBlockId = "";
 let activeDayBlockCommand = { blockId: "", index: 0, query: "" };
 let collapsedDayBlockIds = loadCollapsedDayBlocks();
+let previewDayBlockIds = new Set();
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
@@ -12112,6 +12119,21 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!input || !block) return;
     await formatDayBlockInput(day, block, input, formatButton.dataset.format || "bold");
+    return;
+  }
+  const previewButton = event.target.closest("[data-toggle-day-block-preview]");
+  if (previewButton) {
+    event.preventDefault();
+    const blockId = previewButton.dataset.toggleDayBlockPreview || "";
+    if (!blockId) return;
+    if (previewDayBlockIds.has(blockId)) {
+      previewDayBlockIds.delete(blockId);
+      renderDayBlocks(day);
+      focusDayBlockInput(blockId);
+    } else {
+      previewDayBlockIds.add(blockId);
+      renderDayBlocks(day);
+    }
     return;
   }
   const deleteChecklistButton = event.target.closest("[data-delete-checklist-item]");
