@@ -8943,6 +8943,26 @@ function renderCommentIndex() {
     .join("") || `<div class="member-empty">${commentIndexFilter === "open" ? "当前没有未解决批注。" : "还没有批注记录。"}</div>`;
 }
 
+function refreshCommentIndexMutationViews(item = null) {
+  renderCommentIndex();
+  if (!item || typeof item !== "object") {
+    refreshIcons();
+    return false;
+  }
+  let refreshed = false;
+  if (item.scope === "block" && item.dayId === currentDay()?.id && item.blockId) {
+    refreshed = refreshDayBlockCommentsDom(currentDay(), item.blockId);
+  } else if (item.scope === "day" && item.dayId === currentDay()?.id) {
+    renderDayComments(currentDay());
+    refreshed = true;
+  } else if (item.scope === "stop" && item.stopId === currentStop()?.id) {
+    renderStopComments(currentStop());
+    refreshed = true;
+  }
+  refreshIcons();
+  return refreshed;
+}
+
 async function toggleCommentIndexResolved(commentId = "") {
   const item = commentIndexItems().find((entry) => entry.id === commentId);
   if (!item || !requireEdit(item.resolved ? "重新打开批注" : "解决批注")) return false;
@@ -8984,7 +9004,7 @@ async function toggleCommentIndexResolved(commentId = "") {
     if (!updated) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-resolve-fallback");
     await saveCollaborativePlanChange(`${actionText}块级批注`);
   }
-  render();
+  if (!refreshCommentIndexMutationViews(item)) render();
   dom.saveState.textContent = item.resolved ? "已重新打开批注" : "已标记批注解决";
   return true;
 }
@@ -9032,7 +9052,7 @@ async function replyFromCommentIndex(commentId = "", text = "") {
     if (!reply) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-reply-fallback");
     await saveCollaborativePlanChange("已回复块级批注");
   }
-  render();
+  if (!refreshCommentIndexMutationViews(item)) render();
   dom.saveState.textContent = "已回复批注";
   return true;
 }
@@ -9041,6 +9061,25 @@ function focusCommentIndexItem(commentId = "") {
   const item = commentIndexItems().find((entry) => entry.id === commentId);
   if (!item) return false;
   const dayIndex = state.days.findIndex((day, index) => (item.dayId && day.id === item.dayId) || index === item.dayIndex);
+  if (item.scope === "block" && dayIndex === activeDay && item.blockId) {
+    activeStop = 0;
+    blockCommentFilters[item.blockId] = item.resolved ? "resolved" : "open";
+    activeBlockPresenceId = item.blockId || activeBlockPresenceId;
+    if (!refreshDayBlockCommentsDom(currentDay(), item.blockId)) renderDayBlocks(currentDay());
+    let focused = false;
+    if (item.anchor) focused = focusCommentAnchor(item.anchor);
+    const thread = Array.from(dom.dayBlockList?.querySelectorAll(`[data-block-comments="${CSS.escape(item.blockId || "")}"] [data-comment]`) || []).find((element) => element.dataset.comment === item.id);
+    if (thread) {
+      thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      thread.classList.add("is-focused");
+      setTimeout(() => thread.classList.remove("is-focused"), 1300);
+      focused = true;
+    }
+    renderCommentIndex();
+    refreshIcons();
+    dom.saveState.textContent = focused ? "已定位到批注" : "已切换到批注所在位置";
+    return true;
+  }
   if (dayIndex >= 0) activeDay = dayIndex;
   if (item.scope === "stop") {
     const day = currentDay();
@@ -12791,7 +12830,7 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
     const addedBlock = added === true ? block : added;
     day.blocks = normalizeDayBlocks([...(day.blocks || []), addedBlock]);
     dom.dayBlockInput.value = "";
-    renderDayBlocks(day);
+    if (!refreshDayBlockInsertDom(day, [addedBlock.id], addedBlock.id)) renderDayBlocks(day);
     await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(day.id, addedBlock.id) });
     await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
     dom.saveState.textContent = "已添加协作块";
@@ -12804,7 +12843,9 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
   await syncDayBlocksToDoc(currentDay().id, "local-day-block-add-fallback");
   await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(currentDay().id, block.id) });
   await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
-  render();
+  if (!refreshDayBlockInsertDom(currentDay(), [block.id], block.id)) renderDayBlocks(currentDay());
+  renderDaySummary();
+  refreshIcons();
 });
 
 dom.dayBlockList?.addEventListener("change", async (event) => {
@@ -13654,7 +13695,7 @@ document.addEventListener("click", (event) => {
     if (!comment) return;
     if (scope === "block") {
       blockCommentFilters[blockId] = comment.resolved ? "resolved" : "open";
-      renderDayBlocks(currentDay());
+      if (!refreshDayBlockCommentsDom(currentDay(), blockId)) renderDayBlocks(currentDay());
       const thread = Array.from(dom.dayBlockList?.querySelectorAll(`[data-block-comments="${CSS.escape(blockId)}"] [data-comment]`) || []).find((item) => item.dataset.comment === comment.id);
       if (thread) {
         thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
