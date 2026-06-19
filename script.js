@@ -9324,7 +9324,14 @@ async function pushRemoteState(label = "已同步云端", options = {}) {
     showConflictPanel(pendingConflict);
     return false;
   }
-  if (!options.skipPendingFlush) await flushPendingPlanUpdates("保存前重放离线协作更新");
+  if (!options.skipPendingFlush && pendingPlanUpdates().length) {
+    const flushed = await flushPendingPlanUpdates("保存前重放离线协作更新");
+    if (flushed && !pendingPlanUpdates().length) return true;
+    if (pendingConflict) {
+      showConflictPanel(pendingConflict);
+      return false;
+    }
+  }
   await refreshLiveCollabStateBeforeRemoteSave("保存云端前已刷新协作快照");
   const savingPendingIds = pendingPlanUpdateIds();
   const payload = {
@@ -15008,37 +15015,48 @@ dom.importForm.addEventListener("submit", async (event) => {
   ].filter(Boolean);
   const rawNote = dom.importNote.value.trim();
   const note = [metadataLines.join("\n"), rawNote].filter(Boolean).join("\n\n");
-  let createdStop = null;
   const label = `导入${pendingProvider}记录`;
-  if (!mutate(label, () => {
-    createdStop = makeStop({
-      time: dom.importTime.value.trim() || "18:30",
-      title,
-      type: category,
-      address: dom.importAddress.value.trim() || "地址待确认",
-      note: note || `${pendingProvider}记录，后续可继续补充订单详情。`,
-      tags: ["已导入", pendingProvider, category].filter(Boolean),
-      budget: numberValue(dom.importBudget.value),
-      paid: numberValue(dom.importPaid.value),
-      payer: dom.importPayer.value.trim(),
-      image: defaults.image,
-      x: 78,
-      y: 60,
-    });
-    targetDay.stops.push(createdStop);
-    activeDay = targetDayIndex;
-    activeStop = targetDay.stops.length - 1;
+  if (!requireEdit(label)) return;
+  saveVersionSnapshot(label);
+  const createdStop = makeStop({
+    time: dom.importTime.value.trim() || "18:30",
+    title,
+    type: category,
+    address: dom.importAddress.value.trim() || "地址待确认",
+    note: note || `${pendingProvider}记录，后续可继续补充订单详情。`,
+    tags: ["已导入", pendingProvider, category].filter(Boolean),
+    budget: numberValue(dom.importBudget.value),
+    paid: numberValue(dom.importPaid.value),
+    payer: dom.importPayer.value.trim(),
+    image: defaults.image,
+    x: 78,
+    y: 60,
+  });
+  const finishImportUi = () => {
     dom.syncBadge.textContent = "已导入";
     dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已加入 ${targetDay.label}，可在右侧继续编辑。</span>`;
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
-  }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(targetDay.id, createdStop?.id || "", { action: "external-import" }) })) return;
-  if (createdStop) {
-    await addStopToDoc(targetDay.id, createdStop, "local-import-stop");
+  };
+  if (targetDay?.id && await addStopToDoc(targetDay.id, createdStop, "local-import-stop-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(targetDay.id, createdStop.id || "", { action: "external-import" }) });
+    await applyStopCreateFromDoc(targetDay.id, createdStop.id, label);
+    finishImportUi();
     await saveCollaborativePlanChange(label);
     broadcastStopCreated(targetDay.id, createdStop);
     render();
+    return;
   }
+  targetDay.stops.push(createdStop);
+  activeDay = targetDayIndex;
+  activeStop = targetDay.stops.length - 1;
+  clearCurrentAmapRoute();
+  await logActivity(label, { target: stopActivityTarget(targetDay.id, createdStop.id || "", { action: "external-import", fallback: true }) });
+  finishImportUi();
+  await syncStopListToDoc(targetDay.id, "local-import-stop-fallback");
+  await saveCollaborativePlanChange(label);
+  broadcastStopCreated(targetDay.id, createdStop);
+  render();
 });
 
 async function boot() {
