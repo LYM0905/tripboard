@@ -1674,6 +1674,17 @@ function conflictSummary(conflict) {
   return `${who} 在 ${when} 保存了云端版本，同时你本地也有未同步修改。`;
 }
 
+function timestampValue(value = "") {
+  const time = Date.parse(value || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isStaleRemoteUpdate(updatedAt = "") {
+  const nextTime = timestampValue(updatedAt);
+  const currentTime = timestampValue(lastRemoteUpdatedAt);
+  return Boolean(nextTime && currentTime && nextTime <= currentTime);
+}
+
 function showConflictPanel(conflict) {
   pendingConflict = { ...conflict, base: conflict.base || clone(lastSyncedState || {}) };
   if (!dom.conflictPanel) return;
@@ -6489,6 +6500,18 @@ async function addStopToDoc(dayId, stop, origin = "local-stop-insert") {
   return true;
 }
 
+async function applyStopCreateFromDoc(dayId, stopId, label = "计划结构协作内容已实时同步") {
+  persistCurrentPlanFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
+  const nextDayIndex = state.days.findIndex((day) => day.id === dayId);
+  if (nextDayIndex < 0) return false;
+  activeDay = nextDayIndex;
+  const nextStopIndex = (state.days[nextDayIndex].stops || []).findIndex((stop) => stop.id === stopId);
+  activeStop = nextStopIndex >= 0 ? nextStopIndex : Math.max(0, (state.days[nextDayIndex].stops || []).length - 1);
+  clearCurrentAmapRoute();
+  await patchDayMetaInDoc(dayId, { amapRoute: null }, "local-stop-create-route-clear");
+  return true;
+}
+
 async function deleteStopFromDoc(dayId, stopId, origin = "local-stop-delete") {
   if (!canEdit() || isReadonlyMode || !dayId || !stopId) return false;
   const stopArray = await ensureStopArrayForDay(dayId);
@@ -8037,7 +8060,7 @@ async function resolveConflict(mode) {
 }
 
 async function handleRemotePlanUpdate(next) {
-  if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
+  if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt || isStaleRemoteUpdate(next.updated_at)) return;
   persistCurrentPlanFromDoc("收到云端更新前已同步当前协作结构");
   const remotePlan = ensurePlanDates(clone(next.data));
   if (pendingLocalRemoteUpdatedAt && next.updated_at === pendingLocalRemoteUpdatedAt && samePlanContent(state, remotePlan)) {
@@ -9335,6 +9358,30 @@ async function pushRemoteState(label = "已同步云端", options = {}) {
           dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
           clearPendingPlanUpdatesById(savingPendingIds);
           return true;
+        }
+        if (remotePlan.planYjs && await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, "保存前已合并云端协作快照", { scheduleSave: false })) {
+          await refreshLiveCollabStateBeforeRemoteSave("重试保存前已刷新协作快照");
+          payload.data = state;
+          payload.updated_at = new Date().toISOString();
+          pendingLocalRemoteUpdatedAt = payload.updated_at;
+          const retryResult = await supabaseClient
+            .from("trip_plans")
+            .update(payload)
+            .eq("id", tripId)
+            .eq("updated_at", remote.updated_at || "")
+            .select("data, updated_at, updated_by")
+            .maybeSingle();
+          error = retryResult.error;
+          data = retryResult.data;
+          if (!error && data) {
+            lastRemoteUpdatedAt = data.updated_at || payload.updated_at;
+            lastSyncedState = clone(state);
+            clearPendingPlanUpdatesById(savingPendingIds);
+            hideConflictPanel();
+            dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
+            dom.collabStatus.textContent = `${label}，已合并云端协作快照后同步。`;
+            return true;
+          }
         }
         showConflictPanel({
           remote: remotePlan,
@@ -12232,30 +12279,38 @@ COLLAB_PLAN_TEXT_PRESENCE_FIELDS.forEach((meta) => {
 });
 
 dom.addStopBtn.addEventListener("click", async () => {
-  let createdStop = null;
-  let createdDayId = "";
-  if (!mutate("新增地点", () => {
-    const day = currentDay();
-    createdStop = makeStop({
-      time: "18:00",
-      title: "新地点",
-      note: "在右侧编辑名称、地址、预算和备注。",
-      tags: ["草稿"],
-      budget: 0,
-      x: 70,
-      y: 32,
-    });
-    createdDayId = day.id;
-    day.stops.push(createdStop);
-    activeStop = day.stops.length - 1;
-    clearCurrentAmapRoute();
-  }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, createdStop?.id || "", { action: "create" }) })) return;
-  if (createdStop) {
-    await addStopToDoc(createdDayId, createdStop, "local-stop-create");
-    await saveCollaborativePlanChange("新增地点");
+  const label = "新增地点";
+  if (!requireEdit(label)) return;
+  saveVersionSnapshot(label);
+  const day = currentDay();
+  const createdDayId = day?.id || "";
+  const createdStop = makeStop({
+    time: "18:00",
+    title: "新地点",
+    note: "在右侧编辑名称、地址、预算和备注。",
+    tags: ["草稿"],
+    budget: 0,
+    x: 70,
+    y: 32,
+  });
+  if (createdDayId && await addStopToDoc(createdDayId, createdStop, "local-stop-create-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(createdDayId, createdStop.id || "", { action: "create" }) });
+    await applyStopCreateFromDoc(createdDayId, createdStop.id, label);
+    await saveCollaborativePlanChange(label);
     broadcastStopCreated(createdDayId, createdStop);
     render();
+    return;
   }
+  const fallbackDay = currentDay();
+  if (!fallbackDay) return;
+  fallbackDay.stops.push(createdStop);
+  activeStop = fallbackDay.stops.length - 1;
+  clearCurrentAmapRoute();
+  await logActivity(label, { target: stopActivityTarget(createdDayId, createdStop.id || "", { action: "create", fallback: true }) });
+  await syncStopListToDoc(createdDayId, "local-stop-create-fallback");
+  await saveCollaborativePlanChange(label);
+  broadcastStopCreated(createdDayId, createdStop);
+  render();
 });
 
 dom.quickAddForm.addEventListener("submit", async (event) => {
@@ -12263,28 +12318,37 @@ dom.quickAddForm.addEventListener("submit", async (event) => {
   const draft = quickPlaceDraft();
   if (!draft) return;
   const name = draft.title;
-  let createdStop = null;
-  let createdDayId = "";
   const label = `加入景点「${name}」`;
-  if (!mutate(label, () => {
-    const day = currentDay();
-    createdStop = {
-      ...draft,
-      x: 30 + ((day.stops.length * 17) % 52),
-      y: 28 + ((day.stops.length * 13) % 42),
-    };
-    createdDayId = day.id;
-    day.stops.push(createdStop);
-    activeStop = day.stops.length - 1;
-    clearCurrentAmapRoute();
+  if (!requireEdit(label)) return;
+  saveVersionSnapshot(label);
+  const day = currentDay();
+  const createdDayId = day?.id || "";
+  const stopCount = day?.stops?.length || 0;
+  const createdStop = {
+    ...draft,
+    x: 30 + ((stopCount * 17) % 52),
+    y: 28 + ((stopCount * 13) % 42),
+  };
+  if (createdDayId && await addStopToDoc(createdDayId, createdStop, "local-quick-stop-create-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(createdDayId, createdStop.id || "", { action: "quick-add" }) });
+    await applyStopCreateFromDoc(createdDayId, createdStop.id, label);
     clearQuickPlaceForm();
-  }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, createdStop?.id || "", { action: "quick-add" }) })) return;
-  if (createdStop) {
-    await addStopToDoc(createdDayId, createdStop, "local-quick-stop-create");
     await saveCollaborativePlanChange(label);
     broadcastStopCreated(createdDayId, createdStop);
     render();
+    return;
   }
+  const fallbackDay = currentDay();
+  if (!fallbackDay) return;
+  fallbackDay.stops.push(createdStop);
+  activeStop = fallbackDay.stops.length - 1;
+  clearCurrentAmapRoute();
+  clearQuickPlaceForm();
+  await logActivity(label, { target: stopActivityTarget(createdDayId, createdStop.id || "", { action: "quick-add", fallback: true }) });
+  await syncStopListToDoc(createdDayId, "local-quick-stop-create-fallback");
+  await saveCollaborativePlanChange(label);
+  broadcastStopCreated(createdDayId, createdStop);
+  render();
 });
 
 dom.addCandidateBtn.addEventListener("click", async () => {
@@ -14123,15 +14187,24 @@ dom.candidateGrid.addEventListener("click", async (event) => {
   if (!requireEdit("加入备选地点")) return;
   const candidate = clone(state.candidates[Number(button.dataset.candidate)]);
   candidate.id = uid();
-  let createdDayId = "";
+  const createdDayId = currentDay()?.id || "";
   const label = `加入备选「${candidate.title}」`;
-  if (!mutate(label, () => {
-    const day = currentDay();
-    createdDayId = day.id;
-    day.stops.push(candidate);
-    activeStop = currentDay().stops.length - 1;
-  }, { save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add" }) })) return;
-  await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop");
+  saveVersionSnapshot(label);
+  if (createdDayId && await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add" }) });
+    await applyStopCreateFromDoc(createdDayId, candidate.id, label);
+    await saveCollaborativePlanChange(label);
+    broadcastStopCreated(createdDayId, candidate);
+    render();
+    return;
+  }
+  const day = currentDay();
+  if (!day) return;
+  day.stops.push(candidate);
+  activeStop = currentDay().stops.length - 1;
+  clearCurrentAmapRoute();
+  await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add", fallback: true }) });
+  await syncStopListToDoc(createdDayId, "local-candidate-to-stop-fallback");
   await saveCollaborativePlanChange(label);
   broadcastStopCreated(createdDayId, candidate);
   render();
