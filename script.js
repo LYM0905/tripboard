@@ -4636,6 +4636,28 @@ function refreshDayBlockPreviewDom(day = currentDay(), blockId = "") {
   return true;
 }
 
+function refreshDayBlockCollapseDom(day = currentDay(), blockId = "") {
+  if (!day || !dom.dayBlockList || !blockId) return false;
+  const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+  const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+  if (!block || !blockElement) return false;
+  const collapsed = collapsedDayBlockIds.has(blockId);
+  blockElement.classList.toggle("is-collapsed", collapsed);
+  const collapsedPreview = blockElement.querySelector(".day-block-collapsed-text");
+  if (collapsedPreview) {
+    collapsedPreview.textContent = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+  }
+  blockElement.querySelectorAll(`[data-toggle-day-block-collapse="${CSS.escape(blockId)}"]`).forEach((button) => {
+    const isSummaryButton = button.classList.contains("day-block-collapsed-text");
+    button.setAttribute("aria-label", isSummaryButton || collapsed ? "展开协作块" : "折叠协作块");
+    if (!isSummaryButton) button.innerHTML = icon(collapsed ? "chevrons-down-up" : "chevrons-up-down");
+  });
+  refreshDayBlockOverlayDom(block);
+  refreshIcons();
+  requestAnimationFrame(() => refreshDayBlockTextPresence());
+  return true;
+}
+
 function refreshDayBlockCommentsDom(day = currentDay(), blockId = "") {
   if (!day || !dom.dayBlockList || !blockId) return false;
   const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
@@ -12453,7 +12475,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       dom.saveState.textContent = "已折叠协作块";
     }
     saveCollapsedDayBlocks();
-    renderDayBlocks(day);
+    if (!refreshDayBlockCollapseDom(day, blockId)) renderDayBlocks(day);
     if (!collapsedDayBlockIds.has(blockId)) focusDayBlockInput(blockId);
     return;
   }
