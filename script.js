@@ -3179,11 +3179,24 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const currentDayId = currentDay()?.id || "";
   const changedDayBlockKeys = new Set();
   const changedDayBlockTextKeys = new Set();
+  const changedDayBlockCommentKeys = new Set();
   if (dayBlocksChanged) {
     const currentBlocks = normalizeDayBlocksFromDays(state.days || []);
     const nextBlocksByDay = nextDayBlocks || {};
     [...new Set([...Object.keys(currentBlocks), ...Object.keys(nextBlocksByDay)])].forEach((dayId) => {
-      if (!sameSerialized(currentBlocks[dayId] || [], nextBlocksByDay[dayId] || [])) changedDayBlockKeys.add(dayId);
+      const currentDayBlocks = currentBlocks[dayId] || [];
+      const nextDayBlocksForDay = nextBlocksByDay[dayId] || [];
+      if (!sameSerialized(currentDayBlocks, nextDayBlocksForDay)) changedDayBlockKeys.add(dayId);
+      const currentById = new Map(currentDayBlocks.map((block) => [block.id, block]));
+      nextDayBlocksForDay.forEach((nextBlock) => {
+        const currentBlock = currentById.get(nextBlock.id);
+        if (!currentBlock) return;
+        const currentWithoutComments = { ...currentBlock, comments: [] };
+        const nextWithoutComments = { ...nextBlock, comments: [] };
+        if (sameSerialized(currentWithoutComments, nextWithoutComments) && !sameSerialized(normalizeComments(currentBlock.comments || []), normalizeComments(nextBlock.comments || []))) {
+          changedDayBlockCommentKeys.add(`${dayId}:${nextBlock.id}`);
+        }
+      });
     });
   }
   if (dayBlockTextStatesChanged || dayBlockTextValuesChanged) {
@@ -3200,6 +3213,10 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const dayBlockOnlyVisibleChange = visibleChanged && !dayMetasChanged && !dayTextStatesChanged && !settingTextValuesChanged && !stopListsChanged && !quotesChanged && !candidatesChanged && !activitiesChanged && !settingsChanged && !stopTextStatesChanged && (dayBlockTextStatesChanged || dayBlockTextValuesChanged || dayBlocksChanged);
   const currentDayBlockChanged = Boolean(currentDayId && changedDayBlockKeys.has(currentDayId));
   const currentDayChangedTextBlockIds = [...changedDayBlockTextKeys]
+    .map((key) => key.split(":"))
+    .filter(([dayId, blockId]) => dayId === currentDayId && blockId)
+    .map(([, blockId]) => blockId);
+  const currentDayChangedCommentBlockIds = [...changedDayBlockCommentKeys]
     .map((key) => key.split(":"))
     .filter(([dayId, blockId]) => dayId === currentDayId && blockId)
     .map(([, blockId]) => blockId);
@@ -3227,7 +3244,12 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   if (refreshViews && visibleChanged) {
     if (dayBlockOnlyVisibleChange && currentDayBlockChanged) {
       const textOnlyCurrentDayChange = !dayBlocksChanged && currentDayChangedTextBlockIds.length > 0;
-      if (!textOnlyCurrentDayChange || !refreshDayBlockTextDom(currentDay(), currentDayChangedTextBlockIds)) {
+      const commentsOnlyCurrentDayChange = dayBlocksChanged && currentDayChangedCommentBlockIds.length > 0 && changedDayBlockKeys.size === 1 && changedDayBlockKeys.has(currentDayId) && currentDayChangedCommentBlockIds.length === changedDayBlockCommentKeys.size && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
+      if (textOnlyCurrentDayChange && refreshDayBlockTextDom(currentDay(), currentDayChangedTextBlockIds)) {
+        // Text-only update handled without rebuilding the block list.
+      } else if (commentsOnlyCurrentDayChange && currentDayChangedCommentBlockIds.every((blockId) => refreshDayBlockCommentsDom(currentDay(), blockId))) {
+        // Comment-only update handled without rebuilding the block list.
+      } else {
         renderDayBlocks(currentDay());
       }
     } else if (dayBlockOnlyVisibleChange) {
