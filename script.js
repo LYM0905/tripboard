@@ -4620,6 +4620,45 @@ function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
   return updated;
 }
 
+function refreshDayBlocksStatusText(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
+  if (!dom.dayBlocksStatus) return;
+  const openCount = blocks.filter((block) => block.type === "todo" && !block.done).length;
+  const commentCount = blocks.reduce((sum, block) => sum + commentRootsAndReplies(block.comments || []).roots.length, 0);
+  dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办 · ${commentCount} 条评论` : "可添加块";
+}
+
+function refreshDayBlockDoneDom(day = currentDay(), blockIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let updated = false;
+  for (const blockId of blockIds) {
+    const block = blocks.find((item) => item.id === blockId);
+    const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+    if (!block || !blockElement) return false;
+    blockElement.classList.toggle("is-done", Boolean(block.done));
+    const toggleButton = blockElement.querySelector(`[data-toggle-day-block="${CSS.escape(blockId)}"]`);
+    if (toggleButton) {
+      const toggleLabel = block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成";
+      toggleButton.setAttribute("aria-label", toggleLabel);
+      toggleButton.innerHTML = icon(block.done ? "check-circle-2" : dayBlockIcon(block.type));
+    }
+    const metaElement = blockElement.querySelector(".day-block-meta");
+    if (metaElement) {
+      metaElement.textContent = block.updatedBy || block.createdBy
+        ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+        : dayBlockTypeLabel(block.type);
+    }
+    updated = true;
+  }
+  if (updated) {
+    refreshDayBlocksStatusText(blocks);
+    refreshDayBlockSelectionDom(day);
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return updated;
+}
+
 function refreshDayBlockPreviewDom(day = currentDay(), blockId = "") {
   if (!day || !dom.dayBlockList || !blockId) return false;
   const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
@@ -4749,11 +4788,7 @@ function renderDayBlocks(day = currentDay()) {
     blockReplyingCommentId = "";
   }
   dayBlockTextBaselines = Object.fromEntries(blocks.map((block) => [block.id, block.text || ""]));
-  if (dom.dayBlocksStatus) {
-    const openCount = blocks.filter((block) => block.type === "todo" && !block.done).length;
-    const commentCount = blocks.reduce((sum, block) => sum + commentRootsAndReplies(block.comments || []).roots.length, 0);
-    dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办 · ${commentCount} 条评论` : "可添加块";
-  }
+  refreshDayBlocksStatusText(blocks);
   const blocksHtml = blocks.length
     ? blocks
         .map((block, index) => {
@@ -5137,7 +5172,11 @@ async function setSelectedDayBlockDone(day, done) {
     dom.saveState.textContent = done ? "所选待办已经完成" : "所选块已经重新打开";
     return false;
   }
-  renderDayBlocks(day);
+  const changedIds = selectedBlocks.map((block) => block.id).filter((blockId) => {
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    return block && Boolean(block.done) === Boolean(done);
+  });
+  if (!refreshDayBlockDoneDom(day, changedIds)) renderDayBlocks(day);
   await logActivity(`${done ? "批量完成" : "批量重新打开"} ${changedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: done ? "bulk-block-done" : "bulk-block-open" } });
   await saveCollaborativePlanChange(done ? "已批量完成协作块" : "已批量重新打开协作块");
   dom.saveState.textContent = done ? `已完成 ${changedCount} 个块` : `已重新打开 ${changedCount} 个块`;
@@ -12502,7 +12541,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     noteRemoteBlockEditors(blockId, nextDone ? "标记完成" : "重新打开");
     if (await updateDayBlockInDoc(day.id, blockId, { done: nextDone }, "local-day-block-toggle")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
+      if (!refreshDayBlockDoneDom(day, [blockId])) renderDayBlocks(day);
       await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "toggle" }) });
       await saveCollaborativePlanChange("已更新协作块");
       return;
