@@ -4222,13 +4222,13 @@ function checklistTextWithMovedItem(text = "", sourceIndex = 0, direction = "dow
   return nextLines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
 }
 
-function dayBlockFormattedText(value = "", start = 0, end = 0, format = "bold") {
+function dayBlockFormattedText(value = "", start = 0, end = 0, format = "bold", options = {}) {
   const text = String(value || "");
   const formats = {
     bold: { open: "**", close: "**", sample: "重点" },
     italic: { open: "*", close: "*", sample: "说明" },
     code: { open: "`", close: "`", sample: "字段" },
-    link: { open: "[", close: "](https://example.com)", sample: "链接" },
+    link: { open: "[", close: `](${options.url || "https://example.com"})`, sample: "链接" },
   };
   const marker = formats[format] || formats.bold;
   const from = Math.max(0, Math.min(Number(start) || 0, text.length));
@@ -4631,7 +4631,19 @@ async function saveDayBlockTextChange(day, block, nextText, action = "text-forma
 
 async function formatDayBlockInput(day, block, input, format = "bold") {
   if (!day || !block?.id || !input) return false;
-  const formatted = dayBlockFormattedText(input.value, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, format);
+  let formatOptions = {};
+  if (format === "link") {
+    const currentSelection = input.value.slice(input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length).trim();
+    const url = window.prompt("输入链接地址", /^https?:\/\//i.test(currentSelection) ? currentSelection : "https://");
+    if (url === null) return false;
+    const safeUrl = safeMarkdownUrl(url);
+    if (safeUrl === "#") {
+      dom.saveState.textContent = "链接地址需要以 http、https、mailto、tel、/、. 或 # 开头";
+      return false;
+    }
+    formatOptions = { url: safeUrl };
+  }
+  const formatted = dayBlockFormattedText(input.value, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, format, formatOptions);
   const saved = await saveDayBlockTextChange(day, block, formatted.text, `format-${format}`, "已格式化协作块文本");
   if (saved) {
     requestAnimationFrame(() => {
