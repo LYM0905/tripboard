@@ -2725,6 +2725,41 @@ button:disabled {
   min-width: 0;
 }
 
+.day-block-format-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.day-block-format-toolbar button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  min-height: 26px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.day-block-format-toolbar button:hover:not(:disabled) {
+  color: var(--green);
+  border-color: rgba(49, 111, 91, 0.28);
+  background: #edf8f4;
+}
+
+.day-block-format-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.day-block-format-toolbar i {
+  width: 14px;
+  height: 14px;
+}
+
 .day-block-text-wrap .day-block-text {
   width: 100%;
 }

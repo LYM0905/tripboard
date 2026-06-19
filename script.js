@@ -4222,6 +4222,24 @@ function checklistTextWithMovedItem(text = "", sourceIndex = 0, direction = "dow
   return nextLines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
 }
 
+function dayBlockFormattedText(value = "", start = 0, end = 0, format = "bold") {
+  const text = String(value || "");
+  const formats = {
+    bold: { open: "**", close: "**", sample: "重点" },
+    italic: { open: "*", close: "*", sample: "说明" },
+    code: { open: "`", close: "`", sample: "字段" },
+  };
+  const marker = formats[format] || formats.bold;
+  const from = Math.max(0, Math.min(Number(start) || 0, text.length));
+  const to = Math.max(from, Math.min(Number(end) || from, text.length));
+  const selected = text.slice(from, to);
+  const content = selected || marker.sample;
+  const nextText = `${text.slice(0, from)}${marker.open}${content}${marker.close}${text.slice(to)}`;
+  const selectionStart = from + marker.open.length;
+  const selectionEnd = selectionStart + content.length;
+  return { text: nextText, selectionStart, selectionEnd };
+}
+
 function renderChecklistPreview(block) {
   if (block.type !== "checklist") return "";
   const items = checklistLineParts(block.text || "");
@@ -4429,6 +4447,11 @@ function renderDayBlocks(day = currentDay()) {
               <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
               <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${toggleLabel}"${toggleDisabled}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
               <span class="day-block-text-wrap">
+                <span class="day-block-format-toolbar" role="toolbar" aria-label="协作块文字格式">
+                  <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="bold" title="加粗" aria-label="加粗"${disabledAttr}>${icon("bold")}</button>
+                  <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="italic" title="斜体" aria-label="斜体"${disabledAttr}>${icon("italic")}</button>
+                  <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="code" title="行内代码" aria-label="行内代码"${disabledAttr}>${icon("code-2")}</button>
+                </span>
                 <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}" placeholder="${escapeHtml(textPlaceholder)}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
                 ${renderChecklistPreview(block)}
                 ${renderDayBlockTextPresence(block)}
@@ -4543,6 +4566,32 @@ async function applyDayBlockCommandSelection(input, index = activeDayBlockComman
     requireLabel: "使用协作块命令",
     status: "已使用协作块命令",
   });
+}
+
+async function saveDayBlockTextChange(day, block, nextText, action = "text-format", label = "协作块已更新") {
+  if (!day || !block?.id || !requireEdit("更新协作块文本")) return false;
+  activeBlockPresenceId = block.id;
+  schedulePresenceTrack(0);
+  noteRemoteBlockEditors(block.id, "更新文本");
+  const origin = `local-day-block-${action}`;
+  const updatedText = await updateDayBlockTextInDoc(day.id, block.id, nextText, origin);
+  if (updatedText) {
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+      item.id === block.id ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+    )));
+    renderDayBlocks(day);
+    await logActivity(`编辑协作块「${String(nextText || "").slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+    await saveCollaborativePlanChange(label);
+    return true;
+  }
+  if (!mutate("更新协作块文本", () => {
+    currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, text: nextText } : item)));
+  }, { requireUnlocked: false, save: false, render: false })) return false;
+  await syncDayBlocksToDoc(day.id, `${origin}-fallback`);
+  await logActivity(`编辑协作块「${String(nextText || "").slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+  await saveCollaborativePlanChange(label);
+  render();
+  return true;
 }
 
 async function saveChecklistTextChange(day, block, nextText, action = "checklist-update") {
@@ -11717,6 +11766,26 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const input = blockElement?.querySelector("[data-edit-day-block]");
     const index = Number(commandButton.dataset.commandIndex) || 0;
     if (input) await applyDayBlockCommandSelection(input, index);
+    return;
+  }
+  const formatButton = event.target.closest("[data-format-day-block]");
+  if (formatButton) {
+    event.preventDefault();
+    const blockId = formatButton.dataset.formatDayBlock || "";
+    const blockElement = formatButton.closest("[data-day-block]");
+    const input = blockElement?.querySelector("[data-edit-day-block]");
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!input || !block) return;
+    const formatted = dayBlockFormattedText(input.value, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, formatButton.dataset.format || "bold");
+    const saved = await saveDayBlockTextChange(day, block, formatted.text, `format-${formatButton.dataset.format || "bold"}`, "已格式化协作块文本");
+    if (saved) {
+      requestAnimationFrame(() => {
+        const nextInput = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(blockId)}"]`);
+        if (!nextInput) return;
+        nextInput.focus();
+        nextInput.setSelectionRange?.(formatted.selectionStart, formatted.selectionEnd);
+      });
+    }
     return;
   }
   const deleteChecklistButton = event.target.closest("[data-delete-checklist-item]");
