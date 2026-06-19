@@ -3176,6 +3176,26 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const changed = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || settingTextStatesChanged || settingTextValuesChanged || stopListsChanged || stopTextStatesChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
   if (!changed) return;
   const visibleChanged = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || settingTextValuesChanged || stopListsChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
+  const currentDayId = currentDay()?.id || "";
+  const changedDayBlockKeys = new Set();
+  if (dayBlocksChanged) {
+    const currentBlocks = normalizeDayBlocksFromDays(state.days || []);
+    const nextBlocksByDay = nextDayBlocks || {};
+    [...new Set([...Object.keys(currentBlocks), ...Object.keys(nextBlocksByDay)])].forEach((dayId) => {
+      if (!sameSerialized(currentBlocks[dayId] || [], nextBlocksByDay[dayId] || [])) changedDayBlockKeys.add(dayId);
+    });
+  }
+  if (dayBlockTextStatesChanged || dayBlockTextValuesChanged) {
+    const currentTextStates = dayBlockTextStateSnapshotFromDays(state.days || [], yjsModule);
+    const currentTextValues = dayBlockTextValueSnapshotFromDays(state.days || []);
+    [...new Set([...Object.keys(currentTextStates), ...Object.keys(nextDayBlockTextStates), ...Object.keys(currentTextValues), ...Object.keys(nextDayBlockTextValues)])].forEach((key) => {
+      if (currentTextStates[key] !== nextDayBlockTextStates[key] || currentTextValues[key] !== nextDayBlockTextValues[key]) {
+        changedDayBlockKeys.add(String(key).split(":")[0] || "");
+      }
+    });
+  }
+  const dayBlockOnlyVisibleChange = visibleChanged && !dayMetasChanged && !dayTextStatesChanged && !settingTextValuesChanged && !stopListsChanged && !quotesChanged && !candidatesChanged && !activitiesChanged && !settingsChanged && !stopTextStatesChanged && (dayBlockTextStatesChanged || dayBlockTextValuesChanged || dayBlocksChanged);
+  const currentDayBlockChanged = Boolean(currentDayId && changedDayBlockKeys.has(currentDayId));
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   if (dayTextStatesChanged) applyDayTextStatesToState(nextDayTextStates);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
@@ -3197,7 +3217,15 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   syncGuideStateFromPlan();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (updateStatus) dom.collabStatus.textContent = label;
-  if (refreshViews && visibleChanged) refreshRealtimePlanViews();
+  if (refreshViews && visibleChanged) {
+    if (dayBlockOnlyVisibleChange && currentDayBlockChanged) {
+      renderDayBlocks(currentDay());
+    } else if (dayBlockOnlyVisibleChange) {
+      requestAnimationFrame(() => refreshDayBlockTextPresence());
+    } else {
+      refreshRealtimePlanViews();
+    }
+  }
   if (!scheduleSave) return;
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = setTimeout(() => {
