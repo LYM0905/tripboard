@@ -4687,6 +4687,39 @@ function refreshDayBlockLevelDom(day = currentDay(), blockIds = []) {
   return updated;
 }
 
+function refreshDayBlockOrderDom(day = currentDay(), focusBlockId = "") {
+  if (!day || !dom.dayBlockList) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  if (!blocks.length) return false;
+  const focusSnapshot = dayBlockFocusSnapshot();
+  const blockElements = new Map();
+  for (const block of blocks) {
+    const blockElement = block.id ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(block.id)}"]`) : null;
+    if (!blockElement) return false;
+    blockElements.set(block.id, blockElement);
+  }
+  const validIds = new Set(blocks.map((block) => block.id));
+  dom.dayBlockList.querySelectorAll("[data-day-block]").forEach((blockElement) => {
+    if (!validIds.has(blockElement.dataset.dayBlock || "")) blockElement.remove();
+  });
+  blocks.forEach((block, index) => {
+    const blockElement = blockElements.get(block.id);
+    blockElement.querySelectorAll(`[data-move-day-block="${CSS.escape(block.id)}"]`).forEach((button) => {
+      const direction = button.dataset.direction === "up" ? "up" : "down";
+      button.disabled = isReadonlyMode || (direction === "up" ? index === 0 : index === blocks.length - 1);
+    });
+    dom.dayBlockList.appendChild(blockElement);
+    refreshDayBlockOverlayDom(block);
+  });
+  refreshDayBlocksStatusText(blocks);
+  refreshDayBlockSelectionDom(day);
+  refreshIcons();
+  requestAnimationFrame(() => refreshDayBlockTextPresence());
+  if (focusSnapshot?.blockId) restoreDayBlockFocus(focusSnapshot);
+  else if (focusBlockId) focusDayBlockInput(focusBlockId);
+  return true;
+}
+
 function dayBlockRowsForType(type = "todo") {
   if (type === "heading" || type === "divider") return 1;
   if (type === "checklist") return 3;
@@ -5168,8 +5201,7 @@ async function moveDayBlockByDirection(day, blockId, direction = "down", action 
       updatedBy: getCollabName(),
       updatedAt: new Date().toISOString(),
     });
-    renderDayBlocks(day);
-    focusDayBlockInput(blockId);
+    if (!refreshDayBlockOrderDom(day, blockId)) renderDayBlocks(day);
     await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action, direction }) });
     await saveCollaborativePlanChange("已排序协作块");
     return true;
@@ -5180,8 +5212,7 @@ async function moveDayBlockByDirection(day, blockId, direction = "down", action 
   await syncDayBlocksToDoc(day.id, `local-day-block-${action}-fallback`);
   await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action, direction }) });
   await saveCollaborativePlanChange("已排序协作块");
-  render();
-  focusDayBlockInput(blockId);
+  if (!refreshDayBlockOrderDom(currentDay(), blockId)) renderDayBlocks(currentDay());
   return true;
 }
 
