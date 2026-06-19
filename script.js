@@ -4687,6 +4687,61 @@ function refreshDayBlockLevelDom(day = currentDay(), blockIds = []) {
   return updated;
 }
 
+function dayBlockRowsForType(type = "todo") {
+  if (type === "heading" || type === "divider") return 1;
+  if (type === "checklist") return 3;
+  return 2;
+}
+
+function dayBlockPlaceholderForType(type = "todo") {
+  if (type === "divider") return "分隔线标题（可选）";
+  if (type === "checklist") return "每行一个检查项，可写 [x] 表示已完成";
+  return "";
+}
+
+function refreshDayBlockTypeDom(day = currentDay(), blockIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let updated = false;
+  for (const blockId of blockIds) {
+    const block = blocks.find((item) => item.id === blockId);
+    const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+    const input = blockElement?.querySelector("[data-edit-day-block]");
+    if (!block || !blockElement || !input) return false;
+    DAY_BLOCK_TYPES.forEach((type) => blockElement.classList.toggle(`is-${type}`, type === block.type));
+    blockElement.classList.toggle("is-done", Boolean(block.done));
+    input.rows = dayBlockRowsForType(block.type);
+    input.placeholder = dayBlockPlaceholderForType(block.type);
+    input.setAttribute("aria-label", dayBlockTypeLabel(block.type));
+    const typeSelect = blockElement.querySelector(`[data-day-block-type="${CSS.escape(blockId)}"]`);
+    if (typeSelect) typeSelect.innerHTML = dayBlockTypeOptions(block.type);
+    const toggleButton = blockElement.querySelector(`[data-toggle-day-block="${CSS.escape(blockId)}"]`);
+    if (toggleButton) {
+      const disabled = block.type === "divider" || isReadonlyMode;
+      toggleButton.disabled = disabled;
+      toggleButton.setAttribute("aria-label", block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成");
+      toggleButton.innerHTML = icon(block.done ? "check-circle-2" : dayBlockIcon(block.type));
+    }
+    const collapsedPreview = blockElement.querySelector(".day-block-collapsed-text");
+    if (collapsedPreview) collapsedPreview.textContent = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+    const metaElement = blockElement.querySelector(".day-block-meta");
+    if (metaElement) {
+      metaElement.textContent = block.updatedBy || block.createdBy
+        ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+        : dayBlockTypeLabel(block.type);
+    }
+    if (!refreshDayBlockTextDom(day, [blockId])) return false;
+    updated = true;
+  }
+  if (updated) {
+    refreshDayBlocksStatusText(blocks);
+    refreshDayBlockSelectionDom(day);
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return updated;
+}
+
 function refreshDayBlockPreviewDom(day = currentDay(), blockId = "") {
   if (!day || !dom.dayBlockList || !blockId) return false;
   const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
@@ -4841,11 +4896,11 @@ function renderDayBlocks(day = currentDay()) {
           const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
           const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
           const presenceHtml = renderDayBlockPresence(block);
-          const rows = block.type === "heading" || block.type === "divider" ? 1 : block.type === "checklist" ? 3 : 2;
+          const rows = dayBlockRowsForType(block.type);
           const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
           const toggleDisabled = block.type === "divider" ? " disabled" : disabledAttr;
           const toggleLabel = block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成";
-          const textPlaceholder = block.type === "divider" ? "分隔线标题（可选）" : block.type === "checklist" ? "每行一个检查项，可写 [x] 表示已完成" : "";
+          const textPlaceholder = dayBlockPlaceholderForType(block.type);
           return `
             <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}${previewClass}${remoteSelectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
               <label class="day-block-select" title="选择协作块">
@@ -4944,7 +4999,7 @@ async function applyDayBlockTypeChange(day, blockId, nextType, options = {}) {
       item.id === blockId ? { ...item, ...visiblePatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
     )));
     clearDayBlockCommandMenu();
-    renderDayBlocks(day);
+    if (clearText || !refreshDayBlockTypeDom(day, [blockId])) renderDayBlocks(day);
     await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action, blockType: nextType }) });
     await saveCollaborativePlanChange(status);
     if (focus) focusDayBlockInput(blockId);
@@ -4955,7 +5010,7 @@ async function applyDayBlockTypeChange(day, blockId, nextType, options = {}) {
   }, { requireUnlocked: false, save: false, render: false })) return false;
   await syncDayBlocksToDoc(day.id, fallbackSource);
   clearDayBlockCommandMenu();
-  renderDayBlocks(currentDay());
+  if (clearText || !refreshDayBlockTypeDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
   await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action, blockType: nextType }) });
   await saveCollaborativePlanChange(status);
   if (focus) focusDayBlockInput(blockId);
@@ -5162,7 +5217,11 @@ async function setSelectedDayBlockType(day, nextType) {
     return false;
   }
   activeBlockPresenceId = selectedBlocks[0]?.id || activeBlockPresenceId;
-  renderDayBlocks(day);
+  const changedIds = selectedBlocks.map((block) => block.id).filter((blockId) => {
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    return block && block.type === nextType;
+  });
+  if (!refreshDayBlockTypeDom(day, changedIds)) renderDayBlocks(day);
   await logActivity(`批量切换 ${changedCount} 个协作块为${dayBlockTypeLabel(nextType)}`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-type" } });
   await saveCollaborativePlanChange("已批量切换协作块类型");
   dom.saveState.textContent = `已批量切换 ${changedCount} 个块`;
