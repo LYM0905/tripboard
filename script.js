@@ -914,6 +914,13 @@ function clearAmapOverlay() {
   amapMapPolylines = [];
 }
 
+function destroyAmapMap() {
+  if (!amapMap) return;
+  clearAmapOverlay();
+  amapMap.destroy();
+  amapMap = null;
+}
+
 function coordinateForAmap(stop) {
   const lng = Number(stop?.lng);
   const lat = Number(stop?.lat);
@@ -985,6 +992,8 @@ async function renderAmapSdkMap(day) {
   const points = day.stops.map(coordinateForAmap);
   const validPoints = points.filter(Boolean);
   if (!validPoints.length) {
+    destroyAmapMap();
+    renderFallbackMap(day);
     if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = "高德地图 · 待定位";
     return;
   }
@@ -9061,6 +9070,33 @@ function focusCommentIndexItem(commentId = "") {
   const item = commentIndexItems().find((entry) => entry.id === commentId);
   if (!item) return false;
   const dayIndex = state.days.findIndex((day, index) => (item.dayId && day.id === item.dayId) || index === item.dayIndex);
+  if (item.scope === "stop" && dayIndex === activeDay) {
+    const day = currentDay();
+    const stopIndex = (day?.stops || []).findIndex((stop, index) => (item.stopId && stop.id === item.stopId) || index === item.stopIndex);
+    if (stopIndex >= 0 && stopIndex === activeStop) {
+      commentFilter = item.resolved ? "resolved" : "open";
+      renderStopComments(currentStop());
+      let focused = false;
+      if (item.anchor) focused = focusCommentAnchor(item.anchor);
+      focused = focusCommentThread(item.id) || focused;
+      renderCommentIndex();
+      refreshIcons();
+      dom.saveState.textContent = focused ? "已定位到批注" : "已切换到批注所在位置";
+      return true;
+    }
+  }
+  if (item.scope === "day" && dayIndex === activeDay) {
+    activeStop = 0;
+    dayCommentFilter = item.resolved ? "resolved" : "open";
+    renderDayComments(currentDay());
+    let focused = false;
+    if (item.anchor) focused = focusCommentAnchor(item.anchor);
+    focused = focusDayCommentThread(item.id) || focused;
+    renderCommentIndex();
+    refreshIcons();
+    dom.saveState.textContent = focused ? "已定位到批注" : "已切换到批注所在位置";
+    return true;
+  }
   if (item.scope === "block" && dayIndex === activeDay && item.blockId) {
     activeStop = 0;
     blockCommentFilters[item.blockId] = item.resolved ? "resolved" : "open";
@@ -11115,8 +11151,13 @@ function renderTimeline() {
 
 function renderMap() {
   const day = currentDay();
-  renderFallbackMap(day);
-  if (hasAmapJsConfig()) scheduleAmapRender(day);
+  if (!hasAmapJsConfig()) {
+    destroyAmapMap();
+    renderFallbackMap(day);
+    return;
+  }
+  if (!amapMap) renderFallbackMap(day);
+  scheduleAmapRender(day);
 }
 
 function renderDetail() {
