@@ -4613,6 +4613,29 @@ function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
   return updated;
 }
 
+function refreshDayBlockPreviewDom(day = currentDay(), blockId = "") {
+  if (!day || !dom.dayBlockList || !blockId) return false;
+  const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+  const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+  const textWrap = blockElement?.querySelector(".day-block-text-wrap");
+  const input = blockElement?.querySelector("[data-edit-day-block]");
+  const button = blockElement?.querySelector(`[data-toggle-day-block-preview="${CSS.escape(blockId)}"]`);
+  if (!block || !blockElement || !textWrap || !input || !button) return false;
+  const previewMode = previewDayBlockIds.has(blockId);
+  blockElement.classList.toggle("is-previewing", previewMode);
+  const oldPreview = textWrap.querySelector(".day-block-markdown-preview");
+  const nextPreview = renderDayBlockMarkdownPreview(block, previewMode);
+  if (oldPreview) oldPreview.remove();
+  if (nextPreview) input.insertAdjacentHTML("afterend", nextPreview);
+  button.title = previewMode ? "编辑" : "预览";
+  button.setAttribute("aria-label", previewMode ? "切回编辑" : "预览富文本");
+  button.innerHTML = icon(previewMode ? "pencil" : "eye");
+  refreshDayBlockOverlayDom(block);
+  refreshIcons();
+  requestAnimationFrame(() => refreshDayBlockTextPresence());
+  return true;
+}
+
 function refreshDayBlockCommentsDom(day = currentDay(), blockId = "") {
   if (!day || !dom.dayBlockList || !blockId) return false;
   const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
@@ -12300,11 +12323,11 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!blockId) return;
     if (previewDayBlockIds.has(blockId)) {
       previewDayBlockIds.delete(blockId);
-      renderDayBlocks(day);
+      if (!refreshDayBlockPreviewDom(day, blockId)) renderDayBlocks(day);
       focusDayBlockInput(blockId);
     } else {
       previewDayBlockIds.add(blockId);
-      renderDayBlocks(day);
+      if (!refreshDayBlockPreviewDom(day, blockId)) renderDayBlocks(day);
     }
     return;
   }
