@@ -2658,6 +2658,23 @@ function dayBlockDeleteDiff(a = [], b = []) {
   return deletedIds.length ? deletedIds : null;
 }
 
+function dayBlockInsertDiff(a = [], b = []) {
+  const previous = normalizeDayBlocks(a);
+  const next = normalizeDayBlocks(b);
+  if (next.length <= previous.length) return null;
+  const previousById = new Map(previous.map((block) => [block.id, block]));
+  const insertedIds = [];
+  for (const block of next) {
+    const previousBlock = previousById.get(block.id);
+    if (!previousBlock) {
+      insertedIds.push(block.id);
+      continue;
+    }
+    if (!sameSerialized(block, previousBlock)) return null;
+  }
+  return insertedIds.length ? insertedIds : null;
+}
+
 function moveDayBlockList(blocks = [], blockId = "", direction = "down", patch = {}) {
   const normalized = normalizeDayBlocks(blocks);
   const index = normalized.findIndex((block) => block.id === blockId);
@@ -3287,6 +3304,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const changedDayBlockCommentKeys = new Set();
   const changedDayBlockOrderKeys = new Set();
   const changedDayBlockDeleteKeys = new Map();
+  const changedDayBlockInsertKeys = new Map();
   if (dayBlocksChanged) {
     const currentBlocks = normalizeDayBlocksFromDays(state.days || []);
     const nextBlocksByDay = nextDayBlocks || {};
@@ -3298,6 +3316,8 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
         if (sameDayBlockSetAndContent(currentDayBlocks, nextDayBlocksForDay)) changedDayBlockOrderKeys.add(dayId);
         const deletedIds = dayBlockDeleteDiff(currentDayBlocks, nextDayBlocksForDay);
         if (deletedIds?.length) changedDayBlockDeleteKeys.set(dayId, deletedIds);
+        const insertedIds = dayBlockInsertDiff(currentDayBlocks, nextDayBlocksForDay);
+        if (insertedIds?.length) changedDayBlockInsertKeys.set(dayId, insertedIds);
       }
       const currentById = new Map(currentDayBlocks.map((block) => [block.id, block]));
       nextDayBlocksForDay.forEach((nextBlock) => {
@@ -3359,6 +3379,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
       const commentsOnlyCurrentDayChange = dayBlocksChanged && currentDayChangedCommentBlockIds.length > 0 && changedDayBlockKeys.size === 1 && changedDayBlockKeys.has(currentDayId) && currentDayChangedCommentBlockIds.length === changedDayBlockCommentKeys.size && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
       const orderOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockOrderKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
       const deleteOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockDeleteKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
+      const insertOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockInsertKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
       if (textOnlyCurrentDayChange && refreshDayBlockTextDom(currentDay(), currentDayChangedTextBlockIds)) {
         // Text-only update handled without rebuilding the block list.
       } else if (commentsOnlyCurrentDayChange && currentDayChangedCommentBlockIds.every((blockId) => refreshDayBlockCommentsDom(currentDay(), blockId))) {
@@ -3367,6 +3388,8 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
         // Order-only update handled by moving existing block nodes.
       } else if (deleteOnlyCurrentDayChange && refreshDayBlockDeleteDom(currentDay(), changedDayBlockDeleteKeys.get(currentDayId))) {
         // Delete-only update handled by removing affected block nodes.
+      } else if (insertOnlyCurrentDayChange && refreshDayBlockInsertDom(currentDay(), changedDayBlockInsertKeys.get(currentDayId))) {
+        // Insert-only update handled by inserting new block nodes.
       } else {
         renderDayBlocks(currentDay());
       }
@@ -13275,7 +13298,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
       updatedAt: new Date().toISOString(),
     });
     clearDayBlockDragState();
-    renderDayBlocks(day);
+    if (!refreshDayBlockOrderDom(day, draggedId)) renderDayBlocks(day);
     await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, draggedId, { action: "drag", targetIndex }) });
     await saveCollaborativePlanChange("已拖拽排序协作块");
     return;
@@ -13290,7 +13313,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
   clearDayBlockDragState();
   await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, draggedId, { action: "drag", targetIndex }) });
   await saveCollaborativePlanChange("已拖拽排序协作块");
-  render();
+  if (!refreshDayBlockOrderDom(currentDay(), draggedId)) renderDayBlocks(currentDay());
 });
 
 dom.dayBlockList?.addEventListener("dragend", () => {
@@ -13511,7 +13534,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
         .map((item) => (item.id === previousBlock.id ? { ...item, ...visiblePreviousPatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item))
         .filter((item) => item.id !== blockId));
       activeBlockPresenceId = previousBlock.id;
-      renderDayBlocks(day);
+      if (!refreshDayBlockTextDom(day, [previousBlock.id])) renderDayBlocks(day);
+      if (!refreshDayBlockCommentsDom(day, previousBlock.id)) renderDayBlocks(day);
+      if (!refreshDayBlockDeleteDom(day, [blockId])) renderDayBlocks(day);
       focusDayBlockInput(previousBlock.id);
       await logActivity("用键盘合并协作块", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
       await saveCollaborativePlanChange("已用键盘合并协作块");
@@ -13525,7 +13550,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-merge-fallback");
     activeBlockPresenceId = previousBlock.id;
-    renderDayBlocks(currentDay());
+    if (!refreshDayBlockTextDom(currentDay(), [previousBlock.id])) renderDayBlocks(currentDay());
+    if (!refreshDayBlockCommentsDom(currentDay(), previousBlock.id)) renderDayBlocks(currentDay());
+    if (!refreshDayBlockDeleteDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     focusDayBlockInput(previousBlock.id);
     await logActivity("用键盘合并协作块", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
     await saveCollaborativePlanChange("已用键盘合并协作块");
