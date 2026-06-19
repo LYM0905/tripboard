@@ -4544,6 +4544,33 @@ function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
   return updated;
 }
 
+function refreshDayBlockCommentsDom(day = currentDay(), blockId = "") {
+  if (!day || !dom.dayBlockList || !blockId) return false;
+  const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+  const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+  const commentsElement = blockElement?.querySelector(`[data-block-comments="${CSS.escape(blockId)}"]`);
+  if (!block || !blockElement || !commentsElement) return false;
+  const rendered = renderDayBlockComments(block);
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = rendered;
+  const nextCommentsElement = wrapper.firstElementChild;
+  if (!nextCommentsElement) return false;
+  commentsElement.replaceWith(nextCommentsElement);
+  const openCommentCount = commentRootsAndReplies(block.comments || []).roots.filter((comment) => !comment.resolved).length;
+  const toggleButton = blockElement.querySelector("[data-toggle-block-comments]");
+  if (toggleButton) {
+    toggleButton.innerHTML = `${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}`;
+  }
+  const metaElement = blockElement.querySelector(".day-block-meta");
+  if (metaElement) {
+    metaElement.textContent = block.updatedBy || block.createdBy
+      ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+      : dayBlockTypeLabel(block.type);
+  }
+  refreshIcons();
+  return true;
+}
+
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
   const focusSnapshot = dayBlockFocusSnapshot();
@@ -12346,7 +12373,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     activeBlockPresenceId = block.id;
     schedulePresenceTrack(0);
     blockReplyingCommentId = comment.id;
-    renderDayBlocks(day);
+    if (!refreshDayBlockCommentsDom(day, block.id)) renderDayBlocks(day);
     const input = dom.dayBlockList.querySelector(`[data-block-comment-input="${escapeHtml(block.id)}"]`);
     input?.focus();
     return;
@@ -12363,7 +12390,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const patch = resolvedCommentPatch(comment.resolved);
     if (await updateDayBlockCommentInDoc(day.id, block.id, commentId, patch, "local-day-block-comment-resolve")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
+      if (!refreshDayBlockCommentsDom(day, block.id)) renderDayBlocks(day);
       await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
       await saveCollaborativePlanChange("已更新块级评论");
       return;
@@ -12389,7 +12416,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (await deleteDayBlockCommentFromDoc(day.id, block.id, commentId, "local-day-block-comment-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       if (blockReplyingCommentId === commentId || !normalizeComments(currentDay()?.blocks?.find((item) => item.id === block.id)?.comments || []).some((item) => item.id === blockReplyingCommentId)) blockReplyingCommentId = "";
-      renderDayBlocks(day);
+      if (!refreshDayBlockCommentsDom(day, block.id)) renderDayBlocks(day);
       await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "", deleted: true } });
       await saveCollaborativePlanChange("已删除块级评论");
       return;
@@ -12527,7 +12554,7 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     )));
     if (input) input.value = "";
     blockReplyingCommentId = "";
-    renderDayBlocks(day);
+    if (!refreshDayBlockCommentsDom(day, block.id)) renderDayBlocks(day);
     await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || collaborativeComment.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
     await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
     return;
