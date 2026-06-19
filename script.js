@@ -2559,6 +2559,17 @@ function normalizeDayBlocksFromDays(days = []) {
   return lists;
 }
 
+function sameDayBlockSetAndContent(a = [], b = []) {
+  const first = normalizeDayBlocks(a);
+  const second = normalizeDayBlocks(b);
+  if (first.length !== second.length) return false;
+  const secondById = new Map(second.map((block) => [block.id, block]));
+  return first.every((block) => {
+    const other = secondById.get(block.id);
+    return other && sameSerialized(block, other);
+  });
+}
+
 function moveDayBlockList(blocks = [], blockId = "", direction = "down", patch = {}) {
   const normalized = normalizeDayBlocks(blocks);
   const index = normalized.findIndex((block) => block.id === blockId);
@@ -3186,13 +3197,17 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const changedDayBlockKeys = new Set();
   const changedDayBlockTextKeys = new Set();
   const changedDayBlockCommentKeys = new Set();
+  const changedDayBlockOrderKeys = new Set();
   if (dayBlocksChanged) {
     const currentBlocks = normalizeDayBlocksFromDays(state.days || []);
     const nextBlocksByDay = nextDayBlocks || {};
     [...new Set([...Object.keys(currentBlocks), ...Object.keys(nextBlocksByDay)])].forEach((dayId) => {
       const currentDayBlocks = currentBlocks[dayId] || [];
       const nextDayBlocksForDay = nextBlocksByDay[dayId] || [];
-      if (!sameSerialized(currentDayBlocks, nextDayBlocksForDay)) changedDayBlockKeys.add(dayId);
+      if (!sameSerialized(currentDayBlocks, nextDayBlocksForDay)) {
+        changedDayBlockKeys.add(dayId);
+        if (sameDayBlockSetAndContent(currentDayBlocks, nextDayBlocksForDay)) changedDayBlockOrderKeys.add(dayId);
+      }
       const currentById = new Map(currentDayBlocks.map((block) => [block.id, block]));
       nextDayBlocksForDay.forEach((nextBlock) => {
         const currentBlock = currentById.get(nextBlock.id);
@@ -3251,10 +3266,13 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
     if (dayBlockOnlyVisibleChange && currentDayBlockChanged) {
       const textOnlyCurrentDayChange = !dayBlocksChanged && currentDayChangedTextBlockIds.length > 0;
       const commentsOnlyCurrentDayChange = dayBlocksChanged && currentDayChangedCommentBlockIds.length > 0 && changedDayBlockKeys.size === 1 && changedDayBlockKeys.has(currentDayId) && currentDayChangedCommentBlockIds.length === changedDayBlockCommentKeys.size && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
+      const orderOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockOrderKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
       if (textOnlyCurrentDayChange && refreshDayBlockTextDom(currentDay(), currentDayChangedTextBlockIds)) {
         // Text-only update handled without rebuilding the block list.
       } else if (commentsOnlyCurrentDayChange && currentDayChangedCommentBlockIds.every((blockId) => refreshDayBlockCommentsDom(currentDay(), blockId))) {
         // Comment-only update handled without rebuilding the block list.
+      } else if (orderOnlyCurrentDayChange && refreshDayBlockOrderDom(currentDay())) {
+        // Order-only update handled by moving existing block nodes.
       } else {
         renderDayBlocks(currentDay());
       }
