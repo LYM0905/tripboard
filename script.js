@@ -4602,6 +4602,45 @@ function refreshDayBlockCommentsDom(day = currentDay(), blockId = "") {
   return true;
 }
 
+function refreshDayBlockPresenceDom(day = currentDay()) {
+  if (!day || !dom.dayBlockList) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let allBlocksFound = true;
+  let updated = false;
+  for (const block of blocks) {
+    if (!block?.id) continue;
+    const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(block.id)}"]`);
+    if (!blockElement) {
+      allBlocksFound = false;
+      continue;
+    }
+    const remoteSelected = remoteSelectorsForBlock(block.id).length > 0;
+    blockElement.classList.toggle("is-remote-selected", remoteSelected);
+    blockElement.querySelector(".day-block-presence")?.remove();
+    const presenceHtml = renderDayBlockPresence(block);
+    if (presenceHtml) {
+      const commentToggle = blockElement.querySelector(".day-block-comment-toggle");
+      if (commentToggle) commentToggle.insertAdjacentHTML("beforebegin", presenceHtml);
+      else blockElement.insertAdjacentHTML("beforeend", presenceHtml);
+    }
+    refreshDayBlockOverlayDom(block);
+    updated = true;
+  }
+  if (updated) {
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return allBlocksFound;
+}
+
+function refreshPresenceViews() {
+  renderMembers();
+  if (!refreshDayBlockPresenceDom(currentDay())) {
+    renderDayBlocks(currentDay());
+  }
+  renderEditorLockState();
+}
+
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
   const focusSnapshot = dayBlockFocusSnapshot();
@@ -8903,21 +8942,15 @@ function subscribeRemoteState() {
     })
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
-      renderMembers();
-      renderDayBlocks(currentDay());
-      renderEditorLockState();
+      refreshPresenceViews();
     })
     .on("presence", { event: "join" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
-      renderMembers();
-      renderDayBlocks(currentDay());
-      renderEditorLockState();
+      refreshPresenceViews();
     })
     .on("presence", { event: "leave" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
-      renderMembers();
-      renderDayBlocks(currentDay());
-      renderEditorLockState();
+      refreshPresenceViews();
     })
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
