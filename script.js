@@ -4290,6 +4290,23 @@ function renderDayComments(day = currentDay()) {
   refreshIcons();
 }
 
+function refreshStopCommentMutationViews(stop = currentStop()) {
+  if (!stop || !dom.commentList) return false;
+  renderStopComments(stop);
+  if (dom.commentCount) dom.commentCount.textContent = (stop.comments || []).length;
+  renderCommentIndex();
+  refreshIcons();
+  return true;
+}
+
+function refreshDayCommentMutationViews(day = currentDay()) {
+  if (!day || !dom.dayCommentList) return false;
+  renderDayComments(day);
+  renderCommentIndex();
+  refreshIcons();
+  return true;
+}
+
 function dayBlockTypeLabel(type = "todo") {
   if (type === "checklist") return "检查清单";
   if (type === "divider") return "分隔线";
@@ -12596,8 +12613,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
       replyingCommentId = "";
       dom.commentInput.value = "";
       dom.commentInput.placeholder = "添加同行意见或提醒";
-      renderStopComments(stop);
-      dom.commentCount.textContent = stop.comments.length;
+      refreshStopCommentMutationViews(stop);
       await logActivity(`回复评论「${stop.title}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: stop.id || "" } });
       await syncStopSnapshotToPlanDoc(stop.id, "local-comment-reply-snapshot");
       await saveCollaborativeTextChange(`回复评论「${stop.title}」`);
@@ -12615,7 +12631,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
     await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-reply-fallback-snapshot");
     await logActivity(`回复评论「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: currentStop().id || "" } });
     await saveCollaborativeTextChange(`回复评论「${fallbackTitle}」`);
-    render();
+    refreshStopCommentMutationViews(currentStop());
     return;
   }
   const anchor = currentCommentAnchor("stop");
@@ -12624,8 +12640,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
     const stop = currentStop();
     stop.comments = normalizeComments([...(stop.comments || []), collaborativeComment]);
     dom.commentInput.value = "";
-    renderStopComments(stop);
-    dom.commentCount.textContent = stop.comments.length;
+    refreshStopCommentMutationViews(stop);
     await logActivity(`评论「${stop.title}」`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "stop", stopId: stop.id || "" } });
     await syncStopSnapshotToPlanDoc(stop.id, "local-comment-snapshot");
     await saveCollaborativeTextChange(`评论「${stop.title}」`);
@@ -12641,7 +12656,7 @@ dom.commentForm.addEventListener("submit", async (event) => {
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-fallback-snapshot");
   await logActivity(`评论「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "stop", stopId: currentStop().id || "" } });
   await saveCollaborativeTextChange(`评论「${fallbackTitle}」`);
-  render();
+  refreshStopCommentMutationViews(currentStop());
 });
 
 dom.commentList.addEventListener("click", async (event) => {
@@ -12683,7 +12698,7 @@ dom.commentList.addEventListener("click", async (event) => {
     const updated = await updateCollaborativeComment(commentId, nextPatch);
     if (updated) {
       stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, nextPatch);
-      renderStopComments(stop);
+      refreshStopCommentMutationViews(stop);
       await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
       await syncStopSnapshotToPlanDoc(stop.id, "local-comment-resolve-snapshot");
       await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
@@ -12696,7 +12711,7 @@ dom.commentList.addEventListener("click", async (event) => {
     await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-resolve-fallback-snapshot");
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "" } });
     await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
-    render();
+    refreshStopCommentMutationViews(currentStop());
     return;
   }
   const deleteButton = event.target.closest("[data-delete-comment]");
@@ -12712,8 +12727,7 @@ dom.commentList.addEventListener("click", async (event) => {
       replyingCommentId = "";
       dom.commentInput.placeholder = "添加同行意见或提醒";
     }
-    renderStopComments(stop);
-    dom.commentCount.textContent = stop.comments.length;
+    refreshStopCommentMutationViews(stop);
     await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "", deleted: true } });
     await syncStopSnapshotToPlanDoc(stop.id, "local-comment-delete-snapshot");
     await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
@@ -12730,7 +12744,7 @@ dom.commentList.addEventListener("click", async (event) => {
   await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot");
   await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "", deleted: true } });
   await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
-  render();
+  refreshStopCommentMutationViews(currentStop());
 });
 
 dom.dayCommentForm?.addEventListener("submit", async (event) => {
@@ -12746,7 +12760,7 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
       dayReplyingCommentId = "";
       dom.dayCommentInput.value = "";
       dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
-      renderDayComments(day);
+      refreshDayCommentMutationViews(day);
       await logActivity(`回复当天批注「${day.title}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: day.id || "" } });
       await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-reply-snapshot");
       await saveCollaborativeTextChange(`回复当天批注「${day.title}」`);
@@ -12764,7 +12778,7 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-reply-fallback-snapshot");
     await logActivity(`回复当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: currentDay().id || "" } });
     await saveCollaborativeTextChange(`回复当天批注「${fallbackTitle}」`);
-    render();
+    refreshDayCommentMutationViews(currentDay());
     return;
   }
   const anchor = currentCommentAnchor("day");
@@ -12773,7 +12787,7 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
     const day = currentDay();
     day.comments = normalizeComments([...(day.comments || []), collaborativeComment]);
     dom.dayCommentInput.value = "";
-    renderDayComments(day);
+    refreshDayCommentMutationViews(day);
     await logActivity(`当天批注「${day.title}」`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-snapshot");
     await saveCollaborativeTextChange(`当天批注「${day.title}」`);
@@ -12789,7 +12803,7 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-fallback-snapshot");
   await logActivity(`当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "day", dayId: currentDay().id || "" } });
   await saveCollaborativeTextChange(`当天批注「${fallbackTitle}」`);
-  render();
+  refreshDayCommentMutationViews(currentDay());
 });
 
 dom.dayCommentList?.addEventListener("click", async (event) => {
@@ -12831,7 +12845,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     const updated = await updateCollaborativeDayComment(commentId, nextPatch);
     if (updated) {
       day.comments = commentsWithUpdatedComment(day.comments || [], commentId, nextPatch);
-      renderDayComments(day);
+      refreshDayCommentMutationViews(day);
       await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
       await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-resolve-snapshot");
       await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
@@ -12844,7 +12858,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-resolve-fallback-snapshot");
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "" } });
     await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
-    render();
+    refreshDayCommentMutationViews(currentDay());
     return;
   }
   const deleteButton = event.target.closest("[data-delete-day-comment]");
@@ -12860,7 +12874,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
       dayReplyingCommentId = "";
       dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
     }
-    renderDayComments(day);
+    refreshDayCommentMutationViews(day);
     await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "", deleted: true } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-delete-snapshot");
     await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
@@ -12877,7 +12891,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-delete-fallback-snapshot");
   await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "", deleted: true } });
   await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
-  render();
+  refreshDayCommentMutationViews(currentDay());
 });
 
 dom.dayBlockForm?.addEventListener("submit", async (event) => {
