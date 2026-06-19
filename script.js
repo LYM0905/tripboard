@@ -1022,8 +1022,7 @@ async function renderAmapSdkMap(day) {
       },
     });
     marker.on("click", () => {
-      activeStop = index;
-      render();
+      switchActiveStop(index);
     });
     amapMap.add(marker);
     amapMapMarkers.push(marker);
@@ -11397,6 +11396,26 @@ function renderDetail() {
   renderStopComments(stop);
 }
 
+function switchActiveStop(nextStopIndex, options = {}) {
+  const day = currentDay();
+  if (!day) return false;
+  const stopCount = (day.stops || []).length;
+  if (!stopCount) return false;
+  const index = Math.max(0, Math.min(Number(nextStopIndex) || 0, stopCount - 1));
+  const changed = activeStop !== index;
+  activeStop = index;
+  renderTimeline();
+  renderMap();
+  renderDetail();
+  renderEditorLockState();
+  bindCollabTextDoc();
+  renderTextPresence();
+  if (options.activities !== false) renderActivities();
+  refreshIcons();
+  if (options.track !== false) trackPresence();
+  return changed;
+}
+
 function renderCandidates() {
   const editable = canEdit();
   if (editingCandidateId && !(state.candidates || []).some((item) => item.id === editingCandidateId)) {
@@ -11597,6 +11616,14 @@ function focusStopActivityTarget(detail = null) {
     pulseActivityTarget(target);
     renderActivities();
     dom.saveState.textContent = stopIndex >= 0 ? "已定位到活动对应地点" : "地点已不存在，已定位到原日期时间线";
+    return true;
+  }
+  if (dayIndex === activeDay && stopIndex >= 0) {
+    switchActiveStop(stopIndex, { activities: true });
+    const target = dom.timeline?.querySelector(`[data-stop="${CSS.escape(String(stopIndex))}"]`) || document.querySelector(".editor-panel");
+    if (!target) return false;
+    pulseActivityTarget(target);
+    dom.saveState.textContent = "已定位到活动对应地点";
     return true;
   }
   activeDay = dayIndex;
@@ -11914,17 +11941,13 @@ dom.dayList.addEventListener("click", (event) => {
 dom.timeline.addEventListener("click", (event) => {
   const card = event.target.closest("[data-stop]");
   if (!card) return;
-  activeStop = Number(card.dataset.stop);
-  render();
-  trackPresence();
+  switchActiveStop(Number(card.dataset.stop));
 });
 
 dom.mapCanvas.addEventListener("click", (event) => {
   const pin = event.target.closest("[data-stop]");
   if (!pin) return;
-  activeStop = Number(pin.dataset.stop);
-  render();
-  trackPresence();
+  switchActiveStop(Number(pin.dataset.stop));
 });
 
 document.addEventListener("click", (event) => {
