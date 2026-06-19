@@ -6562,6 +6562,7 @@ async function reorderStopListInDoc(dayId, orderedStops = [], origin = "local-st
   const latestStops = normalizeCollaborativeStopList(stopArray.toArray());
   const latestById = new Map(latestStops.map((stop) => [stop.id, stop]));
   const desiredIds = new Set(desiredStops.map((stop) => stop.id));
+  const patchByStopId = new Map();
   const orderedMerged = desiredStops.map((stop) => {
     const latest = latestById.get(stop.id);
     if (!latest) return stop;
@@ -6570,14 +6571,41 @@ async function reorderStopListInDoc(dayId, orderedStops = [], origin = "local-st
     patchFields.forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(stop, field)) patch[field] = stop[field];
     });
+    if (Object.keys(patch).length) patchByStopId.set(latest.id, patch);
     return normalizeCollaborativeStop({ ...latest, ...patch, id: latest.id });
   });
   const preservedExtras = latestStops.filter((stop) => !desiredIds.has(stop.id));
   const nextStops = [...orderedMerged, ...preservedExtras];
-  if (sameSerialized(latestStops, nextStops)) return true;
+  const textStateUpdates = [];
+  let Y = yjsModule;
+  if (patchByStopId.size && collabStopTextStatesMap && !Y) {
+    try {
+      Y = await ensureYjs();
+    } catch {
+      Y = null;
+    }
+  }
+  if (patchByStopId.size && collabStopTextStatesMap && Y) {
+    nextStops.forEach((stop) => {
+      const patch = patchByStopId.get(stop.id);
+      if (!patch) return;
+      const textState = patchedStopTextState(stop.id, stop, patch, Y);
+      if (textState && collabStopTextStatesMap.get(stop.id) !== textState) {
+        textStateUpdates.push([stop.id, textState]);
+      }
+    });
+  }
+  if (sameSerialized(latestStops, nextStops) && !textStateUpdates.length) {
+    patchByStopId.forEach((patch, stopId) => patchActiveStopTextDoc(stopId, patch, `${origin}-active-text`));
+    return true;
+  }
   collabPlanDoc.transact(() => {
     syncYArrayById(stopArray, nextStops, normalizeCollaborativeStop);
+    textStateUpdates.forEach(([stopId, textState]) => {
+      collabStopTextStatesMap?.set(stopId, textState);
+    });
   }, origin);
+  patchByStopId.forEach((patch, stopId) => patchActiveStopTextDoc(stopId, patch, `${origin}-active-text`));
   return true;
 }
 
