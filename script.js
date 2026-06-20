@@ -481,6 +481,16 @@ function versionRestoreImpactSummary() {
   };
 }
 
+function confirmFullPlanReplacement(actionLabel = "替换整份计划") {
+  const impact = versionRestoreImpactSummary();
+  if (!impact.members.length && !impact.extra) return true;
+  const memberLines = impact.members
+    .map((member) => `- ${member.name}：${member.activity}`)
+    .join("\n");
+  const extraLine = impact.extra ? `\n- 还有 ${impact.extra} 位成员在线` : "";
+  return window.confirm(`当前有其他成员在线协作：\n${memberLines}${extraLine}\n\n${actionLabel}会替换整份共享计划，可能打断对方正在编辑的内容。确定继续吗？`);
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   bytes.forEach((byte) => {
@@ -16107,6 +16117,10 @@ function closeCreateChoice() {
 
 async function createRecommendedPlan() {
   if (!requireEdit("生成推荐计划")) return;
+  if (!confirmFullPlanReplacement("生成推荐计划")) {
+    dom.saveState.textContent = "已取消生成推荐计划";
+    return;
+  }
   const destination = dom.destinationInput.value.trim() || "甘肃";
   const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
@@ -16146,6 +16160,10 @@ async function createRecommendedPlan() {
 
 async function createBlankTemplate() {
   if (!requireEdit("生成空白模板")) return;
+  if (!confirmFullPlanReplacement("生成空白模板")) {
+    dom.saveState.textContent = "已取消生成空白模板";
+    return;
+  }
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
   const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
@@ -16214,6 +16232,10 @@ dom.exportBtn.addEventListener("click", async () => {
 
 async function importPlanJsonFile(file) {
   if (!file || !requireEdit("导入 JSON")) return;
+  if (!confirmFullPlanReplacement("导入 JSON")) {
+    dom.saveState.textContent = "已取消导入 JSON";
+    return;
+  }
   let importedPlan = null;
   try {
     importedPlan = JSON.parse(await file.text());
@@ -16528,6 +16550,10 @@ dom.ctripSpecBtn.addEventListener("click", async () => {
 
 dom.resetBtn.addEventListener("click", async () => {
   if (!requireEdit("重置计划")) return;
+  if (!confirmFullPlanReplacement("重置示例计划")) {
+    dom.saveState.textContent = "已取消重置示例";
+    return;
+  }
   saveVersionSnapshot("重置前版本");
   state = ensurePlanDates(buildKyotoPlan());
   clearPlanYjsState();

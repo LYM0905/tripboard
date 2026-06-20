@@ -379,6 +379,11 @@ assert(source.includes("function confirmDeleteCommentedStop"), "Deleting a stop 
 assert(source.includes("function confirmDeleteCommentedDay"), "Deleting a day with comment threads must require an explicit confirmation helper.");
 assert(source.includes("confirmDeleteCommentedStop(deletedStop"), "Stop deletes must confirm before removing a stop with comment threads.");
 assert(source.includes("confirmDeleteCommentedDay(deletedDay"), "Day deletes must confirm before removing day, stop, or block comment threads.");
+assert(source.includes("function confirmFullPlanReplacement"), "Full plan replacement actions must require an explicit collaboration impact confirmation helper.");
+assert(extractFunctionBody("createRecommendedPlan").includes('confirmFullPlanReplacement("生成推荐计划")'), "Recommended plan generation must confirm before replacing the shared plan.");
+assert(extractFunctionBody("createBlankTemplate").includes('confirmFullPlanReplacement("生成空白模板")'), "Blank template generation must confirm before replacing the shared plan.");
+assert(extractFunctionBody("importPlanJsonFile").includes('confirmFullPlanReplacement("导入 JSON")'), "JSON import must confirm before replacing the shared plan.");
+assert(source.includes('confirmFullPlanReplacement("重置示例计划")'), "Resetting the sample plan must confirm before replacing the shared plan.");
 assert(source.includes("function confirmRemoteBlockEdit"), "High-risk day block structure edits must confirm when another member is actively editing the same block.");
 assert(extractFunctionBody("applyDayBlockTypeChange").includes("confirmRemoteBlockEdit(blockId"), "Day block type changes must confirm when another member is actively editing the block.");
 assert(extractFunctionBody("moveDayBlockByDirection").includes("confirmRemoteBlockEdit(blockId"), "Day block sorting must confirm when another member is actively editing the block.");
