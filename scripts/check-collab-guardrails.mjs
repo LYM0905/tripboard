@@ -368,6 +368,9 @@ assert(source.includes("function joinDayBlockTexts"), "Day block keyboard merge 
 assert(source.includes("function splitDayBlockCommentsForKeyboard"), "Day block keyboard split must move block comment anchors into the newly split block.");
 assert(source.includes("function mergeDayBlockCommentsForKeyboard"), "Day block keyboard merge must move current block comment anchors into the previous block.");
 assert(source.includes("function refreshBlockCommentExcerpt"), "Moved block comment anchors must refresh excerpts from their new block text.");
+assert(source.includes("function confirmDeleteCommentedDayBlocks"), "Deleting commented day blocks must require an explicit confirmation.");
+assert(extractFunctionBody("deleteSelectedDayBlocks").includes("confirmDeleteCommentedDayBlocks(selectedBlocks"), "Bulk day block delete must confirm before removing commented blocks.");
+assert(source.includes('confirmDeleteCommentedDayBlocks([block], "删除")'), "Single and keyboard day block deletes must confirm before removing commented blocks.");
 assert(source.includes("const text = input.value;\n  if (!day || !blockId) return;\n  await syncDayBlockInputText(day, blockId, text, input);"), "Day block input sync must preserve raw textarea text instead of trimming collaborative content.");
 assert(source.includes("const hasAfterText = Boolean(afterText.trim());"), "Day block keyboard split must use trim only for empty-state decisions.");
 assert(source.includes("text: afterText,"), "Day block keyboard split must preserve raw trailing text in the new block.");

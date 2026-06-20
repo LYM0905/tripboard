@@ -5029,6 +5029,20 @@ function selectedDayBlockList(blocks = normalizeDayBlocks(currentDay()?.blocks |
   return blocks.filter((block) => selectedDayBlockIds.has(block.id));
 }
 
+function dayBlockCommentThreadCount(block = {}) {
+  return commentRootsAndReplies(block.comments || []).roots.length;
+}
+
+function confirmDeleteCommentedDayBlocks(blocks = [], actionLabel = "删除") {
+  const commentedBlocks = normalizeDayBlocks(blocks || []).filter((block) => dayBlockCommentThreadCount(block) > 0);
+  if (!commentedBlocks.length) return true;
+  const totalThreads = commentedBlocks.reduce((sum, block) => sum + dayBlockCommentThreadCount(block), 0);
+  const title = commentedBlocks.length === 1
+    ? `「${dayBlockActivitySnippet(commentedBlocks[0].text, dayBlockTypeLabel(commentedBlocks[0].type))}」`
+    : `${commentedBlocks.length} 个协作块`;
+  return window.confirm(`${title} 里还有 ${totalThreads} 条批注线程。${actionLabel}后这些讨论也会被移除，确定继续吗？`);
+}
+
 function clearSelectedDayBlocks() {
   selectedDayBlockIds.clear();
   lastSelectedDayBlockId = "";
@@ -6076,6 +6090,10 @@ async function duplicateSelectedDayBlocks(day) {
 async function deleteSelectedDayBlocks(day) {
   const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
   if (!day || !selectedBlocks.length || !requireEdit("批量删除协作块")) return false;
+  if (!confirmDeleteCommentedDayBlocks(selectedBlocks, "批量删除")) {
+    dom.saveState.textContent = "已取消删除含批注的协作块";
+    return false;
+  }
   let deletedCount = 0;
   const deletedIds = new Set();
   for (const block of selectedBlocks) {
@@ -15010,6 +15028,10 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const blockId = deleteButton.dataset.deleteDayBlock;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!block || !requireEdit("删除协作块")) return;
+    if (!confirmDeleteCommentedDayBlocks([block], "删除")) {
+      dom.saveState.textContent = "已取消删除含批注的协作块";
+      return;
+    }
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     noteRemoteBlockEditors(blockId, "删除");
@@ -15391,6 +15413,10 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     event.preventDefault();
     const previousBlockId = blocks[Math.max(0, blockIndex - 1)]?.id || blocks[blockIndex + 1]?.id || "";
     if (!requireEdit("删除空白协作块")) return;
+    if (!confirmDeleteCommentedDayBlocks([block], "删除")) {
+      dom.saveState.textContent = "已取消删除含批注的协作块";
+      return;
+    }
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-delete-empty")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       activeBlockPresenceId = previousBlockId;
