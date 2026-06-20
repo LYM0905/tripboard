@@ -446,6 +446,34 @@ button {
   overflow: auto;
 }
 
+.budget-combo-row {
+  display: flex !important;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.budget-combo-row b {
+  min-width: 0;
+  color: #34464f;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.budget-combo-row.is-excluded {
+  color: var(--muted);
+  background: var(--panel-2);
+  border-style: dashed;
+}
+
+.budget-combo-row.is-excluded b {
+  color: var(--muted);
+}
+
+.is-excluded-list {
+  max-height: 128px;
+}
+
 .budget-ticket-hints span {
   display: flex;
   gap: 8px;

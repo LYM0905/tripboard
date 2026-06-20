@@ -75,6 +75,7 @@ const COLLAB_STRUCT_FIELDS = [
   { field: "budget", domKey: "fieldBudget", type: "number", label: "预算", presenceId: "fieldBudgetPresence" },
   { field: "paid", domKey: "fieldPaid", type: "number", label: "已付", presenceId: "fieldPaidPresence" },
   { field: "payer", domKey: "fieldPayer", type: "string", label: "付款人", presenceId: "fieldPayerPresence" },
+  { field: "budgetSelected", domKey: "fieldBudgetSelected", type: "boolean" },
   { field: "lng", domKey: "fieldLng", type: "string", label: "经度", presenceId: "fieldLngPresence" },
   { field: "lat", domKey: "fieldLat", type: "string", label: "纬度", presenceId: "fieldLatPresence" },
   { field: "image", domKey: "fieldImage", type: "string", label: "图片 URL", presenceId: "fieldImagePresence" },
@@ -1185,6 +1186,7 @@ function makeStop({
   budget = 0,
   paid = 0,
   payer = "",
+  budgetSelected = true,
   votes = 1,
   userVoted = true,
   voters = [],
@@ -1209,6 +1211,7 @@ function makeStop({
     budget: Number(budget || 0),
     paid: Number(paid || 0),
     payer,
+    budgetSelected: budgetSelected !== false,
     voters: normalizeList(voters),
     votes,
     userVoted,
@@ -2610,6 +2613,7 @@ function normalizeCollaborativeStop(stop = {}) {
     budget: numberValue(stop.budget),
     paid: numberValue(stop.paid),
     payer: String(stop.payer || "").trim(),
+    budgetSelected: stop.budgetSelected !== false,
     voters: normalizedVotes.voters,
     votes: normalizedVotes.votes,
     userVoted: normalizedVotes.userVoted,
@@ -4025,6 +4029,7 @@ function stopStructValue(stop, { field, type }) {
   if (field === "votes") return normalizeStopVotes(stop).votes;
   if (field === "userVoted") return normalizeStopVotes(stop).userVoted;
   if (field === "voters") return normalizeStopVotes(stop).voters;
+  if (field === "budgetSelected") return stop?.budgetSelected !== false;
   if (type === "number") return numberValue(stop?.[field]);
   if (type === "tags") return normalizeTags(stop?.[field]);
   if (type === "list") return normalizeList(stop?.[field]);
@@ -4040,12 +4045,22 @@ function structDisplayValue(value, type) {
   return value || "";
 }
 
+function writeStructDomValue(meta, value) {
+  const element = dom[meta.domKey];
+  if (!element) return;
+  if (meta.type === "boolean") {
+    element.checked = meta.field === "budgetSelected" ? value !== false : Boolean(value);
+    return;
+  }
+  element.value = structDisplayValue(value, meta.type);
+}
+
 function readStructFromDoc() {
   const values = {};
   if (!collabStructMap) return values;
   COLLAB_STRUCT_FIELDS.forEach(({ field, type }) => {
     const value = collabStructMap.get(field);
-    values[field] = type === "tags" ? normalizeTags(value) : type === "list" ? normalizeList(value) : type === "number" ? numberValue(value) : type === "boolean" ? Boolean(value) : String(value || "");
+    values[field] = field === "budgetSelected" ? value !== false : type === "tags" ? normalizeTags(value) : type === "list" ? normalizeList(value) : type === "number" ? numberValue(value) : type === "boolean" ? Boolean(value) : String(value || "");
   });
   const normalizedVotes = normalizeStopVotes(values);
   values.voters = normalizedVotes.voters;
@@ -7620,7 +7635,7 @@ async function bindCollabTextDoc() {
   COLLAB_STRUCT_FIELDS.forEach((meta) => {
     if (!meta.domKey) return;
     const value = collabStructMap.get(meta.field);
-    if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(value, meta.type);
+    writeStructDomValue(meta, value);
   });
   const comments = readCommentsFromDoc();
   if (comments.length) {
@@ -7729,7 +7744,7 @@ async function applyRemoteTextUpdate(payload = {}) {
     COLLAB_STRUCT_FIELDS.forEach((meta) => {
       if (!meta.domKey) return;
       const nextValue = collabStructMap?.get(meta.field);
-      if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(nextValue, meta.type);
+      writeStructDomValue(meta, nextValue);
     });
     const stop = currentStop();
     if (stop?.id === collabTextStopId) applyStopRealtimeFields({ ...stop, ...readStructFromDoc() });
@@ -8696,6 +8711,7 @@ const dom = {
   fieldBudget: document.querySelector("#fieldBudget"),
   fieldPaid: document.querySelector("#fieldPaid"),
   fieldPayer: document.querySelector("#fieldPayer"),
+  fieldBudgetSelected: document.querySelector("#fieldBudgetSelected"),
   fieldAddress: document.querySelector("#fieldAddress"),
   fieldAmapKeyword: document.querySelector("#fieldAmapKeyword"),
   fieldLng: document.querySelector("#fieldLng"),
@@ -11319,12 +11335,28 @@ async function compareMultiOrigins() {
   }
 }
 
+function selectedBudgetStops() {
+  return (state.days || []).flatMap((day) =>
+    (day.stops || [])
+      .filter((stop) => stop.budgetSelected !== false)
+      .map((stop) => ({ day, stop })),
+  );
+}
+
+function excludedBudgetStops() {
+  return (state.days || []).flatMap((day) =>
+    (day.stops || [])
+      .filter((stop) => stop.budgetSelected === false)
+      .map((stop) => ({ day, stop })),
+  );
+}
+
 function totalBudget() {
-  return state.days.reduce((sum, day) => sum + day.stops.reduce((daySum, stop) => daySum + numberValue(stop.budget), 0), 0);
+  return selectedBudgetStops().reduce((sum, { stop }) => sum + numberValue(stop.budget), 0);
 }
 
 function totalPaid() {
-  return state.days.reduce((sum, day) => sum + day.stops.reduce((daySum, stop) => daySum + numberValue(stop.paid), 0), 0);
+  return selectedBudgetStops().reduce((sum, { stop }) => sum + numberValue(stop.paid), 0);
 }
 
 function totalPlannedBudget() {
@@ -11341,13 +11373,11 @@ function partySize() {
 
 function payerBudget() {
   const groups = {};
-  state.days.forEach((day) => {
-    day.stops.forEach((stop) => {
-      const paid = numberValue(stop.paid);
-      if (!paid) return;
-      const payer = String(stop.payer || "未指定").trim() || "未指定";
-      groups[payer] = (groups[payer] || 0) + paid;
-    });
+  selectedBudgetStops().forEach(({ stop }) => {
+    const paid = numberValue(stop.paid);
+    if (!paid) return;
+    const payer = String(stop.payer || "未指定").trim() || "未指定";
+    groups[payer] = (groups[payer] || 0) + paid;
   });
   (state.candidates || []).forEach((candidate) => {
     if (!candidate.selected) return;
@@ -11451,23 +11481,21 @@ function candidateLabel(candidateId = "") {
 }
 
 function budgetComboItems() {
-  const confirmedStops = (state.days || []).flatMap((day) =>
-    (day.stops || []).map((stop) => {
-      const estimate = inferTicketPrice(stop);
-      return {
-        id: `stop-${day.id || day.label}-${stop.id || stop.title}`,
-        refType: "stop",
-        dayId: day.id || "",
-        itemId: stop.id || "",
-        label: stop.title || "地点",
-        category: budgetCategoryForItem(stop),
-        amount: numberValue(stop.budget) || estimate,
-        paid: numberValue(stop.paid),
-        source: "行程",
-        estimated: !numberValue(stop.budget) && estimate > 0,
-      };
-    }),
-  );
+  const confirmedStops = selectedBudgetStops().map(({ day, stop }) => {
+    const estimate = inferTicketPrice(stop);
+    return {
+      id: `stop-${day.id || day.label}-${stop.id || stop.title}`,
+      refType: "stop",
+      dayId: day.id || "",
+      itemId: stop.id || "",
+      label: stop.title || "地点",
+      category: budgetCategoryForItem(stop),
+      amount: numberValue(stop.budget) || estimate,
+      paid: numberValue(stop.paid),
+      source: "行程",
+      estimated: !numberValue(stop.budget) && estimate > 0,
+    };
+  });
   const selectedQuotes = (state.transportQuotes || [])
     .filter((quote) => quote.selected)
     .map((quote) => ({
@@ -11509,7 +11537,7 @@ function budgetComboSummary() {
     return groups;
   }, {});
   const estimates = items.filter((item) => item.estimated);
-  return { items, total, paid, unpaid: Math.max(0, total - paid), byCategory, estimates };
+  return { items, total, paid, unpaid: Math.max(0, total - paid), byCategory, estimates, excludedStops: excludedBudgetStops() };
 }
 
 function renderBudgetCombo() {
@@ -11531,18 +11559,54 @@ function renderBudgetCombo() {
     .join("");
   const itemRows = summary.items
     .slice(0, 8)
-    .map((item) => `<span>${escapeHtml(item.source)} · ${escapeHtml(item.category)} · ${escapeHtml(item.label)} ${money(item.amount)}${item.estimated ? " 估" : ""}</span>`)
+    .map((item) => `
+      <span class="budget-combo-row">
+        <b>${escapeHtml(item.source)} · ${escapeHtml(item.category)} · ${escapeHtml(item.label)} ${money(item.amount)}${item.estimated ? " 估" : ""}</b>
+        ${item.refType === "stop" && canEdit() ? `<button type="button" class="mini-action" data-toggle-stop-budget="${escapeHtml(item.dayId)}:${escapeHtml(item.itemId)}:0">移出</button>` : ""}
+      </span>
+    `)
     .join("");
   const extraCount = Math.max(0, summary.items.length - 8);
+  const excludedRows = summary.excludedStops
+    .slice(0, 6)
+    .map(({ day, stop }) => `
+      <span class="budget-combo-row is-excluded">
+        <b>${escapeHtml(day.label || day.title || "行程")} · ${escapeHtml(stop.title || "地点")} 已移出组合</b>
+        ${canEdit() ? `<button type="button" class="mini-action" data-toggle-stop-budget="${escapeHtml(day.id || "")}:${escapeHtml(stop.id || "")}:1">纳入</button>` : ""}
+      </span>
+    `)
+    .join("");
   return `
     <strong>预选组合</strong>
     <span>组合总额 ${money(summary.total)} · 人均 ${money(Math.round(summary.total / people))}</span>
     <span>已付 ${money(summary.paid)} · 待付 ${money(summary.unpaid)}</span>
-    <span>已选交通 ${selectedTransportCount} 项 · 预选备选 ${selectedCandidateCount} 项</span>
+    <span>已选交通 ${selectedTransportCount} 项 · 预选备选 ${selectedCandidateCount} 项 · 已排除行程 ${summary.excludedStops.length} 项</span>
     <div class="budget-combo-categories">${categoryRows || "<span>暂无可汇总项目</span>"}</div>
     <div class="budget-combo-items">${itemRows || "<span>勾选交通或备选地点后显示组合明细</span>"}${extraCount ? `<span>还有 ${extraCount} 项已纳入组合</span>` : ""}</div>
+    ${excludedRows ? `<div class="budget-combo-items is-excluded-list">${excludedRows}</div>` : ""}
     ${estimateRows ? `<div class="budget-ticket-hints">${estimateRows}</div>` : "<div class=\"budget-ticket-hints\"><span><b>当前没有待采用的门票估算</b></span></div>"}
   `;
+}
+
+async function toggleStopBudgetSelection(token = "") {
+  const [dayId, stopId, selectedValue] = String(token || "").split(":");
+  const selected = selectedValue !== "0";
+  if (!dayId || !stopId || !requireEdit(selected ? "纳入预算组合" : "移出预算组合")) return;
+  const day = state.days.find((item) => item.id === dayId);
+  const stop = day?.stops?.find((item) => item.id === stopId);
+  if (!day || !stop) {
+    dom.saveState.textContent = "没有找到这个预算项目，可能已被其他成员移动或删除。";
+    return;
+  }
+  if (!confirmRemoteStopEdit(stop.id, selected ? "纳入预算组合" : "移出预算组合")) return;
+  const patch = { budgetSelected: selected };
+  stop.budgetSelected = selected;
+  if (!(await patchStopInDoc(stop.id, patch, "local-stop-budget-selection"))) {
+    await syncStopListToDoc(day.id, "local-stop-budget-selection-fallback");
+  }
+  await logActivity(`${selected ? "纳入" : "移出"}预算组合「${stop.title}」`, { target: stopActivityTarget(day.id, stop.id, { action: selected ? "budget-select" : "budget-exclude" }) });
+  await saveCollaborativePlanChange(`${selected ? "纳入" : "移出"}预算组合`);
+  render();
 }
 
 function budgetEstimateEntries() {
@@ -11745,6 +11809,7 @@ async function enrichPlacesFromAmap() {
   let changedStops = 0;
   let changedCandidates = 0;
   let imageCount = 0;
+  let firstNewImage = "";
   let checked = 0;
   for (const item of candidates.slice(0, 12)) {
     checked += 1;
@@ -11755,6 +11820,7 @@ async function enrichPlacesFromAmap() {
       const hadRealImage = !isDefaultTripboardImage(item.stop.image);
       const patch = applyPlaceToStop(item.stop, place);
       if (patch) {
+        if (patch.image && !firstNewImage) firstNewImage = patch.image;
         if (item.type === "stop") {
           if (!(await patchStopInDoc(item.stop.id, patch, "local-amap-place-enrich-stop"))) {
             fallbackDayIds.add(item.day.id);
@@ -11773,6 +11839,13 @@ async function enrichPlacesFromAmap() {
       console.warn("Amap place enrichment failed", item.keyword, error);
     }
   }
+  const coverChanged = Boolean(firstNewImage && isDefaultTripboardImage(state.cover));
+  if (coverChanged) {
+    state.cover = firstNewImage;
+    if (!(await syncPlanSettingToDoc("cover", firstNewImage))) {
+      await syncPlanMetaToDoc("local-amap-place-cover-fallback");
+    }
+  }
   for (const dayId of fallbackDayIds) {
     await syncStopListToDoc(dayId, "local-amap-place-enrich-fallback");
   }
@@ -11782,23 +11855,21 @@ async function enrichPlacesFromAmap() {
     return;
   }
   persistCurrentPlanFromDoc("高德地点资料已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
-  await logActivity(`补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张`);
+  await logActivity(`补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}`);
   await saveCollaborativePlanChange("补全地点图片和坐标");
   render();
-  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张；图片来自高德 POI 返回，请按需核对。`;
+  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}；图片来自高德 POI 返回，请按需核对。`;
 }
 
 function categoryBudget() {
   const groups = { 交通: 0, 餐饮: 0, 门票: 0, 住宿: 0 };
-  state.days.forEach((day) => {
-    day.stops.forEach((stop) => {
-      const title = `${stop.title}${stop.type}${stop.tags.join("")}`;
-      const value = numberValue(stop.budget);
-      if (/酒店|民宿|住宿|入住/.test(title)) groups.住宿 += value;
-      else if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(title)) groups.餐饮 += value;
-      else if (/交通|高铁|Transit|车|机场|返程/.test(title)) groups.交通 += value;
-      else groups.门票 += value;
-    });
+  selectedBudgetStops().forEach(({ stop }) => {
+    const title = `${stop.title}${stop.type}${stop.tags.join("")}`;
+    const value = numberValue(stop.budget) || inferTicketPrice(stop);
+    if (/酒店|民宿|住宿|入住/.test(title)) groups.住宿 += value;
+    else if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(title)) groups.餐饮 += value;
+    else if (/交通|高铁|Transit|车|机场|返程/.test(title)) groups.交通 += value;
+    else groups.门票 += value;
   });
   (state.transportQuotes || []).forEach((quote) => {
     if (quote.selected) groups.交通 += numberValue(quote.price);
@@ -12021,6 +12092,7 @@ function renderDetail() {
     dom.fieldBudget.value = stop.budget || "";
     dom.fieldPaid.value = stop.paid || "";
     dom.fieldPayer.value = stop.payer || "";
+    if (dom.fieldBudgetSelected) dom.fieldBudgetSelected.checked = stop.budgetSelected !== false;
     dom.fieldLng.value = stop.lng || "";
     dom.fieldLat.value = stop.lat || "";
     dom.fieldImage.value = stop.image || "";
@@ -12599,6 +12671,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const stopBudgetButton = event.target.closest("[data-toggle-stop-budget]");
+  if (stopBudgetButton) {
+    toggleStopBudgetSelection(stopBudgetButton.dataset.toggleStopBudget);
+    return;
+  }
+
   const option = event.target.closest("[data-amap-place-index]");
   if (!option) return;
   const target = option.dataset.amapTarget || "quick";
@@ -12836,6 +12914,7 @@ dom.stopForm.addEventListener("submit", async (event) => {
     stop.budget = structValue("budget", () => numberValue(dom.fieldBudget.value));
     stop.paid = structValue("paid", () => numberValue(dom.fieldPaid.value));
     stop.payer = structValue("payer", () => dom.fieldPayer.value.trim());
+    stop.budgetSelected = structValue("budgetSelected", () => Boolean(dom.fieldBudgetSelected?.checked));
     stop.address = collabValue("address", "fieldAddress");
     stop.amapKeyword = collabValue("amapKeyword", "fieldAmapKeyword");
     stop.time = structValue("time", () => dom.fieldTime.value.trim());

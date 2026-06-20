@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260620-collab-v1-final" />
+    <link rel="stylesheet" href="styles.css?v=20260620-budget-weather-image-v1" />
   </head>
   <body>
     <div class="app-shell">
@@ -549,6 +549,10 @@
             <label>预算<input id="fieldBudget" name="budget" type="number" min="0" step="1" placeholder="人均或项目预算" /><span class="text-presence" id="fieldBudgetPresence" hidden></span></label>
             <label>已付<input id="fieldPaid" name="paid" type="number" min="0" step="1" placeholder="已支付金额" /><span class="text-presence" id="fieldPaidPresence" hidden></span></label>
             <label>付款人<input id="fieldPayer" name="payer" placeholder="例如：林 / AA" /><span class="text-presence" id="fieldPayerPresence" hidden></span></label>
+            <label class="quick-check full">
+              <input id="fieldBudgetSelected" type="checkbox" checked />
+              <span>纳入预算组合</span>
+            </label>
             <label class="full">地址<input id="fieldAddress" name="address" placeholder="地址或集合点" /><span class="text-presence" id="fieldAddressPresence" hidden></span></label>
             <label class="full">高德地点关键词<input id="fieldAmapKeyword" name="amapKeyword" placeholder="例如：甘肃 莫高窟" /><span class="text-presence" id="fieldAmapKeywordPresence" hidden></span></label>
             <label>经度<input id="fieldLng" name="lng" type="number" step="0.000001" placeholder="可选" /><span class="text-presence" id="fieldLngPresence" hidden></span></label>
@@ -721,7 +725,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260620-collab-v1-final"></script>
-    <script src="script.js?v=20260620-collab-v1-final"></script>
+    <script src="config.js?v=20260620-budget-weather-image-v1"></script>
+    <script src="script.js?v=20260620-budget-weather-image-v1"></script>
   </body>
 </html>
