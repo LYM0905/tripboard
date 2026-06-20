@@ -445,6 +445,9 @@ assert(fullBlockSyncBody.includes("if (!replace) return false;"), "syncAllDayBlo
 const stopListsBody = extractFunctionBody("syncStopListsToDoc");
 assert(stopListsBody.includes("if (!replace && !deletedDayIds.size) return false;"), "syncStopListsToDoc must refuse broad non-replace calls.");
 
+const planMetaBody = extractFunctionBody("syncPlanMetaToDoc");
+assert(planMetaBody.includes("if (!replace && (!Array.isArray(fields)"), "syncPlanMetaToDoc must refuse broad non-replace calls without explicit fields.");
+
 for (const functionName of ["syncTransportQuotesToDoc", "syncCandidatesToDoc", "syncActivitiesToDoc"]) {
   const body = extractFunctionBody(functionName);
   assert(body.includes("hasExplicitYArrayFallbackIntent(options)"), `${functionName} must require explicit fallback intent.`);

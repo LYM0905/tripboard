@@ -6967,6 +6967,7 @@ async function syncPlanMetaToDoc(origin = "local-plan-meta", options = {}) {
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabSettingsMap || isApplyingCollabPlanRemote) return false;
   const { fields = null, replace = false } = options || {};
+  if (!replace && (!Array.isArray(fields) || !fields.some((field) => String(field || "").trim()))) return false;
   const fieldSet = Array.isArray(fields) && !replace
     ? new Set(fields.map((field) => String(field || "")).filter(Boolean))
     : null;
