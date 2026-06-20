@@ -1804,8 +1804,8 @@ function setDomFieldValuePreservingSelection(domKey, nextValue = "") {
   return setInputValuePreservingSelection(dom[domKey], nextValue);
 }
 
-function selectionExcerptFromElement(element, selection = {}) {
-  const value = String(element?.value || "");
+function selectionExcerptFromText(text = "", selection = {}) {
+  const value = String(text || "");
   const start = Math.max(0, Math.min(Number(selection.start || 0), value.length));
   const end = Math.max(start, Math.min(Number(selection.end || start), value.length));
   const selectedText = value.slice(start, end).trim();
@@ -1814,6 +1814,10 @@ function selectionExcerptFromElement(element, selection = {}) {
   const after = value.slice(start, Math.min(value.length, start + 24)).trim();
   const context = `${before}${before && after ? " / " : ""}${after}`.trim();
   return context.length > 48 ? `${context.slice(0, 48)}...` : context;
+}
+
+function selectionExcerptFromElement(element, selection = {}) {
+  return selectionExcerptFromText(element?.value || "", selection);
 }
 
 function textSelectionExcerpt(fieldMeta, selection = {}) {
@@ -8552,6 +8556,7 @@ function transformCommentAnchorForTextChange(anchor = null, baseValue = "", next
     start: Math.max(0, Math.min(start, nextText.length)),
     end: Math.max(0, Math.min(Math.max(start, end), nextText.length)),
     length: nextText.length,
+    excerpt: selectionExcerptFromText(nextText, { start, end }),
   });
 }
 

@@ -255,7 +255,12 @@ assert(stopFormHandlerBody.includes('String(dom[domKey].value || "")'), "Stop de
 assert(!stopFormHandlerBody.includes("dom[domKey].value.trim()"), "Stop detail fallback save must not trim collaborative text field content.");
 assert(source.includes("function transformCommentAnchorForTextChange"), "Comment anchors must support text-diff position transforms.");
 assert(source.includes("function transformCommentAnchorsForTextValues"), "Comment anchors must update across collaborative text field changes.");
+assert(source.includes("function selectionExcerptFromText"), "Comment anchor excerpts must be refreshable without reading from the DOM.");
 assert(source.includes("function replaceYArrayContents"), "Transformed comment anchors must be writable back to Yjs comment arrays.");
+assert(
+  extractFunctionBody("transformCommentAnchorForTextChange").includes("selectionExcerptFromText"),
+  "Moved comment anchors must refresh their excerpt from the updated text.",
+);
 assert(
   extractFunctionBody("persistCurrentTextFromDoc").includes("transformCommentAnchorsForTextValues"),
   "Stop text persistence must move anchored comments when collaborative text changes.",
