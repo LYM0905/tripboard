@@ -10,6 +10,15 @@ const PENDING_PLAN_UPDATES_PREFIX = "tripboard-pending-plan-yjs:";
 const COLLAPSED_BLOCKS_PREFIX = "tripboard-collapsed-day-blocks:";
 const MAX_VERSION_HISTORY = 12;
 const MAX_PENDING_PLAN_UPDATES = 160;
+const PLAN_REPLACE_REASONS = new Set([
+  "recommended-plan",
+  "blank-plan",
+  "json-import",
+  "reset-plan",
+  "version-restore",
+  "conflict-merge",
+  "conflict-keep",
+]);
 const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
 const YJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/yjs@13.6.27/+esm";
 const COLLAB_TEXT_FIELDS = [
@@ -5900,6 +5909,12 @@ function broadcastDaysReordered() {
 
 async function broadcastPlanReplaced(reason = "更新整份计划", meta = {}) {
   if (!realtimeChannel || !tripId || !state?.days?.length) return;
+  const replacementType = meta?.replacementType || "";
+  if (!PLAN_REPLACE_REASONS.has(replacementType)) {
+    console.warn("Blocked full plan replacement broadcast without explicit type", { reason, replacementType });
+    dom.collabStatus.textContent = "???????????????????";
+    return;
+  }
   await bindCollabPlanDoc();
   const planYjs = currentPlanYjsState();
   realtimeChannel.send({
@@ -5911,6 +5926,7 @@ async function broadcastPlanReplaced(reason = "更新整份计划", meta = {}) {
       planYjs,
       reason,
       ...clone(meta),
+      replacementType,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -7202,8 +7218,13 @@ async function syncActivitiesToDoc(origin = "local-activities") {
   return true;
 }
 
-async function replacePlanCollabDoc(origin = "local-plan-replace") {
+async function replacePlanCollabDoc(origin = "local-plan-replace", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
+  const { allowReplace = false, reason = "" } = options || {};
+  if (!allowReplace || !PLAN_REPLACE_REASONS.has(reason)) {
+    console.warn("Blocked full plan collaboration replacement without explicit reason", { origin, reason });
+    return false;
+  }
   clearPlanYjsState();
   destroyCollabDayTextDoc();
   destroyCollabPlanDoc();
@@ -7718,6 +7739,10 @@ async function applyRemoteDaysReordered(payload = {}) {
 
 async function applyRemotePlanReplaced(payload = {}) {
   if (payload.tripId !== tripId || (!payload.planYjs && !payload.state?.days?.length)) return;
+  if (!PLAN_REPLACE_REASONS.has(payload.replacementType || "")) {
+    dom.collabStatus.textContent = "Full plan update skipped: untrusted replacement type.";
+    return;
+  }
   const activeDayId = currentDay()?.id || "";
   const activeStopId = currentStop()?.id || "";
   let appliedYjs = false;
@@ -8182,7 +8207,10 @@ async function resolveConflict(mode) {
     hideConflictPanel();
     await logActivity(mergedWithYjsSnapshot ? "通过协作快照合并冲突" : mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
     if (!mergedWithYjsSnapshot) {
-      await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep");
+      await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep", {
+        allowReplace: true,
+        reason: mode === "merge" ? "conflict-merge" : "conflict-keep",
+      });
     }
     await pushRemoteState(mergedWithYjsSnapshot ? "已通过协作快照合并冲突" : mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
     render();
@@ -8800,7 +8828,7 @@ async function restoreVersion(versionId) {
   const restoredFromYjs = restoredPlanYjs
     ? await replaceLivePlanDocWithYjsState(restoredPlanYjs, "已从历史版本恢复协作快照")
     : false;
-  if (!restoredFromYjs) await replacePlanCollabDoc("local-version-restore");
+  if (!restoredFromYjs) await replacePlanCollabDoc("local-version-restore", { allowReplace: true, reason: "version-restore" });
   const versionLabel = restoredVersionLabel(entry.reason || "历史版本", entry.at || "");
   await logActivity(`恢复历史版本：${versionLabel}`);
   await saveCollaborativePlanChange("已恢复历史版本");
@@ -11484,9 +11512,10 @@ function renderDayEditor() {
     dom.fieldDayTransport.value = day.transport || "";
   }
   dom.dayEditorStatus.textContent = isReadonlyMode ? "只读" : tripId ? "实时协作" : "本地保存";
-  dom.moveDayUpBtn.disabled = isReadonlyMode || activeDay === 0;
-  dom.moveDayDownBtn.disabled = isReadonlyMode || activeDay >= state.days.length - 1;
-  dom.deleteDayBtn.disabled = isReadonlyMode || state.days.length <= 1;
+  const editable = canEdit();
+  dom.moveDayUpBtn.disabled = !editable || activeDay === 0;
+  dom.moveDayDownBtn.disabled = !editable || activeDay >= state.days.length - 1;
+  dom.deleteDayBtn.disabled = !editable || state.days.length <= 1;
   renderDayFieldCommentMarks(day);
   if (dom.dayCommentTitle) dom.dayCommentTitle.textContent = day.title || day.label || "当前日期";
 }
@@ -14708,9 +14737,9 @@ async function createRecommendedPlan() {
     transportFilterApplied = false;
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
-  await replacePlanCollabDoc("local-recommended-plan");
+  await replacePlanCollabDoc("local-recommended-plan", { allowReplace: true, reason: "recommended-plan" });
   await saveCollaborativePlanChange("已生成推荐计划");
-  await broadcastPlanReplaced("生成推荐计划");
+  await broadcastPlanReplaced("生成推荐计划", { replacementType: "recommended-plan" });
   render();
   closeCreateChoice();
 }
@@ -14734,9 +14763,9 @@ async function createBlankTemplate() {
     transportFilterApplied = false;
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
-  await replacePlanCollabDoc("local-blank-plan");
+  await replacePlanCollabDoc("local-blank-plan", { allowReplace: true, reason: "blank-plan" });
   await saveCollaborativePlanChange("已生成空白模板");
-  await broadcastPlanReplaced("生成空白模板");
+  await broadcastPlanReplaced("生成空白模板", { replacementType: "blank-plan" });
   render();
   closeCreateChoice();
 }
@@ -14805,7 +14834,7 @@ async function importPlanJsonFile(file) {
   const restoredFromYjs = importedPlanYjs
     ? await replaceLivePlanDocWithYjsState(importedPlanYjs, "已从 JSON 导入协作快照")
     : false;
-  if (!restoredFromYjs) await replacePlanCollabDoc("local-json-import");
+  if (!restoredFromYjs) await replacePlanCollabDoc("local-json-import", { allowReplace: true, reason: "json-import" });
   await logActivity(`导入 JSON「${file.name || "计划"}」`);
   await saveCollaborativePlanChange("已导入 JSON");
   await broadcastPlanReplaced("导入 JSON", { replacementType: "json-import", importedFileName: file.name || "" });
@@ -15091,9 +15120,9 @@ dom.resetBtn.addEventListener("click", async () => {
   activeDay = 0;
   activeStop = 0;
   transportFilterApplied = false;
-  await replacePlanCollabDoc("local-reset-plan");
+  await replacePlanCollabDoc("local-reset-plan", { allowReplace: true, reason: "reset-plan" });
   await saveCollaborativePlanChange("已重置示例");
-  await broadcastPlanReplaced("重置示例计划");
+  await broadcastPlanReplaced("重置示例计划", { replacementType: "reset-plan" });
   render();
 });
 
