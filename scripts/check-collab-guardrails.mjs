@@ -260,6 +260,11 @@ assert(
 );
 assert(source.includes('schedulePlanMetaInputSync("name"'), "Plan name input must sync through plan meta collaboration.");
 assert(source.includes("async function syncCollabPlanTextFieldToDoc"), "Plan text fields must have a per-input Y.Text sync function.");
+assert(source.includes("function remotePlanFieldEditors"), "Plan meta fields must expose remote editor lookup helpers.");
+assert(source.includes("function refreshPlanFieldPresenceHint"), "Plan meta fields must show remote editing hints.");
+assert(extractFunctionBody("renderTextPresence").includes("refreshPlanFieldPresenceHint"), "Text presence rendering must refresh plan field soft-lock hints.");
+assert(source.includes("noteRemotePlanFieldEditors(meta"), "Plan meta input events must warn when another member is editing the same field.");
+assert(fs.readFileSync(path.join(rootDir, "styles.css"), "utf8").includes(".control-group.is-remote-plan-editing"), "Plan field remote editing hints must have visible styling.");
 assert(source.includes("function setInputValuePreservingSelection"), "Collaborative text refreshes must preserve the local cursor/selection.");
 assert(source.includes("function setDomFieldValuePreservingSelection"), "Collaborative dom-key refreshes must preserve the local cursor/selection.");
 const preservingInputBody = extractFunctionBody("setInputValuePreservingSelection");

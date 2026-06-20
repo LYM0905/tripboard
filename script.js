@@ -2334,6 +2334,41 @@ function remoteTextEditorsForField(field, scope = "stop") {
   });
 }
 
+function remotePlanFieldEditors(field = "") {
+  return remoteTextEditorsForField(field, "plan");
+}
+
+function remotePlanFieldEditorNames(field = "") {
+  const names = [...new Set(remotePlanFieldEditors(field).map((member) => member.name || "协作者"))];
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return visible ? `${visible}${extra}` : "";
+}
+
+function refreshPlanFieldPresenceHint(fieldMeta = {}, editors = []) {
+  if (fieldMeta.scope !== "plan" || !fieldMeta.domKey) return;
+  const control = dom[fieldMeta.domKey]?.closest?.(".control-group");
+  if (!control) return;
+  const names = [...new Set((editors || []).map((member) => member.name || "协作者"))];
+  control.classList.toggle("is-remote-plan-editing", Boolean(names.length));
+  if (names.length) {
+    const visible = names.slice(0, 3).join("、");
+    const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+    control.setAttribute("data-remote-plan-editing", `${visible}${extra} 正在编辑${fieldMeta.label || "此项"}`);
+  } else {
+    control.removeAttribute("data-remote-plan-editing");
+  }
+}
+
+function noteRemotePlanFieldEditors(fieldMeta = {}, action = "编辑") {
+  if (fieldMeta.scope !== "plan") return;
+  const names = remotePlanFieldEditorNames(fieldMeta.field);
+  if (!names) return;
+  const label = fieldMeta.label || "计划基础信息";
+  dom.saveState.textContent = `${names} 正在编辑${label}，${action}前留意对方修改`;
+  dom.collabStatus.textContent = `${names} 正在编辑${label}；你的输入会通过协作字段同步，但建议确认双方意图一致。`;
+}
+
 function currentFocusedBlockContext() {
   const active = document.activeElement;
   const focusedBlockElement = active && dom.dayBlockList?.contains(active) ? active.closest?.("[data-day-block]") : null;
@@ -2498,8 +2533,9 @@ function renderCommentHighlight(comment, element, index = 0) {
 function renderTextPresence() {
   COLLAB_PRESENCE_TEXT_FIELDS.forEach(({ field, presenceId, domKey, scope }) => {
     const target = presenceId ? document.querySelector(`#${presenceId}`) : null;
-    if (!target) return;
     const editors = remoteTextEditorsForField(field, scope || "stop");
+    refreshPlanFieldPresenceHint({ field, presenceId, domKey, scope }, editors);
+    if (!target) return;
     const element = dom[domKey];
     const commentHighlights = commentAnchorsForField(field, commentsForScope(scope || "stop"));
     target.hidden = !editors.length && !commentHighlights.length;
@@ -14069,6 +14105,7 @@ COLLAB_STRUCT_FIELDS.forEach((meta) => {
 COLLAB_PLAN_TEXT_PRESENCE_FIELDS.forEach((meta) => {
   ["input", "change", "focus", "click", "keyup", "select"].forEach((eventName) => {
     dom[meta.domKey]?.addEventListener(eventName, () => {
+      if (eventName === "input" || eventName === "focus") noteRemotePlanFieldEditors(meta, eventName === "input" ? "继续输入" : "修改");
       schedulePresenceTrack(eventName === "focus" ? 0 : 90);
     });
   });
