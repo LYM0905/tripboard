@@ -2229,6 +2229,15 @@ function noteRemoteBlockEditors(blockId = "", action = "操作协作块") {
   dom.saveState.textContent = `${names} 正在同一协作块中，${action}前留意对方修改`;
 }
 
+function confirmRemoteBlockEdit(blockIds = [], action = "操作协作块") {
+  const ids = (Array.isArray(blockIds) ? blockIds : [blockIds]).map((id) => String(id || "")).filter(Boolean);
+  const names = [...new Set(ids.flatMap((blockId) => remoteActiveEditorsForBlock(blockId).map((member) => member.name || "协作者")))];
+  if (!names.length) return true;
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return window.confirm(`${visible}${extra} 正在编辑或评论相关协作块。继续${action}可能影响对方正在处理的内容，确定继续吗？`);
+}
+
 function renderDayBlockTextPresence(block) {
   const editors = remoteEditorsForBlock(block.id)
     .filter((member) => member.blockSelection && member.activeBlockId === block.id)
@@ -5690,6 +5699,10 @@ async function applyDayBlockTypeChange(day, blockId, nextType, options = {}) {
   activeBlockPresenceId = blockId;
   schedulePresenceTrack(0);
   noteRemoteBlockEditors(blockId, presence);
+  if (!confirmRemoteBlockEdit(blockId, presence)) {
+    dom.saveState.textContent = `已取消${presence}`;
+    return false;
+  }
   const updated = await updateDayBlockInDoc(day.id, blockId, patch, source);
   if (updated) {
     const visiblePatch = typeof updated === "object" ? { ...patch, ...updated } : patch;
@@ -5861,6 +5874,10 @@ async function moveDayBlockByDirection(day, blockId, direction = "down", action 
   activeBlockPresenceId = blockId;
   schedulePresenceTrack(0);
   noteRemoteBlockEditors(blockId, action === "keyboard-move" ? "键盘排序" : "排序");
+  if (!confirmRemoteBlockEdit(blockId, action === "keyboard-move" ? "键盘排序" : "排序")) {
+    dom.saveState.textContent = "已取消协作块排序";
+    return false;
+  }
   if (await moveDayBlockInDoc(day.id, blockId, direction, `local-day-block-${action}`)) {
     day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
       updatedBy: getCollabName(),
@@ -5884,6 +5901,10 @@ async function moveDayBlockByDirection(day, blockId, direction = "down", action 
 async function setSelectedDayBlockType(day, nextType) {
   const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
   if (!day || !selectedBlocks.length || !DAY_BLOCK_TYPES.includes(nextType) || !requireEdit("批量切换协作块类型")) return false;
+  if (!confirmRemoteBlockEdit(selectedBlocks.map((block) => block.id), "批量切换类型")) {
+    dom.saveState.textContent = "已取消批量切换类型";
+    return false;
+  }
   let changedCount = 0;
   for (const block of selectedBlocks) {
     if (block.type === nextType) continue;
@@ -5927,6 +5948,10 @@ async function setSelectedDayBlockType(day, nextType) {
 async function setSelectedDayBlockDone(day, done) {
   const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
   if (!day || !selectedBlocks.length || !requireEdit(done ? "批量完成协作块" : "批量重新打开协作块")) return false;
+  if (!confirmRemoteBlockEdit(selectedBlocks.map((block) => block.id), done ? "批量完成" : "批量重新打开")) {
+    dom.saveState.textContent = done ? "已取消批量完成" : "已取消批量重新打开";
+    return false;
+  }
   let changedCount = 0;
   for (const block of selectedBlocks) {
     if (Boolean(block.done) === Boolean(done)) continue;
@@ -5970,6 +5995,10 @@ async function indentSelectedDayBlocks(day, delta = 1) {
   const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
   const actionLabel = delta > 0 ? "批量增加协作块缩进" : "批量减少协作块缩进";
   if (!day || !selectedBlocks.length || !requireEdit(actionLabel)) return false;
+  if (!confirmRemoteBlockEdit(selectedBlocks.map((block) => block.id), delta > 0 ? "批量缩进" : "批量取消缩进")) {
+    dom.saveState.textContent = "已取消批量调整缩进";
+    return false;
+  }
   let changedCount = 0;
   for (const block of selectedBlocks) {
     const nextLevel = Math.max(0, Math.min((Number(block.level) || 0) + delta, 3));
@@ -6032,6 +6061,10 @@ async function duplicateSelectedDayBlocks(day) {
   const blocks = normalizeDayBlocks(day?.blocks || []);
   const selectedBlocks = selectedDayBlockList(blocks);
   if (!day || !selectedBlocks.length || !requireEdit("批量复制协作块")) return false;
+  if (!confirmRemoteBlockEdit(selectedBlocks.map((block) => block.id), "批量复制")) {
+    dom.saveState.textContent = "已取消批量复制";
+    return false;
+  }
   let workingBlocks = blocks;
   let insertedCount = 0;
   let lastAddedId = "";
@@ -6090,6 +6123,10 @@ async function duplicateSelectedDayBlocks(day) {
 async function deleteSelectedDayBlocks(day) {
   const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
   if (!day || !selectedBlocks.length || !requireEdit("批量删除协作块")) return false;
+  if (!confirmRemoteBlockEdit(selectedBlocks.map((block) => block.id), "批量删除")) {
+    dom.saveState.textContent = "已取消批量删除";
+    return false;
+  }
   if (!confirmDeleteCommentedDayBlocks(selectedBlocks, "批量删除")) {
     dom.saveState.textContent = "已取消删除含批注的协作块";
     return false;
@@ -14884,6 +14921,10 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     schedulePresenceTrack(0);
     const nextDone = !block.done;
     noteRemoteBlockEditors(blockId, nextDone ? "标记完成" : "重新打开");
+    if (!confirmRemoteBlockEdit(blockId, nextDone ? "标记完成" : "重新打开")) {
+      dom.saveState.textContent = "已取消更新协作块";
+      return;
+    }
     if (await updateDayBlockInDoc(day.id, blockId, { done: nextDone }, "local-day-block-toggle")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       if (!refreshDayBlockDoneDom(day, [blockId])) renderDayBlocks(day);
@@ -14984,6 +15025,10 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const sourceBlock = sourceIndex >= 0 ? blocks[sourceIndex] : null;
     if (!sourceBlock || !requireEdit("复制协作块")) return;
     noteRemoteBlockEditors(sourceBlockId, "复制");
+    if (!confirmRemoteBlockEdit(sourceBlockId, "复制")) {
+      dom.saveState.textContent = "已取消复制协作块";
+      return;
+    }
     const duplicateBlock = normalizeDayBlock({
       ...sourceBlock,
       id: uid(),
@@ -15035,6 +15080,10 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     noteRemoteBlockEditors(blockId, "删除");
+    if (!confirmRemoteBlockEdit(blockId, "删除")) {
+      dom.saveState.textContent = "已取消删除协作块";
+      return;
+    }
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       if (!refreshDayBlockDeleteDom(day, [blockId])) renderDayBlocks(day);
@@ -15370,6 +15419,10 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (!newBlock || !requireEdit(hasAfterText ? "拆分协作块" : "新增协作块")) return;
     activeBlockPresenceId = newBlock.id;
     noteRemoteBlockEditors(blockId, hasAfterText ? "拆分" : "新增下方块");
+    if (!confirmRemoteBlockEdit(blockId, hasAfterText ? "拆分" : "新增下方块")) {
+      dom.saveState.textContent = hasAfterText ? "已取消拆分协作块" : "已取消新增协作块";
+      return;
+    }
     const insertIndex = blockIndex + 1;
     const splitPatch = { text: beforeText, textYjs: "", comments: splitComments.previousComments };
     let textUpdateResult = true;
@@ -15417,6 +15470,10 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       dom.saveState.textContent = "已取消删除含批注的协作块";
       return;
     }
+    if (!confirmRemoteBlockEdit(blockId, "删除")) {
+      dom.saveState.textContent = "已取消删除空白协作块";
+      return;
+    }
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-delete-empty")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       activeBlockPresenceId = previousBlockId;
@@ -15445,6 +15502,10 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (!previousBlock || !requireEdit("合并协作块")) return;
     noteRemoteBlockEditors(blockId, "合并");
     noteRemoteBlockEditors(previousBlock.id, "合并");
+    if (!confirmRemoteBlockEdit([previousBlock.id, blockId], "合并")) {
+      dom.saveState.textContent = "已取消合并协作块";
+      return;
+    }
     const mergedText = joinDayBlockTexts(previousBlock.text || "", input.value);
     const mergedComments = mergeDayBlockCommentsForKeyboard(previousBlock, block, mergedText, day.id);
     const previousPatch = { text: mergedText, textYjs: "", comments: mergedComments, level: previousBlock.level || 0 };

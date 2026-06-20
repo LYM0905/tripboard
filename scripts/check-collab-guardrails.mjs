@@ -371,6 +371,11 @@ assert(source.includes("function refreshBlockCommentExcerpt"), "Moved block comm
 assert(source.includes("function confirmDeleteCommentedDayBlocks"), "Deleting commented day blocks must require an explicit confirmation.");
 assert(extractFunctionBody("deleteSelectedDayBlocks").includes("confirmDeleteCommentedDayBlocks(selectedBlocks"), "Bulk day block delete must confirm before removing commented blocks.");
 assert(source.includes('confirmDeleteCommentedDayBlocks([block], "删除")'), "Single and keyboard day block deletes must confirm before removing commented blocks.");
+assert(source.includes("function confirmRemoteBlockEdit"), "High-risk day block structure edits must confirm when another member is actively editing the same block.");
+assert(extractFunctionBody("applyDayBlockTypeChange").includes("confirmRemoteBlockEdit(blockId"), "Day block type changes must confirm when another member is actively editing the block.");
+assert(extractFunctionBody("moveDayBlockByDirection").includes("confirmRemoteBlockEdit(blockId"), "Day block sorting must confirm when another member is actively editing the block.");
+assert(extractFunctionBody("deleteSelectedDayBlocks").includes("confirmRemoteBlockEdit(selectedBlocks.map"), "Bulk day block delete must confirm when another member is actively editing selected blocks.");
+assert(source.includes('confirmRemoteBlockEdit([previousBlock.id, blockId], "合并")'), "Keyboard merge must confirm when another member is actively editing either merged block.");
 assert(source.includes("const text = input.value;\n  if (!day || !blockId) return;\n  await syncDayBlockInputText(day, blockId, text, input);"), "Day block input sync must preserve raw textarea text instead of trimming collaborative content.");
 assert(source.includes("const hasAfterText = Boolean(afterText.trim());"), "Day block keyboard split must use trim only for empty-state decisions.");
 assert(source.includes("text: afterText,"), "Day block keyboard split must preserve raw trailing text in the new block.");
