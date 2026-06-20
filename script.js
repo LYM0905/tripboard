@@ -10716,7 +10716,7 @@ function renderMembers() {
   dom.onlineCountText.textContent = count ? `${count} 位成员在线协作` : "填写信息后加入协作";
   dom.onlineAvatars.innerHTML = members
     .slice(0, 5)
-    .map((member, index) => `<span class="avatar a${(index % 4) + 1}" title="${member.name} · ${member.role || "同行成员"}">${memberInitial(member.name)}</span>`)
+    .map((member, index) => `<span class="avatar a${(index % 4) + 1}" title="${escapeHtml(`${member.name || "匿名成员"} · ${member.role || "同行成员"} · ${memberActivityLabel(member)}`)}">${memberInitial(member.name)}</span>`)
     .join("") + (count ? `<span class="online-dot"></span>` : "");
   dom.memberList.innerHTML =
     members

@@ -290,6 +290,7 @@ assert(extractFunctionBody("presencePayload").includes("activeTransportQuoteId")
 assert(extractFunctionBody("memberActivityLabel").includes("activeCandidateId"), "Member activity labels must show when someone is editing a candidate.");
 assert(extractFunctionBody("memberActivityLabel").includes("activeTransportQuoteId"), "Member activity labels must show when someone is editing a transport quote.");
 assert(extractFunctionBody("renderMembers").includes("recordEditing"), "Online member list must surface candidate/transport quote record editing state.");
+assert(extractFunctionBody("renderMembers").includes("memberActivityLabel(member)"), "Online avatar titles must include the member's current activity.");
 assert(extractFunctionBody("setCandidateEditing").includes("schedulePresenceTrack(0)"), "Starting or clearing candidate editing must immediately publish presence.");
 assert(extractFunctionBody("setManualQuoteEditing").includes("schedulePresenceTrack(0)"), "Starting or clearing transport quote editing must immediately publish presence.");
 assert(source.includes('confirmRemoteCandidateEdit(candidate.id, "编辑备选地点")'), "Opening candidate edit mode must confirm when another member is editing that candidate.");
