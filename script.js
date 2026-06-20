@@ -59,6 +59,9 @@ const COLLAB_DAY_TEXT_FIELDS = [
   { field: "day:weather", docField: "weather", domKey: "fieldDayWeather", label: "天气", presenceId: "fieldDayWeatherPresence", scope: "day" },
   { field: "day:transport", docField: "transport", domKey: "fieldDayTransport", label: "交通", presenceId: "fieldDayTransportPresence", scope: "day" },
 ];
+const COLLAB_DAY_STRUCT_PRESENCE_FIELDS = [
+  { field: "day:date", docField: "date", domKey: "fieldDayDate", label: "当天日期", presenceId: "fieldDayDatePresence", scope: "day", commentable: false },
+];
 const COLLAB_PLAN_TEXT_PRESENCE_FIELDS = [
   { field: "plan:name", planField: "name", domKey: "planNameInput", label: "计划名称", presenceId: "planNameInputPresence", scope: "plan" },
   { field: "plan:destination", planField: "destination", domKey: "destinationInput", label: "目的地", presenceId: "destinationInputPresence", scope: "plan" },
@@ -93,11 +96,12 @@ const COLLAB_STRUCT_PRESENCE_FIELDS = COLLAB_STRUCT_FIELDS
 const COLLAB_PRESENCE_TEXT_FIELDS = [
   ...COLLAB_TEXT_FIELDS.map((field) => ({ ...field, scope: "stop" })),
   ...COLLAB_STRUCT_PRESENCE_FIELDS,
+  ...COLLAB_DAY_STRUCT_PRESENCE_FIELDS,
   ...COLLAB_DAY_TEXT_FIELDS,
   ...COLLAB_PLAN_TEXT_PRESENCE_FIELDS,
 ];
 const COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD = new Map(COLLAB_PRESENCE_TEXT_FIELDS.map((item) => [item.field, item]));
-const COLLAB_COMMENT_ANCHOR_FIELDS = COLLAB_PRESENCE_TEXT_FIELDS.filter((item) => item.domKey && item.presenceId);
+const COLLAB_COMMENT_ANCHOR_FIELDS = COLLAB_PRESENCE_TEXT_FIELDS.filter((item) => item.domKey && item.presenceId && item.commentable !== false);
 const COLLAB_STOP_COMMENT_ANCHOR_FIELDS = COLLAB_COMMENT_ANCHOR_FIELDS.filter((item) => item.scope === "stop");
 const COLLAB_DAY_COMMENT_ANCHOR_FIELDS = COLLAB_COMMENT_ANCHOR_FIELDS.filter((item) => item.scope === "day");
 const PLAN_SETTING_FIELDS = [
@@ -2454,6 +2458,60 @@ function confirmRemotePlanFieldEdit(fields = [], action = "修改计划基础信
     dom.saveState.textContent = "已取消基础信息修改，保留协作者正在编辑的内容";
     dom.collabStatus.textContent = `${visibleNames}${extra} 仍在编辑${fieldLabels || "计划基础信息"}，稍后再改更稳妥。`;
   }
+  return false;
+}
+
+function dayPresenceMetaForDocField(field = "") {
+  const normalizedField = String(field || "");
+  return [...COLLAB_DAY_STRUCT_PRESENCE_FIELDS, ...COLLAB_DAY_TEXT_FIELDS].find((meta) => (
+    meta.docField === normalizedField || meta.field === normalizedField
+  )) || null;
+}
+
+function remoteDayEditorsForField(field = "") {
+  const meta = dayPresenceMetaForDocField(field);
+  return meta ? remoteTextEditorsForField(meta.field, "day") : [];
+}
+
+function currentDayFieldValue(field = "") {
+  const normalizedField = String(field || "");
+  if (COLLAB_DAY_TEXT_FIELDS.some((meta) => meta.docField === normalizedField) && collabDayTextFields?.[normalizedField]) {
+    return collabDayTextFields[normalizedField].toString();
+  }
+  const latestMeta = currentDay()?.id
+    ? readDayMetasFromDoc().find((day) => day.id === currentDay().id)
+    : null;
+  return String(latestMeta?.[normalizedField] ?? currentDay()?.[normalizedField] ?? "");
+}
+
+function restoreDayEditorFieldValue(field = "") {
+  const meta = dayPresenceMetaForDocField(field);
+  if (!meta?.domKey) return;
+  const value = currentDayFieldValue(meta.docField || field);
+  if (currentDay()) currentDay()[meta.docField || field] = value;
+  setInputValuePreservingSelection(dom[meta.domKey], value);
+  renderShell();
+  renderDays();
+  renderDaySummary();
+}
+
+function confirmRemoteDayFieldEdit(fields = [], action = "修改当天设置") {
+  const list = (Array.isArray(fields) ? fields : [fields]).map((field) => String(field || "")).filter(Boolean);
+  const lockKey = [...new Set(list)].sort().join("|");
+  if (confirmedRemoteDayFieldEditUntil[lockKey] && confirmedRemoteDayFieldEditUntil[lockKey] > Date.now()) return true;
+  const names = [...new Set(list.flatMap((field) => remoteDayEditorsForField(field).map((member) => member.name || "协作者")))];
+  const visibleNames = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  if (!visibleNames) return true;
+  const fieldLabels = [...new Set(list.map((field) => dayPresenceMetaForDocField(field)?.label || field))].join("、");
+  const ok = window.confirm(`${visibleNames}${extra} 正在编辑${fieldLabels || "当天设置"}。继续${action}可能覆盖或打断对方正在输入的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteDayFieldEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  list.forEach((field) => restoreDayEditorFieldValue(field));
+  dom.saveState.textContent = "已取消当天设置修改，保留协作者正在编辑的内容";
+  dom.collabStatus.textContent = `${visibleNames}${extra} 仍在编辑${fieldLabels || "当天设置"}，稍后再改更稳妥。`;
   return false;
 }
 
@@ -10014,6 +10072,7 @@ let collabPlanBindRequestId = 0;
 let planMetaInputSyncTimers = {};
 let pendingPlanMetaInputSyncs = {};
 let confirmedRemotePlanFieldEditUntil = {};
+let confirmedRemoteDayFieldEditUntil = {};
 let planTextBaselines = {};
 let stopTextBaselines = {};
 let dayTextBaselines = {};
@@ -13940,6 +13999,8 @@ dom.dayForm.addEventListener("submit", async (event) => {
   let updatedDay = null;
   const dayId = currentDay()?.id || "";
   const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
+  const changedFields = Object.keys(dayPatch || {});
+  if (changedFields.length && !confirmRemoteDayFieldEdit(changedFields, "保存当天设置")) return;
   const changed = mutate("保存当天设置", () => {
     updatedDay = applyDayEditorDraftToState(dayDraft);
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(dayId, { action: "settings" }) });
@@ -13963,6 +14024,11 @@ async function syncDayEditorDraftChange({ silent = false } = {}) {
   if (!silent) saveVersionSnapshot("同步当天设置前版本");
   const dayId = currentDay()?.id || "";
   const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
+  const changedFields = Object.keys(dayPatch || {});
+  if (changedFields.length && !confirmRemoteDayFieldEdit(changedFields, silent ? "同步当天设置" : "保存当天设置")) {
+    pendingDayEditorSync = false;
+    return;
+  }
   const updatedDay = applyDayEditorDraftToState(dayDraft);
   if (!updatedDay) return;
   if (!silent) logActivity("同步当天设置", { target: dayActivityTarget(dayId, { action: "settings" }) });
@@ -13986,6 +14052,11 @@ async function syncDayEditorDraftChange({ silent = false } = {}) {
 }
 
 dom.fieldDayDate?.addEventListener("change", syncDayEditorDraftChange);
+["focus", "click", "keyup", "select", "change"].forEach((eventName) => {
+  dom.fieldDayDate?.addEventListener(eventName, () => {
+    schedulePresenceTrack(eventName === "focus" ? 0 : 90);
+  });
+});
 
 COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
   dom[domKey]?.addEventListener("change", syncDayEditorDraftChange);
@@ -13996,6 +14067,7 @@ COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
   control?.addEventListener("input", () => {
     if (!canEdit() || isReadonlyMode) return;
     const meta = COLLAB_DAY_TEXT_FIELDS.find((item) => item.field === field);
+    if (meta && !confirmRemoteDayFieldEdit(meta.docField, "继续编辑当天设置")) return;
     syncCollabDayTextFieldToDoc(meta?.docField || field, control.value);
     if (meta) captureCommentAnchor(meta);
     schedulePresenceTrack();

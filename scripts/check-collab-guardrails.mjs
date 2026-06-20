@@ -273,6 +273,14 @@ assert(source.includes('confirmRemotePlanFieldEdit("name"'), "Plan name edits mu
 assert(source.includes('confirmRemotePlanFieldEdit("destination"'), "Destination edits must use remote plan field confirmation.");
 assert(source.includes('confirmRemotePlanFieldEdit("origin"'), "Origin edits must use remote plan field confirmation.");
 assert(source.includes('confirmRemotePlanFieldEdit(["startDate", "endDate", "dateRange"]'), "Date range edits must use remote plan field confirmation.");
+assert(indexSource.includes('id="fieldDayDatePresence"'), "Day date input must expose a presence overlay.");
+assert(source.includes("COLLAB_DAY_STRUCT_PRESENCE_FIELDS"), "Day structural fields must be able to participate in presence.");
+assert(source.includes("function confirmRemoteDayFieldEdit"), "Day settings must confirm before editing when another member is active in the same field.");
+assert(extractFunctionBody("confirmRemoteDayFieldEdit").includes("remoteDayEditorsForField"), "Day setting edit confirmation must inspect remote active editors.");
+assert(extractFunctionBody("confirmRemoteDayFieldEdit").includes("restoreDayEditorFieldValue"), "Canceled day setting edits must restore the shared value.");
+assert(extractFunctionBody("syncDayEditorDraftChange").includes("confirmRemoteDayFieldEdit(changedFields"), "Day setting auto-sync must use remote edit confirmation.");
+assert(source.includes('confirmRemoteDayFieldEdit(changedFields, "保存当天设置")'), "Day setting manual save must use remote edit confirmation.");
+assert(source.includes('confirmRemoteDayFieldEdit(meta.docField, "继续编辑当天设置")'), "Day text inputs must confirm before continuing when another member is active in the same field.");
 assert(source.includes("function setInputValuePreservingSelection"), "Collaborative text refreshes must preserve the local cursor/selection.");
 assert(source.includes("function setDomFieldValuePreservingSelection"), "Collaborative dom-key refreshes must preserve the local cursor/selection.");
 const preservingInputBody = extractFunctionBody("setInputValuePreservingSelection");
