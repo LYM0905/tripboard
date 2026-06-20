@@ -2342,6 +2342,33 @@ function remotePlanFieldEditors(field = "") {
   return remoteTextEditorsForField(field, "plan");
 }
 
+function stopPresenceMetaForField(field = "") {
+  const normalizedField = String(field || "");
+  return COLLAB_TEXT_FIELDS.find((meta) => meta.field === normalizedField) ||
+    COLLAB_STRUCT_PRESENCE_FIELDS.find((meta) => meta.structField === normalizedField || meta.field === normalizedField) ||
+    null;
+}
+
+function remoteStopEditorsForField(field = "") {
+  const meta = stopPresenceMetaForField(field);
+  return meta ? remoteTextEditorsForField(meta.field, "stop") : [];
+}
+
+function remoteStopEditorNamesForField(field = "") {
+  const names = [...new Set(remoteStopEditorsForField(field).map((member) => member.name || "协作者"))];
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return visible ? `${visible}${extra}` : "";
+}
+
+function noteRemoteStopFieldEditors(fieldMeta = {}, action = "编辑") {
+  const names = remoteStopEditorNamesForField(fieldMeta.structField || fieldMeta.field);
+  if (!names) return;
+  const label = fieldMeta.label || "地点字段";
+  dom.saveState.textContent = `${names} 正在编辑${label}，${action}前留意对方修改`;
+  dom.collabStatus.textContent = `${names} 正在编辑${label}；你的输入会通过协作字段同步，但建议确认双方意图一致。`;
+}
+
 function remotePlanFieldEditorNames(field = "") {
   const names = [...new Set(remotePlanFieldEditors(field).map((member) => member.name || "协作者"))];
   const visible = names.slice(0, 3).join("、");
@@ -2458,6 +2485,76 @@ function confirmRemotePlanFieldEdit(fields = [], action = "修改计划基础信
     dom.saveState.textContent = "已取消基础信息修改，保留协作者正在编辑的内容";
     dom.collabStatus.textContent = `${visibleNames}${extra} 仍在编辑${fieldLabels || "计划基础信息"}，稍后再改更稳妥。`;
   }
+  return false;
+}
+
+function currentStopFieldValue(field = "") {
+  const normalizedField = String(field || "");
+  const stop = currentStop();
+  const meta = stopPresenceMetaForField(normalizedField);
+  if (!meta || !stop) return { display: "", raw: "" };
+  if (meta.structField) {
+    const raw = collabTextStopId === stop.id && collabStructMap?.has(meta.structField)
+      ? collabStructMap.get(meta.structField)
+      : stop[meta.structField];
+    return { display: structDisplayValue(raw, meta.type), raw: clone(raw) };
+  }
+  const value = collabTextStopId === stop.id && collabTextFields?.[normalizedField]
+    ? collabTextFields[normalizedField].toString()
+    : String(stop[normalizedField] || "");
+  return { display: value, raw: value };
+}
+
+function refreshStopDetailSummary() {
+  const stop = currentStop();
+  if (!stop) return;
+  dom.placeType.textContent = stop.type || "Place";
+  dom.placeTitle.textContent = stop.title || "未命名地点";
+  dom.placeAddress.textContent = stop.address || "地址待确认";
+  dom.placeNote.textContent = stop.note || "";
+  dom.commentTitle.textContent = stop.title || "当前地点";
+  const detailKeyword = dom.fieldAmapKeyword?.value || stop.amapKeyword || stop.title;
+  if (dom.fieldAmapLink) {
+    dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
+    dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
+  }
+  if (dom.officialImageSearchLink) {
+    dom.officialImageSearchLink.href = officialImageSearchUrl({ ...stop, title: dom.fieldTitle?.value || stop.title, address: dom.fieldAddress?.value || stop.address, amapKeyword: detailKeyword });
+  }
+  renderTimeline();
+}
+
+function restoreStopFieldInputValue(field = "") {
+  const meta = stopPresenceMetaForField(field);
+  if (!meta?.domKey) return;
+  const stop = currentStop();
+  const { display, raw } = currentStopFieldValue(meta.structField || meta.field);
+  if (stop) {
+    if (meta.structField) stop[meta.structField] = clone(raw);
+    else stop[meta.field] = display;
+  }
+  setInputValuePreservingSelection(dom[meta.domKey], display);
+  refreshStopDetailSummary();
+}
+
+function confirmRemoteStopFieldEdit(fields = [], action = "修改地点字段") {
+  const list = (Array.isArray(fields) ? fields : [fields]).map((field) => String(field || "")).filter(Boolean);
+  const stopId = currentStop()?.id || "";
+  const lockKey = `${stopId}:${[...new Set(list)].sort().join("|")}`;
+  if (confirmedRemoteStopFieldEditUntil[lockKey] && confirmedRemoteStopFieldEditUntil[lockKey] > Date.now()) return true;
+  const names = [...new Set(list.flatMap((field) => remoteStopEditorsForField(field).map((member) => member.name || "协作者")))];
+  const visibleNames = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  if (!visibleNames) return true;
+  const fieldLabels = [...new Set(list.map((field) => stopPresenceMetaForField(field)?.label || field))].join("、");
+  const ok = window.confirm(`${visibleNames}${extra} 正在编辑${fieldLabels || "地点字段"}。继续${action}可能覆盖或打断对方正在输入的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteStopFieldEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  list.forEach((field) => restoreStopFieldInputValue(field));
+  dom.saveState.textContent = "已取消地点字段修改，保留协作者正在编辑的内容";
+  dom.collabStatus.textContent = `${visibleNames}${extra} 仍在编辑${fieldLabels || "地点字段"}，稍后再改更稳妥。`;
   return false;
 }
 
@@ -10073,6 +10170,7 @@ let planMetaInputSyncTimers = {};
 let pendingPlanMetaInputSyncs = {};
 let confirmedRemotePlanFieldEditUntil = {};
 let confirmedRemoteDayFieldEditUntil = {};
+let confirmedRemoteStopFieldEditUntil = {};
 let planTextBaselines = {};
 let stopTextBaselines = {};
 let dayTextBaselines = {};
@@ -14230,12 +14328,18 @@ dom.stopForm.addEventListener("submit", async (event) => {
 
 COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
   dom[domKey]?.addEventListener("input", () => {
+    const meta = COLLAB_TEXT_FIELD_BY_FIELD.get(field);
+    if (meta && !confirmRemoteStopFieldEdit(field, "继续编辑地点字段")) return;
     syncCollabTextFieldToDoc(field, dom[domKey].value);
     captureCommentAnchor({ field, domKey, scope: "stop", label: COLLAB_TEXT_FIELD_BY_FIELD.get(field)?.label || field });
     schedulePresenceTrack();
   });
   ["focus", "click", "keyup", "select"].forEach((eventName) => {
     dom[domKey]?.addEventListener(eventName, () => {
+      if (eventName === "focus" || eventName === "keyup") {
+        const meta = COLLAB_TEXT_FIELD_BY_FIELD.get(field);
+        if (meta) noteRemoteStopFieldEditors(meta, eventName === "focus" ? "修改" : "继续输入");
+      }
       captureCommentAnchor({ field, domKey, scope: "stop", label: COLLAB_TEXT_FIELD_BY_FIELD.get(field)?.label || field });
       schedulePresenceTrack(eventName === "focus" ? 0 : 90);
     });
@@ -14256,6 +14360,7 @@ COLLAB_STRUCT_FIELDS.forEach((meta) => {
   const anchorMeta = COLLAB_STRUCT_PRESENCE_FIELDS.find((field) => field.structField === meta.field) || null;
   ["input", "change"].forEach((eventName) => {
     dom[meta.domKey]?.addEventListener(eventName, () => {
+      if (!confirmRemoteStopFieldEdit(meta.field, eventName === "input" ? "继续编辑地点字段" : "修改地点字段")) return;
       syncCollabStructFieldToDoc(meta);
       if (anchorMeta) captureCommentAnchor(anchorMeta);
       schedulePresenceTrack();
@@ -14263,6 +14368,7 @@ COLLAB_STRUCT_FIELDS.forEach((meta) => {
   });
   ["focus", "click", "keyup", "select"].forEach((eventName) => {
     dom[meta.domKey]?.addEventListener(eventName, () => {
+      if (eventName === "focus" || eventName === "keyup") noteRemoteStopFieldEditors(anchorMeta || meta, eventName === "focus" ? "修改" : "继续输入");
       if (anchorMeta) captureCommentAnchor(anchorMeta);
       schedulePresenceTrack(eventName === "focus" ? 0 : 90);
     });

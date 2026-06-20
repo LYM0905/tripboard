@@ -266,6 +266,14 @@ assert(extractFunctionBody("conflictDiffSummary").includes("selectable: isSelect
 assert(extractFunctionBody("showConflictPanel").includes("data-conflict-choice"), "Conflict overlap entries must expose per-field choice controls.");
 assert(source.includes('dom.conflictDiff?.addEventListener("change"'), "Conflict field choice controls must update local choice state.");
 
+assert(source.includes("function confirmRemoteStopFieldEdit"), "Stop detail fields must confirm before editing when another member is active in the same field.");
+assert(extractFunctionBody("confirmRemoteStopFieldEdit").includes("remoteStopEditorsForField"), "Stop detail edit confirmation must inspect remote active editors.");
+assert(extractFunctionBody("confirmRemoteStopFieldEdit").includes("restoreStopFieldInputValue"), "Canceled stop detail edits must restore the shared value.");
+assert(extractFunctionBody("confirmRemoteStopFieldEdit").includes("window.confirm"), "Stop detail edit confirmation must be explicit.");
+assert(source.includes('confirmRemoteStopFieldEdit(field, "继续编辑地点字段")'), "Stop text input events must use remote field confirmation.");
+assert(source.includes('confirmRemoteStopFieldEdit(meta.field'), "Stop structural input events must use remote field confirmation.");
+assert(source.includes("noteRemoteStopFieldEditors(meta"), "Stop detail focus/input events must warn when another member is editing the same field.");
+
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");
 assert(
