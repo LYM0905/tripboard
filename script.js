@@ -10389,9 +10389,14 @@ async function syncWeather() {
     state.days.forEach((day, index) => {
       const match = weatherForDay(forecast.days, day, index);
       if (!match) return;
-      day.weather = match.text || match.weather || match.summary || day.weather;
-      weatherPatches.push({ id: day.id, weather: day.weather });
+      const weather = match.text || match.weather || match.summary || day.weather;
+      weatherPatches.push({ id: day.id, weather });
       applied += 1;
+    });
+    if (applied && !confirmRemoteDayEdit(weatherPatches.map((patch) => patch.id), "同步天气")) return;
+    weatherPatches.forEach((patch) => {
+      const day = state.days.find((item) => item.id === patch.id);
+      if (day) day.weather = patch.weather;
     });
     logActivity(`同步天气 ${applied} 天`);
     if (applied) {
@@ -10632,6 +10637,18 @@ function applyQuickAmapPlace(place, keyword = "") {
 
 async function applyFieldAmapPlace(place, keyword = "") {
   if (!place) return;
+  const changedFields = [];
+  if (place.title && !dom.fieldTitle.value.trim()) changedFields.push("title");
+  if (place.address && dom.fieldAddress.value !== place.address) changedFields.push("address");
+  if (place.lng && dom.fieldLng.value !== String(place.lng)) changedFields.push("struct:lng");
+  if (place.lat && dom.fieldLat.value !== String(place.lat)) changedFields.push("struct:lat");
+  if (place.image && !dom.fieldImage.value.trim()) changedFields.push("struct:image");
+  if (keyword && !dom.fieldAmapKeyword.value.trim()) changedFields.push("amapKeyword");
+  const stop = currentStop();
+  if (stop && changedFields.length) {
+    if (!confirmRemoteStopEdit(stop.id, "选择高德候选")) return;
+    if (!confirmRemoteTextFieldEdit(changedFields, "stop", "选择高德候选")) return;
+  }
   if (place.title && !dom.fieldTitle.value.trim()) dom.fieldTitle.value = place.title;
   if (place.address) dom.fieldAddress.value = place.address;
   if (place.lng) dom.fieldLng.value = place.lng;
@@ -11543,6 +11560,7 @@ async function applyBudgetEstimateFromToken(token = "") {
       dom.saveState.textContent = "没有找到可采用的门票估算。";
       return;
     }
+    if (!confirmRemoteStopEdit(stop.id, "采用地点门票估算")) return;
     stop.budget = estimate;
     stop.tags = Array.from(new Set([...(stop.tags || []), "门票估算待确认"]));
     if (!(await syncStopSnapshotToPlanDoc(stop.id, "local-budget-estimate-stop"))) {

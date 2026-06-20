@@ -123,6 +123,10 @@ assert(source.includes('confirmRemoteCandidateEdit(candidateId, "移除备选地
 assert(source.includes('confirmRemoteTransportQuoteEdit(quoteId, "删除交通报价")'), "Deleting a transport quote must confirm when another member is editing that quote.");
 assert(source.includes('confirmRemoteCandidateEdit(editingCandidateId, "更新备选地点")'), "Saving candidate edits must confirm when another member is editing that candidate.");
 assert(source.includes('confirmRemoteTransportQuoteEdit(editingTransportQuoteId, "更新交通报价")'), "Saving transport quote edits must confirm when another member is editing that quote.");
+assert(functionBody("applyFieldAmapPlace").includes('confirmRemoteStopEdit(stop.id, "选择高德候选")'), "Selecting an Amap place for the active stop must confirm when another member is editing that stop.");
+assert(functionBody("applyFieldAmapPlace").includes('confirmRemoteTextFieldEdit(changedFields, "stop", "选择高德候选")'), "Selecting an Amap place must confirm when another member is editing the same changed stop fields.");
+assert(functionBody("syncWeather").includes('confirmRemoteDayEdit(weatherPatches.map((patch) => patch.id), "同步天气")'), "Weather sync must confirm when another member is editing affected days.");
+assert(functionBody("applyBudgetEstimateFromToken").includes('confirmRemoteStopEdit(stop.id, "采用地点门票估算")'), "Single stop budget estimate adoption must confirm when another member is editing that stop.");
 assert(functionBody("applyBudgetEstimateFromToken").includes('confirmRemoteCandidateEdit(candidate.id, "采用备选门票估算")'), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");
 assert(functionBody("adoptAllBudgetEstimates").includes('confirmRemoteCandidateEdit(affectedCandidateIds, "批量采用门票估算")'), "Batch budget estimate adoption must confirm when another member is editing affected candidates.");
 assert(functionBody("enrichPlacesFromAmap").includes('confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")'), "Batch Amap place enrichment must confirm when another member is editing affected candidates.");
