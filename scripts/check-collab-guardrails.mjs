@@ -294,6 +294,9 @@ assert(extractFunctionBody("setCandidateEditing").includes("schedulePresenceTrac
 assert(extractFunctionBody("setManualQuoteEditing").includes("schedulePresenceTrack(0)"), "Starting or clearing transport quote editing must immediately publish presence.");
 assert(source.includes('confirmRemoteCandidateEdit(candidate.id, "编辑备选地点")'), "Opening candidate edit mode must confirm when another member is editing that candidate.");
 assert(source.includes('confirmRemoteTransportQuoteEdit(quote.id, "编辑交通报价")'), "Opening transport quote edit mode must confirm when another member is editing that quote.");
+assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
+assert(extractFunctionBody("renderCandidates").includes('remoteRecordEditorNames("candidate"'), "Candidate cards must show remote record editing hints.");
+assert(extractFunctionBody("renderTransport").includes('remoteRecordEditorNames("transportQuote"'), "Transport quote cards must show remote record editing hints.");
 assert(extractFunctionBody("toggleCandidateSelection").includes("confirmRemoteCandidateEdit(candidateId"), "Candidate selection must confirm when another member is editing that candidate.");
 assert(extractFunctionBody("toggleTransportQuoteSelection").includes("confirmRemoteTransportQuoteEdit(quoteId"), "Transport quote selection must confirm when another member is editing that quote.");
 assert(extractFunctionBody("applyBudgetEstimateFromToken").includes("confirmRemoteCandidateEdit(candidate.id"), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");

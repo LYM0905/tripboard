@@ -2626,6 +2626,15 @@ function confirmRemoteTransportQuoteEdit(quoteIds = [], action = "操作交通�
   return confirmRemoteRecordEdit("transportQuote", quoteIds, action);
 }
 
+function remoteRecordEditorNames(kind, ids = []) {
+  const recordIds = (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean);
+  const field = kind === "candidate" ? "activeCandidateId" : "activeTransportQuoteId";
+  const names = [...new Set(remoteActiveEditorsForRecord(field, recordIds).map((member) => member.name || "协作者"))];
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return visible ? `${visible}${extra}` : "";
+}
+
 function dayPresenceMetaForDocField(field = "") {
   const normalizedField = String(field || "");
   return [...COLLAB_DAY_STRUCT_PRESENCE_FIELDS, ...COLLAB_DAY_TEXT_FIELDS].find((meta) => (
@@ -12551,12 +12560,14 @@ function renderTransport() {
       .map(
         (item) => {
           const selected = Boolean(item.selected);
+          const remoteEditors = remoteRecordEditorNames("transportQuote", item.id);
           return `
-          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-quote="${escapeHtml(item.id || "")}">
+          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}" data-quote="${escapeHtml(item.id || "")}">
             <span class="transport-icon">${icon(item.type === "flight" ? "plane" : "train-front")}</span>
             <div>
               <strong>${escapeHtml(item.code)} · ${escapeHtml(item.from)} → ${escapeHtml(item.to)}</strong>
               <span>${escapeHtml(item.depart)} - ${escapeHtml(item.arrive)} · 约${Math.floor(item.duration / 60)}小时${item.duration % 60}分 · ${escapeHtml(item.source)}</span>
+              ${remoteEditors ? `<small class="record-presence">${escapeHtml(remoteEditors)} 正在编辑这条报价</small>` : ""}
             </div>
             <em>${money(item.price)}</em>
             <span class="transport-actions">
@@ -13614,11 +13625,13 @@ function renderCandidates() {
         const payer = stop.payer ? ` · ${escapeHtml(stop.payer)}` : "";
         const amountText = money(numberValue(stop.budget) || estimatedTicket);
         const estimateText = !numberValue(stop.budget) && estimatedTicket ? " 估" : "";
+        const remoteEditors = remoteRecordEditorNames("candidate", stop.id);
         return `
-        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
+        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
           ${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}
           <span class="candidate-title">${escapeHtml(stop.title)}</span>
           <span class="candidate-meta">${escapeHtml(category)}${selected ? " · 已预选" : ""}${paid ? ` · 已付 ${money(paid)}${payer}` : ""}</span>
+          ${remoteEditors ? `<span class="record-presence">${escapeHtml(remoteEditors)} 正在编辑</span>` : ""}
           <span class="candidate-price">${amountText}${estimateText}</span>
           ${editable ? `<span class="candidate-actions">
             <button type="button" class="icon-btn subtle" data-toggle-candidate-selected="${escapeHtml(stop.id)}" aria-label="${selected ? "移出预选" : "加入预选"}" title="${selected ? "移出预选" : "加入预选"}">${icon(selected ? "check-circle-2" : "circle")}</button>
