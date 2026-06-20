@@ -2344,6 +2344,24 @@ function confirmRemotePlanReplace(action = "替换整份计划") {
   return false;
 }
 
+function confirmRemotePlanSettingEdit(action = "更新计划设置") {
+  const lockKey = `plan-setting:${action}`;
+  if (confirmedRemoteRecordEditUntil[lockKey] && confirmedRemoteRecordEditUntil[lockKey] > Date.now()) return true;
+  const editors = remoteActivePlanMembers();
+  const names = [...new Set(editors.map((member) => member.name || "协作者"))];
+  if (!names.length) return true;
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  const ok = window.confirm(`${visible}${extra} 正在编辑这份计划。继续${action}可能影响预算、权限或计划基础设置，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteRecordEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的计划设置`;
+  dom.collabStatus.textContent = `${visible}${extra} 仍在编辑计划，稍后再更新设置更稳妥。`;
+  return false;
+}
+
 function confirmRemoteCandidateEdit(candidateIds = [], action = "操作备选地点") {
   return confirmRemoteRecordEdit("candidate", candidateIds, action);
 }
@@ -14985,6 +15003,7 @@ dom.budgetEnrichPlacesBtn?.addEventListener("click", enrichPlacesFromAmap);
 
 dom.partySizeInput.addEventListener("change", async () => {
   if (!requireEdit("更新同行人数")) return;
+  if (!confirmRemotePlanSettingEdit("更新同行人数")) return;
   if (await syncPlanSettingToDoc("partySize", dom.partySizeInput.value)) {
     persistCurrentPlanFromDoc("预算设置协作内容已实时同步");
     await logActivity("更新同行人数", { target: budgetSettingActivityTarget("partySize", { action: "update" }) });
@@ -15000,6 +15019,7 @@ dom.partySizeInput.addEventListener("change", async () => {
 
 dom.budgetLimitInput.addEventListener("change", async () => {
   if (!requireEdit("更新预算上限")) return;
+  if (!confirmRemotePlanSettingEdit("更新预算上限")) return;
   if (await syncPlanSettingToDoc("budgetLimit", dom.budgetLimitInput.value)) {
     persistCurrentPlanFromDoc("预算设置协作内容已实时同步");
     await logActivity("更新预算上限", { target: budgetSettingActivityTarget("budgetLimit", { action: "update" }) });
@@ -15376,6 +15396,7 @@ dom.editAccessForm?.addEventListener("submit", async (event) => {
     dom.editAccessStatus.textContent = "请先输入正确口令解锁，再更新口令。";
     return;
   }
+  if (!confirmRemotePlanSettingEdit("更新编辑口令")) return;
   state.editKeyHash = hash;
   state.editKeyHint = editKey.length >= 2 ? `${editKey.slice(0, 1)}***${editKey.slice(-1)}` : "已设置";
   setLocalEditAccess(hash);

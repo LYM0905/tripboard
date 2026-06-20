@@ -96,6 +96,7 @@ assert(source.includes("function confirmRemoteStopEdit"), "Stop structure edits 
 assert(source.includes("function confirmRemoteDayBlockEdit"), "Day block structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteDayEdit"), "Day-level structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemotePlanReplace"), "Full plan replacements must have a remote active editor confirmation helper.");
+assert(source.includes("function confirmRemotePlanSettingEdit"), "Shared plan settings must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteTextFieldEdit"), "Field-level saves must have a remote same-field editor confirmation helper.");
 assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
 assert(source.includes("let confirmedRemoteRecordEditUntil"), "Record-level remote edit confirmations must be throttled.");
@@ -145,6 +146,9 @@ assert(source.includes('confirmRemoteTextFieldEdit(changedDayTextFields, "day", 
 assert(source.includes('confirmRemoteTextFieldEdit(changedStopFields, "stop", "保存地点详情")'), "Saving stop detail fields must confirm when another member is editing the same changed stop field.");
 assert(functionBody("syncPlanMetaFieldInput").includes('confirmRemoteTextFieldEdit(planFieldMeta.field, "plan"'), "Saving a single plan meta text field must confirm when another member is editing the same plan field.");
 assert(functionBody("syncPlanMetaPatchInput").includes('confirmRemoteTextFieldEdit(changedPlanFields, "plan"'), "Saving plan meta patches must confirm when another member is editing the same plan fields.");
+assert(source.includes('confirmRemotePlanSettingEdit("更新同行人数")'), "Updating party size must confirm when another member is actively editing the plan.");
+assert(source.includes('confirmRemotePlanSettingEdit("更新预算上限")'), "Updating budget limit must confirm when another member is actively editing the plan.");
+assert(source.includes('confirmRemotePlanSettingEdit("更新编辑口令")'), "Updating edit access must confirm when another member is actively editing the plan.");
 assert(functionBody("applyDayBlockTypeChange").includes("confirmRemoteDayBlockEdit(blockId, presence)"), "Day block type changes must confirm when another member is editing that block.");
 assert(functionBody("moveDayBlockByDirection").includes('confirmRemoteDayBlockEdit(blockId, action === "keyboard-move" ? "键盘排序" : "排序")'), "Day block moves must confirm when another member is editing that block.");
 assert(functionBody("setSelectedDayBlockType").includes('confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), "批量切换类型")'), "Bulk day block type changes must confirm when another member is editing selected blocks.");
