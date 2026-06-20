@@ -2369,6 +2369,94 @@ function noteRemotePlanFieldEditors(fieldMeta = {}, action = "编辑") {
   dom.collabStatus.textContent = `${names} 正在编辑${label}；你的输入会通过协作字段同步，但建议确认双方意图一致。`;
 }
 
+function planPresenceMetaForField(field = "") {
+  const normalizedField = String(field || "");
+  return COLLAB_PLAN_TEXT_PRESENCE_FIELDS.find((meta) => (
+    meta.planField === normalizedField ||
+    meta.field === normalizedField ||
+    (normalizedField === "dateRange" && (meta.planField === "startDate" || meta.planField === "endDate"))
+  )) || null;
+}
+
+function remotePlanEditorsForSettingField(field = "") {
+  const normalizedField = String(field || "");
+  if (normalizedField === "dateRange") {
+    return [
+      ...remotePlanFieldEditors("plan:startDate"),
+      ...remotePlanFieldEditors("plan:endDate"),
+    ];
+  }
+  const meta = planPresenceMetaForField(normalizedField);
+  return meta ? remotePlanFieldEditors(meta.field) : [];
+}
+
+function remotePlanEditorNamesForSettingField(field = "") {
+  const names = [...new Set(remotePlanEditorsForSettingField(field).map((member) => member.name || "协作者"))];
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return visible ? `${visible}${extra}` : "";
+}
+
+function currentPlanSettingTextValue(field = "") {
+  const normalizedField = String(field || "");
+  if (collabSettingTextsMap?.get(normalizedField)) return collabSettingTextsMap.get(normalizedField).toString();
+  if (collabSettingsMap?.has(normalizedField)) return normalizePlanSettingValue(normalizedField, collabSettingsMap.get(normalizedField));
+  if (normalizedField === "dateRange") return state.dateRange || dateRangeText(state.startDate, state.endDate);
+  return normalizePlanSettingValue(normalizedField, state[normalizedField]);
+}
+
+function restorePlanFieldInputValue(field = "") {
+  const normalizedField = String(field || "");
+  if (normalizedField === "dateRange") {
+    const start = currentPlanSettingTextValue("startDate") || state.startDate || guideState.startDate;
+    const end = currentPlanSettingTextValue("endDate") || state.endDate || guideState.endDate;
+    guideState.startDate = start;
+    guideState.endDate = end;
+    state.startDate = start;
+    state.endDate = end;
+    state.dateRange = currentPlanSettingTextValue("dateRange") || dateRangeText(start, end);
+    setInputValuePreservingSelection(dom.startDateInput, start);
+    setInputValuePreservingSelection(dom.endDateInput, end);
+    renderShell();
+    renderGuideResult();
+    return;
+  }
+  const meta = planPresenceMetaForField(normalizedField);
+  if (!meta?.domKey) return;
+  const value = currentPlanSettingTextValue(normalizedField);
+  if (normalizedField === "destination") guideState.destination = value || guideState.destination;
+  if (normalizedField === "origin") {
+    guideState.origin = value || guideState.origin;
+    if (dom.transportFrom && value) dom.transportFrom.value = value;
+  }
+  state[normalizedField] = normalizePlanSettingValue(normalizedField, value);
+  setInputValuePreservingSelection(dom[meta.domKey], value);
+  renderShell();
+  renderGuideResult();
+}
+
+function confirmRemotePlanFieldEdit(fields = [], action = "修改计划基础信息") {
+  const list = (Array.isArray(fields) ? fields : [fields]).map((field) => String(field || "")).filter(Boolean);
+  const lockKey = [...new Set(list)].sort().join("|");
+  if (confirmedRemotePlanFieldEditUntil[lockKey] && confirmedRemotePlanFieldEditUntil[lockKey] > Date.now()) return true;
+  const names = [...new Set(list.flatMap((field) => remotePlanEditorsForSettingField(field).map((member) => member.name || "协作者")))];
+  const visibleNames = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  if (!visibleNames) return true;
+  const fieldLabels = [...new Set(list.map((field) => field === "dateRange" ? "日期范围" : planPresenceMetaForField(field)?.label || field))].join("、");
+  const ok = window.confirm(`${visibleNames}${extra} 正在编辑${fieldLabels || "计划基础信息"}。继续${action}可能覆盖或打断对方正在输入的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemotePlanFieldEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  if (!ok) {
+    list.forEach((field) => restorePlanFieldInputValue(field));
+    dom.saveState.textContent = "已取消基础信息修改，保留协作者正在编辑的内容";
+    dom.collabStatus.textContent = `${visibleNames}${extra} 仍在编辑${fieldLabels || "计划基础信息"}，稍后再改更稳妥。`;
+  }
+  return false;
+}
+
 function currentFocusedBlockContext() {
   const active = document.activeElement;
   const focusedBlockElement = active && dom.dayBlockList?.contains(active) ? active.closest?.("[data-day-block]") : null;
@@ -9925,6 +10013,7 @@ let isApplyingCollabPlanRemote = false;
 let collabPlanBindRequestId = 0;
 let planMetaInputSyncTimers = {};
 let pendingPlanMetaInputSyncs = {};
+let confirmedRemotePlanFieldEditUntil = {};
 let planTextBaselines = {};
 let stopTextBaselines = {};
 let dayTextBaselines = {};
@@ -16367,6 +16456,7 @@ function schedulePlanMetaPatchInputSync(timerKey, patch, label, targetField = ""
 }
 
 dom.planNameInput?.addEventListener("input", () => {
+  if (!confirmRemotePlanFieldEdit("name", "修改计划名称")) return;
   const name = dom.planNameInput.value.trim() || `${guideState.destination || state.destination || "自定义"}同行计划`;
   state.name = name;
   renderShell();
@@ -16377,6 +16467,7 @@ dom.planNameInput?.addEventListener("input", () => {
 });
 
 dom.destinationInput.addEventListener("input", () => {
+  if (!confirmRemotePlanFieldEdit("destination", "修改目的地")) return;
   const destination = dom.destinationInput.value.trim() || "自定义";
   guideState.destination = destination;
   state.destination = destination;
@@ -16389,6 +16480,7 @@ dom.destinationInput.addEventListener("input", () => {
 });
 
 dom.originInput.addEventListener("input", () => {
+  if (!confirmRemotePlanFieldEdit("origin", "修改出发地")) return;
   const origin = dom.originInput.value.trim() || "出发城市";
   guideState.origin = origin;
   state.origin = origin;
@@ -16401,6 +16493,7 @@ dom.originInput.addEventListener("input", () => {
 });
 
 function handleGuideDateInput(event) {
+  if (!confirmRemotePlanFieldEdit(["startDate", "endDate", "dateRange"], "修改日期范围")) return;
   const patch = syncGuideDatesFromInputs();
   state.startDate = patch.startDate;
   state.endDate = patch.endDate;

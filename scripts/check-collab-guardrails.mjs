@@ -265,6 +265,14 @@ assert(source.includes("function refreshPlanFieldPresenceHint"), "Plan meta fiel
 assert(extractFunctionBody("renderTextPresence").includes("refreshPlanFieldPresenceHint"), "Text presence rendering must refresh plan field soft-lock hints.");
 assert(source.includes("noteRemotePlanFieldEditors(meta"), "Plan meta input events must warn when another member is editing the same field.");
 assert(fs.readFileSync(path.join(rootDir, "styles.css"), "utf8").includes(".control-group.is-remote-plan-editing"), "Plan field remote editing hints must have visible styling.");
+assert(source.includes("function confirmRemotePlanFieldEdit"), "Plan meta fields must confirm before editing when another member is active in the same field.");
+assert(extractFunctionBody("confirmRemotePlanFieldEdit").includes("remotePlanEditorsForSettingField"), "Plan meta edit confirmation must inspect remote active editors.");
+assert(extractFunctionBody("confirmRemotePlanFieldEdit").includes("window.confirm"), "Plan meta edit confirmation must be explicit.");
+assert(extractFunctionBody("confirmRemotePlanFieldEdit").includes("restorePlanFieldInputValue"), "Canceled plan meta edits must restore the shared value.");
+assert(source.includes('confirmRemotePlanFieldEdit("name"'), "Plan name edits must use remote plan field confirmation.");
+assert(source.includes('confirmRemotePlanFieldEdit("destination"'), "Destination edits must use remote plan field confirmation.");
+assert(source.includes('confirmRemotePlanFieldEdit("origin"'), "Origin edits must use remote plan field confirmation.");
+assert(source.includes('confirmRemotePlanFieldEdit(["startDate", "endDate", "dateRange"]'), "Date range edits must use remote plan field confirmation.");
 assert(source.includes("function setInputValuePreservingSelection"), "Collaborative text refreshes must preserve the local cursor/selection.");
 assert(source.includes("function setDomFieldValuePreservingSelection"), "Collaborative dom-key refreshes must preserve the local cursor/selection.");
 const preservingInputBody = extractFunctionBody("setInputValuePreservingSelection");
