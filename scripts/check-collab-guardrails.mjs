@@ -518,6 +518,9 @@ assert(flushPendingBody.includes('"pending:replay-activity"'), "Replay activity 
 assert(flushPendingBody.includes("remainingCount || failed"), "Replay status must report retained pending updates when some entries fail.");
 assert(!source.includes('saveState("已导出 JSON")'), "Exporting JSON must not trigger a remote plan save.");
 assert(source.includes('logActivity("导出计划 JSON", { broadcast: false })'), "Export activity must stay local and avoid collaborative writes.");
+const bootBody = extractFunctionBody("boot");
+assert(!bootBody.includes("saveState();"), "Boot local fallback must not call generic saveState because it can push remotely after config changes.");
+assert(bootBody.includes('localStorage.setItem(STORAGE_KEY, JSON.stringify(state))'), "Boot local fallback must persist only to localStorage.");
 
 if (failures.length) {
   console.error("Collaboration guardrail check failed:");

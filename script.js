@@ -17254,7 +17254,8 @@ async function boot() {
     if (pendingCount) dom.collabStatus.textContent = `检测到 ${pendingCount} 条离线协作更新，连接共享计划后会自动同步。`;
     await connectSharedTrip(tripId);
   } else {
-    saveState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    dom.saveState.textContent = "已保存到本地";
   }
 }
 
