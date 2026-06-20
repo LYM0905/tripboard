@@ -95,6 +95,7 @@ assert(source.includes("function confirmRemoteTransportQuoteEdit"), "Transport q
 assert(source.includes("function confirmRemoteStopEdit"), "Stop structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteDayBlockEdit"), "Day block structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteDayEdit"), "Day-level structure edits must have a remote active editor confirmation helper.");
+assert(source.includes("function confirmRemotePlanReplace"), "Full plan replacements must have a remote active editor confirmation helper.");
 assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
 assert(source.includes("let confirmedRemoteRecordEditUntil"), "Record-level remote edit confirmations must be throttled.");
 
@@ -133,6 +134,12 @@ assert(source.includes('confirmRemoteDayEdit(dayId, "保存当天设置")'), "Sa
 assert(source.includes('confirmRemoteDayEdit(deletedDay.id, "删除当天")'), "Deleting a day must confirm when another member is editing that day.");
 assert(source.includes('confirmRemoteDayEdit([movingDayId, previousDayId], "上移当天")'), "Moving a day up must confirm when another member is editing affected days.");
 assert(source.includes('confirmRemoteDayEdit([movingDayId, nextDayId], "下移当天")'), "Moving a day down must confirm when another member is editing affected days.");
+assert(functionBody("resolveConflict").includes("confirmRemotePlanReplace("), "Conflict resolution must confirm when another member is actively editing the plan.");
+assert(functionBody("restoreVersion").includes('confirmRemotePlanReplace("恢复历史版本")'), "Version restore must confirm when another member is actively editing the plan.");
+assert(functionBody("createRecommendedPlan").includes('confirmRemotePlanReplace("生成推荐计划")'), "Recommended plan generation must confirm when another member is actively editing the plan.");
+assert(functionBody("createBlankTemplate").includes('confirmRemotePlanReplace("生成空白模板")'), "Blank template generation must confirm when another member is actively editing the plan.");
+assert(functionBody("importPlanJsonFile").includes('confirmRemotePlanReplace("导入 JSON")'), "JSON import must confirm when another member is actively editing the plan.");
+assert(source.includes('confirmRemotePlanReplace("重置计划")'), "Resetting the plan must confirm when another member is actively editing the plan.");
 assert(functionBody("applyDayBlockTypeChange").includes("confirmRemoteDayBlockEdit(blockId, presence)"), "Day block type changes must confirm when another member is editing that block.");
 assert(functionBody("moveDayBlockByDirection").includes('confirmRemoteDayBlockEdit(blockId, action === "keyboard-move" ? "键盘排序" : "排序")'), "Day block moves must confirm when another member is editing that block.");
 assert(functionBody("setSelectedDayBlockType").includes('confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), "批量切换类型")'), "Bulk day block type changes must confirm when another member is editing selected blocks.");

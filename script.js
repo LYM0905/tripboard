@@ -2282,6 +2282,43 @@ function confirmRemoteDayBlockEdit(blockIds = [], action = "操作协作块") {
   return false;
 }
 
+function remoteActivePlanMembers() {
+  const ownMemberId = memberProfile?.id || sessionId;
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member)) return false;
+    return (
+      member.textSelection ||
+      member.textEditing ||
+      member.blockSelection ||
+      member.blockEditing ||
+      member.activeStopId ||
+      member.activeBlockId ||
+      member.activeCandidateId ||
+      member.activeTransportQuoteId ||
+      member.lockMode === "editing"
+    );
+  });
+}
+
+function confirmRemotePlanReplace(action = "替换整份计划") {
+  const lockKey = `plan-replace:${action}`;
+  if (confirmedRemoteRecordEditUntil[lockKey] && confirmedRemoteRecordEditUntil[lockKey] > Date.now()) return true;
+  const editors = remoteActivePlanMembers();
+  const names = [...new Set(editors.map((member) => member.name || "协作者"))];
+  if (!names.length) return true;
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  const ok = window.confirm(`${visible}${extra} 正在编辑这份计划。继续${action}会替换整份计划，可能覆盖或打断对方正在修改的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteRecordEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的计划`;
+  dom.collabStatus.textContent = `${visible}${extra} 仍在编辑计划，稍后再操作更稳妥。`;
+  return false;
+}
+
 function confirmRemoteCandidateEdit(candidateIds = [], action = "操作备选地点") {
   return confirmRemoteRecordEdit("candidate", candidateIds, action);
 }
@@ -8414,6 +8451,7 @@ async function applyRemotePlan(remotePlan, meta = {}) {
 
 async function resolveConflict(mode) {
   if (!pendingConflict || !requireEdit("处理协作冲突")) return;
+  if (!confirmRemotePlanReplace(mode === "remote" ? "使用云端版本" : mode === "merge" ? "合并协作冲突" : "保留我的版本")) return;
   persistCurrentPlanFromDoc("处理冲突前已同步当前协作结构");
   const conflict = pendingConflict;
   const localPlan = clone(state);
@@ -9073,6 +9111,7 @@ async function restoreVersion(versionId) {
   if (!requireEdit("恢复历史版本")) return;
   const entry = versionHistory().find((item) => item.id === versionId);
   if (!entry?.data?.days?.length) return;
+  if (!confirmRemotePlanReplace("恢复历史版本")) return;
   pendingVersionRestoreId = "";
   saveVersionSnapshot("恢复前版本");
   state = ensurePlanDates(clone(entry.data));
@@ -15032,6 +15071,7 @@ function closeCreateChoice() {
 
 async function createRecommendedPlan() {
   if (!requireEdit("生成推荐计划")) return;
+  if (!confirmRemotePlanReplace("生成推荐计划")) return;
   const destination = dom.destinationInput.value.trim() || "甘肃";
   const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
@@ -15071,6 +15111,7 @@ async function createRecommendedPlan() {
 
 async function createBlankTemplate() {
   if (!requireEdit("生成空白模板")) return;
+  if (!confirmRemotePlanReplace("生成空白模板")) return;
   const destination = dom.destinationInput.value.trim() || "自定义目的地";
   const origin = dom.originInput.value.trim() || "上海";
   guideState.destination = destination;
@@ -15139,6 +15180,7 @@ dom.exportBtn.addEventListener("click", async () => {
 
 async function importPlanJsonFile(file) {
   if (!file || !requireEdit("导入 JSON")) return;
+  if (!confirmRemotePlanReplace("导入 JSON")) return;
   let importedPlan = null;
   try {
     importedPlan = JSON.parse(await file.text());
@@ -15439,6 +15481,7 @@ dom.ctripSpecBtn.addEventListener("click", async () => {
 
 dom.resetBtn.addEventListener("click", async () => {
   if (!requireEdit("重置计划")) return;
+  if (!confirmRemotePlanReplace("重置计划")) return;
   saveVersionSnapshot("重置前版本");
   state = ensurePlanDates(buildKyotoPlan());
   clearPlanYjsState();
