@@ -280,6 +280,9 @@ assert(source.includes('confirmRemoteStopStructureEdit(movingStopId, "下移地�
 
 assert(extractFunctionBody("planAmapRouteForCurrentDay").includes("confirmRemoteStopStructureEdit(stopIdsForStructureEdit(day.stops)"), "Amap route planning must confirm when another member is actively editing affected stops.");
 assert(extractFunctionBody("optimizeCurrentDayRoute").includes("confirmRemoteStopStructureEdit(stopIdsForStructureEdit(day.stops)"), "AI/local route optimization must confirm when another member is actively editing affected stops.");
+assert(extractFunctionBody("applyBudgetEstimateFromToken").includes("confirmRemoteStopStructureEdit(stop.id"), "Single stop budget estimate adoption must confirm when another member is actively editing the affected stop.");
+assert(extractFunctionBody("adoptAllBudgetEstimates").includes("confirmRemoteStopStructureEdit(affectedStopIds"), "Batch budget estimate adoption must confirm when another member is actively editing affected stops.");
+assert(extractFunctionBody("enrichPlacesFromAmap").includes("confirmRemoteStopStructureEdit(affectedStopIds"), "Batch Amap place enrichment must confirm when another member is actively editing affected stops.");
 
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");

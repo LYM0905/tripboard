@@ -13007,6 +13007,10 @@ async function applyBudgetEstimateFromToken(token = "") {
       dom.saveState.textContent = "没有找到可采用的门票估算。";
       return;
     }
+    if (!confirmRemoteStopStructureEdit(stop.id, "采用门票估算")) {
+      dom.saveState.textContent = "已取消采用门票估算，保留协作者正在编辑的地点。";
+      return;
+    }
     stop.budget = estimate;
     stop.tags = Array.from(new Set([...(stop.tags || []), "门票估算待确认"]));
     if (!(await syncStopSnapshotToPlanDoc(stop.id, "local-budget-estimate-stop", { patchFields: ["budget", "tags"] }))) {
@@ -13049,6 +13053,14 @@ async function adoptAllBudgetEstimates() {
   const entries = budgetEstimateEntries();
   if (!entries.length) {
     dom.saveState.textContent = "当前没有可采用的门票估算。";
+    return;
+  }
+  const affectedStopIds = entries
+    .filter((item) => item.refType === "stop")
+    .map((item) => item.itemId)
+    .filter(Boolean);
+  if (!confirmRemoteStopStructureEdit(affectedStopIds, "批量采用门票估算")) {
+    dom.saveState.textContent = "已取消批量采用门票估算，保留协作者正在编辑的地点。";
     return;
   }
   saveVersionSnapshot("批量采用门票估算前版本");
@@ -13168,6 +13180,14 @@ async function enrichPlacesFromAmap() {
   });
   if (!candidates.length) {
     dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
+    return;
+  }
+  const affectedStopIds = candidates
+    .filter((item) => item.type === "stop")
+    .map((item) => item.stop?.id)
+    .filter(Boolean);
+  if (!confirmRemoteStopStructureEdit(affectedStopIds, "补全地点图片和坐标")) {
+    dom.saveState.textContent = "已取消补全地点资料，保留协作者正在编辑的地点。";
     return;
   }
   saveVersionSnapshot("补全地点图片前版本");
