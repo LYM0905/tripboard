@@ -157,6 +157,19 @@ function extractFunctionBody(functionName) {
   return closeBrace >= 0 ? source.slice(openBrace + 1, closeBrace) : "";
 }
 
+function functionBounds(functionName) {
+  const start = source.indexOf(`function ${functionName}`);
+  if (start < 0) return null;
+  const openParen = source.indexOf("(", start);
+  if (openParen < 0) return null;
+  const closeParen = findMatchingParen(openParen);
+  if (closeParen < 0) return null;
+  const openBrace = source.indexOf("{", closeParen);
+  if (openBrace < 0) return null;
+  const closeBrace = findMatchingBrace(openBrace);
+  return closeBrace >= 0 ? { start, end: closeBrace } : null;
+}
+
 function findCalls(functionName) {
   const calls = [];
   let index = 0;
@@ -175,6 +188,7 @@ function findCalls(functionName) {
       continue;
     }
     calls.push({
+      index,
       line: lineNumberAt(index),
       text: source.slice(index, closeParen + 1),
     });
@@ -530,6 +544,17 @@ for (const call of findCalls("mutate")) {
     `mutate call at line ${call.line} must declare save: false or allowSharedSave: true.`,
   );
 }
+const saveStateCalls = findCalls("saveState");
+const allowedSaveStateBounds = [
+  functionBounds("saveCollaborativePlanChange"),
+  functionBounds("saveCollaborativeTextChange"),
+  functionBounds("mutate"),
+].filter(Boolean);
+for (const call of saveStateCalls) {
+  const allowed = allowedSaveStateBounds.some((bounds) => call.index >= bounds.start && call.index <= bounds.end);
+  assert(allowed, `saveState call at line ${call.line} must go through a collaboration save wrapper or guarded mutate path.`);
+}
+assert(allowedSaveStateBounds.length === 3, "Direct saveState call guard must recognize the three approved wrapper locations.");
 
 if (failures.length) {
   console.error("Collaboration guardrail check failed:");
