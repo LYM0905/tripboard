@@ -257,6 +257,8 @@ assert(source.includes("function transformCommentAnchorForTextChange"), "Comment
 assert(source.includes("function transformCommentAnchorsForTextValues"), "Comment anchors must update across collaborative text field changes.");
 assert(source.includes("function selectionExcerptFromText"), "Comment anchor excerpts must be refreshable without reading from the DOM.");
 assert(source.includes("function replaceYArrayContents"), "Transformed comment anchors must be writable back to Yjs comment arrays.");
+assert(source.includes("let isTransformingCollabTextCommentAnchors = false;"), "Stop comment anchor transforms must have a local guard flag.");
+assert(source.includes("let isTransformingCollabDayCommentAnchors = false;"), "Day comment anchor transforms must have a local guard flag.");
 assert(
   extractFunctionBody("transformCommentAnchorForTextChange").includes("selectionExcerptFromText"),
   "Moved comment anchors must refresh their excerpt from the updated text.",
@@ -286,6 +288,24 @@ const dayPersistBody = extractFunctionBody("persistCurrentDayTextFromDoc");
 assert(
   dayPersistBody.indexOf("replaceYArrayContents(collabDayCommentsArray, nextComments)") < dayPersistBody.indexOf("encodeStateAsUpdate(collabDayTextDoc)"),
   "Day text persistence must encode Yjs after moved comment anchors are written.",
+);
+const bindStopTextBody = extractFunctionBody("bindCollabTextDoc");
+assert(
+  bindStopTextBody.includes('origin === "local-comment-anchor-transform"') && bindStopTextBody.includes("isTransformingCollabTextCommentAnchors"),
+  "Stop text binding must detect local comment anchor transforms.",
+);
+assert(
+  bindStopTextBody.indexOf('origin === "local-comment-anchor-transform"') < bindStopTextBody.indexOf("broadcastTextUpdate(update)"),
+  "Stop comment anchor transforms must return before broadcasting text updates.",
+);
+const bindDayTextBody = extractFunctionBody("bindCollabDayTextDoc");
+assert(
+  bindDayTextBody.includes('origin === "local-day-comment-anchor-transform"') && bindDayTextBody.includes("isTransformingCollabDayCommentAnchors"),
+  "Day text binding must detect local comment anchor transforms.",
+);
+assert(
+  bindDayTextBody.indexOf('origin === "local-day-comment-anchor-transform"') < bindDayTextBody.indexOf("broadcastDayTextUpdate(update)"),
+  "Day comment anchor transforms must return before broadcasting day text updates.",
 );
 assert(
   extractFunctionBody("updateDayBlockTextInDoc").includes("transformCommentAnchorsForField"),

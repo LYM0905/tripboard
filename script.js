@@ -2938,10 +2938,15 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
     previousTextValues,
     nextValues,
   );
-  if (collabTextDoc && collabCommentsArray && !isApplyingCollabTextRemote) {
-    collabTextDoc.transact(() => {
-      replaceYArrayContents(collabCommentsArray, nextComments);
-    }, "local-comment-anchor-transform");
+  if (collabTextDoc && collabCommentsArray) {
+    isTransformingCollabTextCommentAnchors = true;
+    try {
+      collabTextDoc.transact(() => {
+        replaceYArrayContents(collabCommentsArray, nextComments);
+      }, "local-comment-anchor-transform");
+    } finally {
+      isTransformingCollabTextCommentAnchors = false;
+    }
   }
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabTextDoc)) : stop.textYjs || stop.noteYjs || "";
   const textChanged = COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== nextValues[field]);
@@ -2994,10 +2999,15 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
     previousTextValues,
     nextValues,
   );
-  if (collabDayTextDoc && collabDayCommentsArray && !isApplyingCollabDayTextRemote) {
-    collabDayTextDoc.transact(() => {
-      replaceYArrayContents(collabDayCommentsArray, nextComments);
-    }, "local-day-comment-anchor-transform");
+  if (collabDayTextDoc && collabDayCommentsArray) {
+    isTransformingCollabDayCommentAnchors = true;
+    try {
+      collabDayTextDoc.transact(() => {
+        replaceYArrayContents(collabDayCommentsArray, nextComments);
+      }, "local-day-comment-anchor-transform");
+    } finally {
+      isTransformingCollabDayCommentAnchors = false;
+    }
   }
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabDayTextDoc)) : day.textYjs || day.dayTextYjs || "";
   const textChanged = COLLAB_DAY_TEXT_FIELDS.some(({ docField }) => day[docField] !== nextValues[docField]);
@@ -7971,6 +7981,10 @@ async function bindCollabTextDoc() {
       persistCurrentTextFromDoc("收到协作者地点协作更新", { scheduleSave: false }).catch((error) => console.warn("Persist remote text update failed", error));
       return;
     }
+    if (origin === "local-comment-anchor-transform" || isTransformingCollabTextCommentAnchors) {
+      persistCurrentTextFromDoc("地点批注锚点已随文本更新", { scheduleSave: false }).catch((error) => console.warn("Persist text comment anchor transform failed", error));
+      return;
+    }
     broadcastTextUpdate(update);
     persistCurrentTextFromDoc("地点协作内容实时同步中").catch((error) => console.warn("Persist text update failed", error));
   });
@@ -8037,6 +8051,10 @@ async function bindCollabDayTextDoc() {
   collabDayTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
       persistCurrentDayTextFromDoc("收到协作者当天文本更新", { scheduleSave: false }).catch((error) => console.warn("Persist remote day text update failed", error));
+      return;
+    }
+    if (origin === "local-day-comment-anchor-transform" || isTransformingCollabDayCommentAnchors) {
+      persistCurrentDayTextFromDoc("当天批注锚点已随文本更新", { scheduleSave: false }).catch((error) => console.warn("Persist day comment anchor transform failed", error));
       return;
     }
     broadcastDayTextUpdate(update);
@@ -9324,12 +9342,14 @@ let collabStructMap = null;
 let collabCommentsArray = null;
 let collabTextStopId = "";
 let isApplyingCollabTextRemote = false;
+let isTransformingCollabTextCommentAnchors = false;
 let collabTextSaveTimer = null;
 let collabDayTextDoc = null;
 let collabDayTextFields = {};
 let collabDayTextDayId = "";
 let collabDayCommentsArray = null;
 let isApplyingCollabDayTextRemote = false;
+let isTransformingCollabDayCommentAnchors = false;
 let collabDayTextSaveTimer = null;
 let collabPlanDoc = null;
 let collabDayMetasArray = null;
