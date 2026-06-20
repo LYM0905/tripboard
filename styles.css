@@ -436,14 +436,88 @@ button {
 
 .budget-combo-categories,
 .budget-combo-items,
-.budget-ticket-hints {
+.budget-ticket-hints,
+.budget-selectables {
   display: grid;
   gap: 6px;
 }
 
-.budget-combo-items {
+.budget-combo-items,
+.budget-selectables {
   max-height: 190px;
   overflow: auto;
+}
+
+.budget-selectables > span {
+  display: block;
+  padding: 8px;
+  color: #34464f;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.budget-selectable {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 6px 8px;
+  align-items: center;
+  width: 100%;
+  padding: 8px;
+  color: #34464f;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.budget-selectable.is-selected {
+  border-color: rgba(36, 115, 92, 0.55);
+  background: linear-gradient(0deg, rgba(218, 240, 222, 0.58), #fff);
+}
+
+.budget-selectable:disabled {
+  cursor: default;
+  opacity: 0.68;
+}
+
+.budget-selectable span {
+  display: grid;
+  place-items: center;
+  color: var(--green);
+}
+
+.budget-selectable strong,
+.budget-selectable em,
+.budget-selectable small {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.budget-selectable strong {
+  overflow: hidden;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budget-selectable em {
+  color: var(--green);
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.budget-selectable small {
+  grid-column: 2 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .budget-ticket-hints span {

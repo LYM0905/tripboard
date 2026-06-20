@@ -10861,12 +10861,58 @@ async function geocodeDestination() {
   return { latitude: result.latitude, longitude: result.longitude, name: result.name };
 }
 
+function weatherPointFromStop(stop = {}) {
+  const latitude = Number(stop.lat);
+  const longitude = Number(stop.lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  return {
+    latitude,
+    longitude,
+    name: stop.amapKeyword || stop.title || stop.address || state.destination || "行程地点",
+  };
+}
+
+function weatherPointForDay(day = {}) {
+  const stops = Array.isArray(day.stops) ? day.stops : [];
+  return stops.map((stop) => weatherPointFromStop(stop)).find(Boolean) || null;
+}
+
+function weatherPointKey(point = {}) {
+  return `${Number(point.latitude).toFixed(3)},${Number(point.longitude).toFixed(3)}`;
+}
+
+function openMeteoForecastText(data = {}, index = 0) {
+  return `${Math.round(data.daily?.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily?.temperature_2m_max?.[index] ?? 0)}°C ${weatherLabel(data.daily?.weather_code?.[index])} · 降水${Math.round(data.daily?.precipitation_probability_max?.[index] ?? 0)}%`;
+}
+
+async function fetchOpenMeteoForecast(point = {}) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${point.latitude}&longitude=${point.longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=16`;
+  const response = await fetch(url);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
+  const days = (data.daily?.time || []).map((date, index) => ({
+    date,
+    text: openMeteoForecastText(data, index),
+    place: point.name || "",
+  }));
+  return { source: `Open-Meteo · ${point.name || "坐标天气"}`, days };
+}
+
 async function requestWeatherForecast() {
   const payload = {
     destination: state.destination,
     startDate: state.startDate,
     endDate: state.endDate,
-    days: state.days.map((day) => ({ id: day.id, date: day.date, title: day.title })),
+    days: state.days.map((day) => {
+      const point = weatherPointForDay(day);
+      return {
+        id: day.id,
+        date: day.date,
+        title: day.title,
+        latitude: point?.latitude,
+        longitude: point?.longitude,
+      };
+    }),
   };
   let proxyError = "";
   if (serviceConfig.weatherEndpoint) {
@@ -10886,21 +10932,39 @@ async function requestWeatherForecast() {
     }
   }
 
+  const dayPoints = state.days.map((day) => weatherPointForDay(day));
+  if (dayPoints.some(Boolean)) {
+    const forecastCache = new Map();
+    const fallbackPlace = await geocodeDestination().catch(() => null);
+    const days = [];
+    for (const [index, day] of state.days.entries()) {
+      const point = dayPoints[index] || fallbackPlace;
+      if (!point) continue;
+      const key = weatherPointKey(point);
+      if (!forecastCache.has(key)) {
+        forecastCache.set(key, await fetchOpenMeteoForecast(point));
+      }
+      const forecast = forecastCache.get(key);
+      const match = weatherForDay(forecast.days, day, index);
+      if (match) days.push({ ...match, id: day.id, date: day.date || match.date, place: point.name || match.place || "" });
+    }
+    if (days.length) {
+      const proxyHint = proxyError ? `（天气代理兜底：${proxyError}）` : "";
+      const placeCount = new Set(days.map((day) => day.place).filter(Boolean)).size;
+      return { source: `Open-Meteo · ${placeCount > 1 ? "按每日地点坐标" : days[0]?.place || "行程坐标"}${proxyHint}`, days };
+    }
+  }
+
   const place = await geocodeDestination();
   if (!place) throw new Error("没有找到目的地坐标，请尝试填写更具体的城市名，或配置自己的天气代理。");
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=16`;
-  const response = await fetch(url);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
-  const days = (data.daily?.time || []).map((date, index) => ({
-    date,
-    text: `${Math.round(data.daily.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily.temperature_2m_max?.[index] ?? 0)}°C ${weatherLabel(data.daily.weather_code?.[index])} · 降水${Math.round(data.daily.precipitation_probability_max?.[index] ?? 0)}%`,
-  }));
+  const forecast = await fetchOpenMeteoForecast(place);
   const proxyHint = proxyError ? `（天气代理兜底：${proxyError}）` : "";
-  return { source: `Open-Meteo · ${place.name}${proxyHint}`, days };
+  return { source: `${forecast.source}${proxyHint}`, days: forecast.days };
 }
 
 function weatherForDay(forecastDays, day, index) {
+  const idMatch = forecastDays.find((item) => item.id && item.id === day.id);
+  if (idMatch) return idMatch;
   const datedForecasts = forecastDays.filter((item) => item.date);
   if (day.date && datedForecasts.length) {
     return datedForecasts.find((item) => item.date === day.date) || null;
@@ -11946,6 +12010,16 @@ function transportBudgetLabel(item = {}) {
   return `${type} ${item.code || ""}`.trim();
 }
 
+function budgetTransportOptionsForDay(day = currentDay()) {
+  if (!day) return [];
+  const manualQuotes = currentManualQuotes(day);
+  const savedQuoteKeys = new Set(manualQuotes.map(transportOptionIdentity));
+  const generatedOptions = buildTransportOptions(day, activeDay);
+  const providerOptions = transportProviderItems.filter((item) => !savedQuoteKeys.has(transportOptionIdentity(item)));
+  const baseOptions = transportProviderItems.length ? providerOptions : generatedOptions;
+  return [...manualQuotes, ...baseOptions].filter((item) => numberValue(item.price));
+}
+
 function budgetComboItems() {
   const confirmedStops = (state.days || []).flatMap((day) =>
     (day.stops || []).map((stop) => {
@@ -11996,6 +12070,46 @@ function budgetComboItems() {
   return [...confirmedStops, ...selectedQuotes, ...selectedCandidates].filter((item) => item.amount || item.paid);
 }
 
+function budgetSelectableItems() {
+  const day = currentDay();
+  const quotes = budgetTransportOptionsForDay(day)
+    .slice()
+    .sort((a, b) => Number(Boolean(b.selected)) - Number(Boolean(a.selected)) || numberValue(a.price) - numberValue(b.price))
+    .slice(0, 8)
+    .map((quote) => ({
+      id: quote.id,
+      refType: "quote",
+      label: transportBudgetLabel(quote),
+      category: "交通",
+      amount: numberValue(quote.price),
+      selected: Boolean(quote.selected),
+      meta: [quote.from && quote.to ? `${quote.from} → ${quote.to}` : "", quote.depart && quote.arrive ? `${quote.depart}-${quote.arrive}` : "", quote.source || ""]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+  const candidates = (state.candidates || [])
+    .filter((candidate) => numberValue(candidate.budget) || inferTicketPrice(candidate))
+    .slice()
+    .sort((a, b) => Number(Boolean(b.selected)) - Number(Boolean(a.selected)) || numberValue(b.budget || inferTicketPrice(b)) - numberValue(a.budget || inferTicketPrice(a)))
+    .slice(0, 8)
+    .map((candidate) => {
+      const estimate = inferTicketPrice(candidate);
+      return {
+        id: candidate.id,
+        refType: "candidate",
+        label: candidate.title || "备选地点",
+        category: budgetCategoryForItem(candidate),
+        amount: numberValue(candidate.budget) || estimate,
+        selected: Boolean(candidate.selected),
+        estimated: !numberValue(candidate.budget) && estimate > 0,
+        meta: [candidate.address, (candidate.tags || []).slice(0, 2).join(" / ")]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    });
+  return [...quotes, ...candidates].filter((item) => item.id && item.amount);
+}
+
 function budgetComboSummary() {
   const items = budgetComboItems();
   const total = items.reduce((sum, item) => sum + numberValue(item.amount), 0);
@@ -12011,6 +12125,7 @@ function budgetComboSummary() {
 function renderBudgetCombo() {
   const summary = budgetComboSummary();
   const people = partySize();
+  const selectableItems = budgetSelectableItems();
   const selectedTransportCount = (state.transportQuotes || []).filter((quote) => quote.selected).length;
   const selectedCandidateCount = (state.candidates || []).filter((candidate) => candidate.selected).length;
   const categoryRows = Object.entries(summary.byCategory)
@@ -12030,12 +12145,24 @@ function renderBudgetCombo() {
     .map((item) => `<span>${escapeHtml(item.source)} · ${escapeHtml(item.category)} · ${escapeHtml(item.label)} ${money(item.amount)}${item.estimated ? " 估" : ""}</span>`)
     .join("");
   const extraCount = Math.max(0, summary.items.length - 8);
+  const selectableRows = selectableItems
+    .map((item) => `
+      <button type="button" class="budget-selectable ${item.selected ? "is-selected" : ""}" data-budget-toggle="${escapeHtml(item.refType)}:${escapeHtml(item.id)}" ${canEdit() ? "" : "disabled"}>
+        <span>${icon(item.selected ? "check-circle-2" : "circle")}</span>
+        <strong>${escapeHtml(item.category)} · ${escapeHtml(item.label)}</strong>
+        <em>${money(item.amount)}${item.estimated ? " 估" : ""}</em>
+        ${item.meta ? `<small>${escapeHtml(item.meta)}</small>` : ""}
+      </button>
+    `)
+    .join("");
   return `
     <strong>预选组合</strong>
     <span>组合总额 ${money(summary.total)} · 人均 ${money(Math.round(summary.total / people))}</span>
     <span>已付 ${money(summary.paid)} · 待付 ${money(summary.unpaid)}</span>
     <span>已选交通 ${selectedTransportCount} 项 · 预选备选 ${selectedCandidateCount} 项</span>
     <div class="budget-combo-categories">${categoryRows || "<span>暂无可汇总项目</span>"}</div>
+    <strong>可纳入组合</strong>
+    <div class="budget-selectables">${selectableRows || "<span>保存交通报价或加入备选住宿/景点后可直接勾选</span>"}</div>
     <div class="budget-combo-items">${itemRows || "<span>勾选交通或备选地点后显示组合明细</span>"}${extraCount ? `<span>还有 ${extraCount} 项已纳入组合</span>` : ""}</div>
     ${estimateRows ? `<div class="budget-ticket-hints">${estimateRows}</div>` : "<div class=\"budget-ticket-hints\"><span><b>当前没有待采用的门票估算</b></span></div>"}
   `;
@@ -12226,6 +12353,7 @@ async function enrichPlacesFromAmap() {
   let changedStops = 0;
   let changedCandidates = 0;
   let imageCount = 0;
+  let firstRealImage = "";
   let checked = 0;
   for (const item of candidates.slice(0, 12)) {
     checked += 1;
@@ -12248,7 +12376,10 @@ async function enrichPlacesFromAmap() {
           }
           changedCandidates += 1;
         }
-        if (!hadRealImage && item.stop.image && !isDefaultTripboardImage(item.stop.image)) imageCount += 1;
+        if (!hadRealImage && item.stop.image && !isDefaultTripboardImage(item.stop.image)) {
+          imageCount += 1;
+          if (!firstRealImage) firstRealImage = item.stop.image;
+        }
       }
     } catch (error) {
       console.warn("Amap place enrichment failed", item.keyword, error);
@@ -12269,11 +12400,15 @@ async function enrichPlacesFromAmap() {
     dom.saveState.textContent = `已查询 ${checked} 个地点，高德没有返回可写入的新坐标或图片。`;
     return;
   }
+  if (firstRealImage && isDefaultTripboardImage(state.cover)) {
+    state.cover = firstRealImage;
+    await syncPlanSettingToDoc("cover", firstRealImage);
+  }
   persistCurrentPlanFromDoc("高德地点资料已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
   await logActivity(`补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张`);
   await saveCollaborativePlanChange("补全地点图片和坐标");
   render();
-  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张；图片来自高德 POI 返回，请按需核对。`;
+  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张${firstRealImage ? "，并用首张真实地点图更新封面" : ""}；图片来自高德 POI 返回，请按需核对。`;
 }
 
 function categoryBudget() {
@@ -13085,6 +13220,16 @@ document.addEventListener("click", (event) => {
   const budgetEstimateButton = event.target.closest("[data-apply-budget-estimate]");
   if (budgetEstimateButton) {
     applyBudgetEstimateFromToken(budgetEstimateButton.dataset.applyBudgetEstimate);
+    return;
+  }
+  const budgetToggleButton = event.target.closest("[data-budget-toggle]");
+  if (budgetToggleButton) {
+    const [refType, itemId] = String(budgetToggleButton.dataset.budgetToggle || "").split(":");
+    if (refType === "quote") {
+      toggleTransportQuoteSelection(itemId);
+    } else if (refType === "candidate") {
+      toggleCandidateSelection(itemId);
+    }
     return;
   }
 
