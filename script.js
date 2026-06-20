@@ -67,6 +67,8 @@ const COLLAB_PLAN_TEXT_PRESENCE_FIELDS = [
   { field: "plan:origin", planField: "origin", domKey: "originInput", label: "出发城市", presenceId: "originInputPresence", scope: "plan" },
   { field: "plan:startDate", planField: "startDate", domKey: "startDateInput", label: "出发日期", presenceId: "startDateInputPresence", scope: "plan" },
   { field: "plan:endDate", planField: "endDate", domKey: "endDateInput", label: "返程日期", presenceId: "endDateInputPresence", scope: "plan" },
+  { field: "plan:partySize", planField: "partySize", domKey: "partySizeInput", label: "同行人数", presenceId: "partySizeInputPresence", scope: "plan" },
+  { field: "plan:budgetLimit", planField: "budgetLimit", domKey: "budgetLimitInput", label: "预算上限", presenceId: "budgetLimitInputPresence", scope: "plan" },
 ];
 const COLLAB_STRUCT_FIELDS = [
   { field: "time", domKey: "fieldTime", type: "string", label: "时间", presenceId: "fieldTimePresence" },
