@@ -4936,8 +4936,7 @@ function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
     const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
     const input = blockElement?.querySelector("[data-edit-day-block]");
     if (!block || !blockElement || !input) return false;
-    const focused = document.activeElement === input;
-    if (!focused && input.value !== block.text) input.value = block.text || "";
+    setInputValuePreservingSelection(input, block.text || "");
     const previewMode = previewDayBlockIds.has(block.id);
     const textWrap = blockElement.querySelector(".day-block-text-wrap");
     const oldPreview = textWrap?.querySelector(".day-block-markdown-preview");
@@ -5524,7 +5523,7 @@ async function syncDayBlockInputText(day, blockId, text, input = null) {
     if (updatedText) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       dayBlockTextBaselines[blockId] = updatedText.text || "";
-      if (input && input.value.trim() !== (updatedText.text || "")) input.value = updatedText.text || "";
+      setInputValuePreservingSelection(input, updatedText.text || "");
       const blockElement = dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
       const metaElement = blockElement?.querySelector(".day-block-meta");
       if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;

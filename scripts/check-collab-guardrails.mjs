@@ -260,6 +260,14 @@ assert(
   extractFunctionBody("persistCurrentDayTextFromDoc").includes("setDomFieldValuePreservingSelection"),
   "persistCurrentDayTextFromDoc must preserve input cursor/selection when refreshing day text fields.",
 );
+assert(
+  extractFunctionBody("refreshDayBlockTextDom").includes("setInputValuePreservingSelection"),
+  "refreshDayBlockTextDom must preserve the current block textarea cursor/selection.",
+);
+assert(
+  extractFunctionBody("syncDayBlockInputText").includes("setInputValuePreservingSelection"),
+  "syncDayBlockInputText must preserve the current block textarea cursor/selection after Y.Text sync.",
+);
 
 const fullBlockSyncBody = extractFunctionBody("syncAllDayBlocksToDoc");
 assert(fullBlockSyncBody.includes("if (!replace) return false;"), "syncAllDayBlocksToDoc must refuse non-replace calls.");
