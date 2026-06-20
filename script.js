@@ -1787,12 +1787,16 @@ function setInputValuePreservingSelection(element, nextValue = "") {
   const focused = document.activeElement === element;
   const start = focused && typeof element.selectionStart === "number" ? element.selectionStart : null;
   const end = focused && typeof element.selectionEnd === "number" ? element.selectionEnd : start;
+  const scrollTop = typeof element.scrollTop === "number" ? element.scrollTop : null;
+  const scrollLeft = typeof element.scrollLeft === "number" ? element.scrollLeft : null;
   element.value = value;
   if (focused && typeof element.setSelectionRange === "function") {
     const nextStart = transformTextPosition(currentValue, value, start ?? value.length);
     const nextEnd = transformTextPosition(currentValue, value, end ?? nextStart);
     element.setSelectionRange(Math.max(0, Math.min(nextStart, value.length)), Math.max(0, Math.min(nextEnd, value.length)));
   }
+  if (scrollTop !== null) element.scrollTop = scrollTop;
+  if (scrollLeft !== null) element.scrollLeft = scrollLeft;
   return true;
 }
 

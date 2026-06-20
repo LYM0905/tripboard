@@ -228,6 +228,8 @@ assert(source.includes('schedulePlanMetaInputSync("name"'), "Plan name input mus
 assert(source.includes("async function syncCollabPlanTextFieldToDoc"), "Plan text fields must have a per-input Y.Text sync function.");
 assert(source.includes("function setInputValuePreservingSelection"), "Collaborative text refreshes must preserve the local cursor/selection.");
 assert(source.includes("function setDomFieldValuePreservingSelection"), "Collaborative dom-key refreshes must preserve the local cursor/selection.");
+const preservingInputBody = extractFunctionBody("setInputValuePreservingSelection");
+assert(preservingInputBody.includes("scrollTop") && preservingInputBody.includes("scrollLeft"), "Collaborative text refreshes must preserve textarea/input scroll offsets.");
 assert(source.includes("let planTextBaselines = {}"), "Plan text fields must track local text baselines.");
 assert(source.includes("refreshPlanTextBaselinesFromDoc()"), "Plan text baselines must be refreshed from the live Yjs document.");
 const planTextSyncBody = extractFunctionBody("syncCollabPlanTextFieldToDoc");
