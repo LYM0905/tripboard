@@ -253,6 +253,24 @@ const stopFormHandlerEnd = source.indexOf("COLLAB_TEXT_FIELDS.forEach", stopForm
 const stopFormHandlerBody = stopFormHandlerStart >= 0 && stopFormHandlerEnd > stopFormHandlerStart ? source.slice(stopFormHandlerStart, stopFormHandlerEnd) : "";
 assert(stopFormHandlerBody.includes('String(dom[domKey].value || "")'), "Stop detail fallback save must preserve raw collaborative text field content.");
 assert(!stopFormHandlerBody.includes("dom[domKey].value.trim()"), "Stop detail fallback save must not trim collaborative text field content.");
+assert(source.includes("function transformCommentAnchorForTextChange"), "Comment anchors must support text-diff position transforms.");
+assert(source.includes("function transformCommentAnchorsForTextValues"), "Comment anchors must update across collaborative text field changes.");
+assert(
+  extractFunctionBody("persistCurrentTextFromDoc").includes("transformCommentAnchorsForTextValues"),
+  "Stop text persistence must move anchored comments when collaborative text changes.",
+);
+assert(
+  extractFunctionBody("persistCurrentDayTextFromDoc").includes("transformCommentAnchorsForTextValues"),
+  "Day text persistence must move anchored comments when collaborative text changes.",
+);
+assert(
+  extractFunctionBody("updateDayBlockTextInDoc").includes("transformCommentAnchorsForField"),
+  "Day block Y.Text writes must move anchored block comments when text changes.",
+);
+assert(
+  extractFunctionBody("updateDayBlockInDoc").includes("transformCommentAnchorsForField"),
+  "Day block text patch writes must move anchored block comments when text changes.",
+);
 for (const functionName of [
   "syncGuideStateFromPlan",
   "renderGuideResult",

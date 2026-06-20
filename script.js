@@ -2925,9 +2925,15 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
   if (!collabTextDoc || !collabTextStopId) return;
   const stop = state.days.flatMap((day) => day.stops || []).find((item) => item.id === collabTextStopId);
   if (!stop) return;
+  const previousTextValues = Object.fromEntries(COLLAB_TEXT_FIELDS.map(({ field }) => [field, stop[field] || ""]));
   const nextValues = textValuesFromDoc();
   const nextStructValues = readStructFromDoc();
-  const nextComments = readCommentsFromDoc();
+  const nextComments = transformCommentAnchorsForTextValues(
+    readCommentsFromDoc(),
+    COLLAB_TEXT_FIELDS.map(({ field }) => field),
+    previousTextValues,
+    nextValues,
+  );
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabTextDoc)) : stop.textYjs || stop.noteYjs || "";
   const textChanged = COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== nextValues[field]);
   const structChanged = COLLAB_STRUCT_FIELDS.some(({ field }) => !sameSerialized(stop[field], nextStructValues[field]));
@@ -2971,8 +2977,14 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
   if (!collabDayTextDoc || !collabDayTextDayId) return;
   const day = state.days.find((item) => item.id === collabDayTextDayId);
   if (!day) return;
+  const previousTextValues = Object.fromEntries(COLLAB_DAY_TEXT_FIELDS.map(({ docField }) => [docField, day[docField] || ""]));
   const nextValues = dayTextValuesFromDoc();
-  const nextComments = readDayCommentsFromDoc();
+  const nextComments = transformCommentAnchorsForTextValues(
+    readDayCommentsFromDoc(),
+    COLLAB_DAY_TEXT_FIELDS.map(({ docField }) => docField),
+    previousTextValues,
+    nextValues,
+  );
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabDayTextDoc)) : day.textYjs || day.dayTextYjs || "";
   const textChanged = COLLAB_DAY_TEXT_FIELDS.some(({ docField }) => day[docField] !== nextValues[docField]);
   const commentsChanged = !sameSerialized(normalizeComments(day.comments || []), nextComments);
@@ -7197,6 +7209,7 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
       id: blockId,
       text: appliedText,
       textYjs: nextState,
+      comments: transformCommentAnchorsForField(latest.comments || [], `block:${blockId}`, latest.text || "", appliedText),
       updatedBy: getCollabName(),
       updatedAt: new Date().toISOString(),
     });
@@ -7264,7 +7277,14 @@ async function updateDayBlockInDoc(dayId, blockId, patch = {}, origin = "local-d
   if (index < 0) return false;
   const nextText = patchHasText ? String(patch.text || "") : "";
   const nextTextState = patchHasText ? bytesToBase64(buildInitialDayBlockTextUpdate(Y, { ...items[index], ...patch, id: blockId, text: nextText }, dayId)) : "";
-  const normalizedPatch = patchHasText ? { ...patch, text: nextText, textYjs: nextTextState } : patch;
+  const normalizedPatch = patchHasText ? {
+    ...patch,
+    text: nextText,
+    textYjs: nextTextState,
+    comments: Object.prototype.hasOwnProperty.call(patch, "comments")
+      ? normalizeComments(patch.comments || [])
+      : transformCommentAnchorsForField(items[index]?.comments || [], `block:${blockId}`, items[index]?.text || "", nextText),
+  } : patch;
   const next = normalizeDayBlock({
     ...items[index],
     ...normalizedPatch,
@@ -8498,6 +8518,37 @@ function transformTextPosition(baseValue = "", nextValue = "", position = 0) {
   if (boundedPosition < changeStart) return boundedPosition;
   if (boundedPosition > changeEnd) return Math.max(0, Math.min(boundedPosition + insertedLength - diff.deleteLength, nextText.length));
   return Math.max(0, Math.min(changeStart + insertedLength, nextText.length));
+}
+
+function transformCommentAnchorForTextChange(anchor = null, baseValue = "", nextValue = "") {
+  const normalized = normalizeCommentAnchor(anchor);
+  if (!normalized) return null;
+  const baseText = String(baseValue || "");
+  const nextText = String(nextValue || "");
+  if (baseText === nextText) return normalized;
+  const start = transformTextPosition(baseText, nextText, normalized.start);
+  const end = transformTextPosition(baseText, nextText, normalized.end);
+  return normalizeCommentAnchor({
+    ...normalized,
+    start: Math.max(0, Math.min(start, nextText.length)),
+    end: Math.max(0, Math.min(Math.max(start, end), nextText.length)),
+    length: nextText.length,
+  });
+}
+
+function transformCommentAnchorsForField(comments = [], field = "", baseValue = "", nextValue = "") {
+  if (!field || String(baseValue || "") === String(nextValue || "")) return normalizeComments(comments);
+  return normalizeComments(comments).map((comment) => {
+    if (comment.parentId || comment.anchor?.field !== field) return comment;
+    const anchor = transformCommentAnchorForTextChange(comment.anchor, baseValue, nextValue);
+    return anchor ? { ...comment, anchor } : comment;
+  });
+}
+
+function transformCommentAnchorsForTextValues(comments = [], fields = [], previousValues = {}, nextValues = {}) {
+  return (fields || []).reduce((currentComments, field) => (
+    transformCommentAnchorsForField(currentComments, field, previousValues?.[field], nextValues?.[field])
+  ), normalizeComments(comments));
 }
 
 function anchoredTextPatchPosition(currentValue = "", baseValue = "", diff = {}) {
