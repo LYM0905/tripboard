@@ -403,21 +403,50 @@ function collectPlanChangeMap(basePlan = {}, nextPlan = {}) {
   return changes;
 }
 
+function diffValuePreview(value) {
+  if (value === undefined) return "已变更";
+  if (value === null) return "空";
+  if (Array.isArray(value)) {
+    const labels = value
+      .slice(0, 3)
+      .map((item, index) => shortDiffLabel(item?.title || item?.name || item?.text || item?.label || item?.code || item, `第 ${index + 1} 项`))
+      .filter(Boolean);
+    const extra = value.length > labels.length ? ` 等 ${value.length} 项` : "";
+    return labels.length ? `${labels.join("、")}${extra}` : "空列表";
+  }
+  if (typeof value === "object") {
+    const label = value.title || value.name || value.text || value.label || value.code || value.address;
+    if (label) return shortDiffLabel(label, "对象");
+    const keys = Object.keys(value || {}).slice(0, 4);
+    return keys.length ? `包含 ${keys.join("、")}` : "空对象";
+  }
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "空";
+  return text.length > 48 ? `${text.slice(0, 48)}...` : text;
+}
+
 function conflictDiffSummary(conflict = {}) {
   const basePlan = conflict.base || lastSyncedState || {};
   const localChanges = collectPlanChangeMap(basePlan, conflict.local || state);
   const remoteChanges = collectPlanChangeMap(basePlan, conflict.remote || {});
-  const overlap = [...localChanges.keys()]
+  const overlapDetails = [...localChanges.keys()]
     .filter((key) => remoteChanges.has(key))
     .filter((key) => !sameSerialized(localChanges.get(key)?.value, remoteChanges.get(key)?.value))
-    .map((key) => localChanges.get(key)?.label);
+    .map((key) => ({
+      key,
+      label: localChanges.get(key)?.label || remoteChanges.get(key)?.label || key,
+      local: diffValuePreview(localChanges.get(key)?.value),
+      remote: diffValuePreview(remoteChanges.get(key)?.value),
+    }));
   return {
     local: [...localChanges.values()].map((entry) => entry.label).slice(0, 6),
     remote: [...remoteChanges.values()].map((entry) => entry.label).slice(0, 6),
-    overlap: [...new Set(overlap)].slice(0, 6),
+    overlap: [...new Set(overlapDetails.map((entry) => entry.label))].slice(0, 6),
+    overlapDetails: overlapDetails.slice(0, 4),
     localExtra: Math.max(0, localChanges.size - 6),
     remoteExtra: Math.max(0, remoteChanges.size - 6),
-    overlapExtra: Math.max(0, overlap.length - 6),
+    overlapExtra: Math.max(0, overlapDetails.length - 4),
+    overlapCount: overlapDetails.length,
   };
 }
 
@@ -1701,9 +1730,11 @@ function showConflictPanel(conflict) {
   if (!dom.conflictPanel) return;
   dom.conflictPanel.hidden = false;
   dom.conflictText.textContent = conflictSummary(pendingConflict);
-  dom.conflictDetail.textContent = "请选择处理方式：智能合并会尽量保留双方新增的地点、评论、交通报价和活动记录。";
   if (dom.conflictDiff) {
     const diff = conflictDiffSummary(pendingConflict);
+    dom.conflictDetail.textContent = diff.overlapCount
+      ? `检测到 ${diff.overlapCount} 处同位置冲突。智能合并会尽量保留双方新增内容；同一字段冲突时会优先保留你的当前编辑。`
+      : "请选择处理方式：智能合并会尽量保留双方新增的地点、评论、交通报价和活动记录。";
     const renderGroup = (title, items, extra, emptyText) => `
       <div class="conflict-diff-group">
         <strong>${escapeHtml(title)}</strong>
@@ -1713,12 +1744,28 @@ function showConflictPanel(conflict) {
         </ul>
       </div>
     `;
+    const renderOverlapDetails = (items, extra) => items.length || extra ? `
+      <div class="conflict-diff-group is-overlap-detail">
+        <strong>字段级冲突</strong>
+        <ul>
+          ${items.map((item) => `
+            <li>
+              <span>${escapeHtml(item.label)}</span>
+              <small>我：${escapeHtml(item.local)}</small>
+              <small>云端：${escapeHtml(item.remote)}</small>
+            </li>
+          `).join("")}
+          ${extra ? `<li><span>还有 ${extra} 处同位置冲突</span></li>` : ""}
+        </ul>
+      </div>
+    ` : "";
     dom.conflictDiff.innerHTML = [
       renderGroup("我的修改", diff.local, diff.localExtra, "没有检测到本地内容变化"),
       renderGroup("云端修改", diff.remote, diff.remoteExtra, "没有检测到云端内容变化"),
       diff.overlap.length || diff.overlapExtra
         ? renderGroup("同位置冲突", diff.overlap, diff.overlapExtra, "")
         : "",
+      renderOverlapDetails(diff.overlapDetails, diff.overlapExtra),
     ].join("");
   }
   dom.collabMode.textContent = "待处理冲突";

@@ -127,6 +127,9 @@ assert(functionBody("planAmapRouteForCurrentDay").includes("confirmRemoteStopEdi
 assert(source.includes('confirmRemoteStopEdit(deletedStop.id, "删除地点")'), "Deleting a stop must confirm when another member is editing that stop.");
 assert(source.includes('confirmRemoteStopEdit(movingStopId, "上移地点")'), "Moving a stop up must confirm when another member is editing that stop.");
 assert(source.includes('confirmRemoteStopEdit(movingStopId, "下移地点")'), "Moving a stop down must confirm when another member is editing that stop.");
+assert(source.includes("function diffValuePreview"), "Conflict panel must be able to preview local and remote field values.");
+assert(functionBody("conflictDiffSummary").includes("overlapDetails"), "Conflict diff summary must include field-level overlap details.");
+assert(functionBody("showConflictPanel").includes("renderOverlapDetails"), "Conflict panel must render field-level local/remote overlap details.");
 
 if (failures.length) {
   console.error("Collaboration delivery guardrail check failed:");

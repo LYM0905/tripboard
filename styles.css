@@ -1743,6 +1743,18 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.conflict-diff-group.is-overlap-detail li {
+  display: grid;
+  gap: 3px;
+}
+
+.conflict-diff-group.is-overlap-detail small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .conflict-actions {
   display: grid;
   gap: 8px;
