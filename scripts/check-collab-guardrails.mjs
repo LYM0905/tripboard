@@ -220,6 +220,10 @@ assert(remoteReplaceBody.includes("PLAN_REPLACE_REASONS.has(payload.replacementT
 assert(source.includes("function renderConflictPresenceImpact"), "Conflict panel must render online collaborator impact.");
 assert(extractFunctionBody("showConflictPanel").includes("renderConflictPresenceImpact()"), "Conflict panel must include online collaborator impact in its diff summary.");
 assert(extractFunctionBody("refreshPresenceViews").includes("refreshConflictPresenceImpact()"), "Presence changes must refresh the conflict collaborator impact block.");
+assert(source.includes("function conflictValuePreview"), "Conflict overlap summaries must include compact local/remote value previews.");
+assert(extractFunctionBody("conflictDiffSummary").includes("local: conflictValuePreview"), "Conflict overlap summaries must capture local value previews.");
+assert(extractFunctionBody("conflictDiffSummary").includes("remote: conflictValuePreview"), "Conflict overlap summaries must capture remote value previews.");
+assert(extractFunctionBody("showConflictPanel").includes("renderOverlapGroup(diff.overlap"), "Conflict panel must render overlap entries with local/remote value previews.");
 
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");

@@ -302,6 +302,15 @@ function addDiffFieldChange(changes, key, label, value) {
   changes.set(key, { label, value: clone(value) });
 }
 
+function conflictValuePreview(value) {
+  if (value === undefined) return "结构变化";
+  if (value === null || value === "") return "空";
+  if (Array.isArray(value)) return `${value.length} 项`;
+  if (typeof value === "object") return shortDiffLabel(value.title || value.name || value.text || value.code || JSON.stringify(value), "对象");
+  if (typeof value === "boolean") return value ? "是" : "否";
+  return shortDiffLabel(value, "空");
+}
+
 function collectListDiffChanges(changes, baseItems = [], nextItems = [], options = {}) {
   const {
     path = "list",
@@ -410,17 +419,21 @@ function conflictDiffSummary(conflict = {}) {
   const basePlan = conflict.base || lastSyncedState || {};
   const localChanges = collectPlanChangeMap(basePlan, conflict.local || state);
   const remoteChanges = collectPlanChangeMap(basePlan, conflict.remote || {});
-  const overlap = [...localChanges.keys()]
+  const overlapEntries = [...localChanges.keys()]
     .filter((key) => remoteChanges.has(key))
     .filter((key) => !sameSerialized(localChanges.get(key)?.value, remoteChanges.get(key)?.value))
-    .map((key) => localChanges.get(key)?.label);
+    .map((key) => ({
+      label: localChanges.get(key)?.label || remoteChanges.get(key)?.label || key,
+      local: conflictValuePreview(localChanges.get(key)?.value),
+      remote: conflictValuePreview(remoteChanges.get(key)?.value),
+    }));
   return {
     local: [...localChanges.values()].map((entry) => entry.label).slice(0, 6),
     remote: [...remoteChanges.values()].map((entry) => entry.label).slice(0, 6),
-    overlap: [...new Set(overlap)].slice(0, 6),
+    overlap: overlapEntries.slice(0, 6),
     localExtra: Math.max(0, localChanges.size - 6),
     remoteExtra: Math.max(0, remoteChanges.size - 6),
-    overlapExtra: Math.max(0, overlap.length - 6),
+    overlapExtra: Math.max(0, overlapEntries.length - 6),
   };
 }
 
@@ -1817,11 +1830,25 @@ function showConflictPanel(conflict) {
         </ul>
       </div>
     `;
+    const renderOverlapGroup = (items, extra) => `
+      <div class="conflict-diff-group conflict-overlap-group">
+        <strong>同位置冲突</strong>
+        <ul>
+          ${items.map((item) => `
+            <li>
+              <span>${escapeHtml(item.label)}</span>
+              <small>我的：${escapeHtml(item.local)} / 云端：${escapeHtml(item.remote)}</small>
+            </li>
+          `).join("")}
+          ${extra ? `<li>还有 ${extra} 项冲突</li>` : ""}
+        </ul>
+      </div>
+    `;
     dom.conflictDiff.innerHTML = [
       renderGroup("我的修改", diff.local, diff.localExtra, "没有检测到本地内容变化"),
       renderGroup("云端修改", diff.remote, diff.remoteExtra, "没有检测到云端内容变化"),
       diff.overlap.length || diff.overlapExtra
-        ? renderGroup("同位置冲突", diff.overlap, diff.overlapExtra, "")
+        ? renderOverlapGroup(diff.overlap, diff.overlapExtra)
         : "",
       renderConflictPresenceImpact(),
     ].join("");

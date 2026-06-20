@@ -1800,6 +1800,18 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.conflict-overlap-group li {
+  display: grid;
+  gap: 2px;
+}
+
+.conflict-overlap-group small {
+  color: #7f8b90;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .conflict-actions {
   display: grid;
   gap: 8px;
