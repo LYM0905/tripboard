@@ -39,6 +39,7 @@ const ACTIVITY_FILTERS = [
   { value: "restore", label: "恢复" },
   { value: "conflict", label: "冲突" },
   { value: "comment", label: "批注" },
+  { value: "sync", label: "同步" },
   { value: "transport", label: "交通" },
   { value: "map", label: "路线" },
   { value: "edit", label: "编辑" },
@@ -47,6 +48,7 @@ const ACTIVITY_TYPE_LABELS = {
   restore: "恢复",
   conflict: "冲突",
   comment: "批注",
+  sync: "同步",
   transport: "交通",
   map: "路线",
   edit: "编辑",
@@ -483,6 +485,7 @@ function inferActivityType(text = "") {
   if (/恢复历史版本|历史版本|恢复前版本/.test(value)) return "restore";
   if (/冲突|合并|保留我的版本|云端版本/.test(value)) return "conflict";
   if (/批注|评论|回复|解决|重新打开/.test(value)) return "comment";
+  if (/同步|离线协作更新|重放/.test(value)) return "sync";
   if (/航班|动车|报价|交通|Google Flights|出发地/.test(value)) return "transport";
   if (/高德|路线|路径|地图|定位|AI 优化|优化当天/.test(value)) return "map";
   return "edit";
@@ -493,6 +496,7 @@ function activityTargetForType(type = "edit") {
     restore: ".version-panel",
     conflict: ".collab-panel",
     comment: ".comment-index-panel",
+    sync: ".collab-panel",
     transport: ".transport-panel",
     map: ".map-panel",
     edit: ".editor-panel",
@@ -2812,6 +2816,30 @@ function queuePendingPlanUpdate(updateBase64, origin = "local-plan-yjs") {
   dom.collabStatus.textContent = `网络不可用时已暂存 ${updates.length} 条计划协作更新，恢复连接后会自动同步。`;
 }
 
+function recordPendingPlanReplayActivity({ reason = "重试离线协作更新", applied = 0, failed = 0 } = {}) {
+  if (!collabPlanDoc || !collabActivitiesArray || !applied) return false;
+  const text = failed
+    ? `${reason}：已同步 ${applied} 条离线协作更新，${failed} 条保留重试`
+    : `${reason}：已同步 ${applied} 条离线协作更新`;
+  const activity = normalizeActivities([{
+    id: `pending-replay-${Date.now().toString(36)}-${applied}-${failed}`,
+    text,
+    type: "sync",
+    target: { type: "sync", action: "pending-plan-replay", applied, failed },
+    createdBy: getCollabName(),
+    createdAt: new Date().toISOString(),
+    at: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+  }])[0];
+  if (!activity) return false;
+  const existingIds = new Set(readActivitiesFromDoc().map((item) => item.id));
+  if (existingIds.has(activity.id)) return true;
+  collabActivitiesArray.insert(0, [activity]);
+  if (collabActivitiesArray.length > 20) {
+    collabActivitiesArray.delete(20, collabActivitiesArray.length - 20);
+  }
+  return true;
+}
+
 async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
   if (!tripId || !supabaseClient || isReadonlyMode || !canWriteCollaborativeData() || pendingConflict) return false;
   const updates = pendingPlanUpdates();
@@ -2844,6 +2872,10 @@ async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
   }
   if (!applied) return false;
   persistCurrentPlanFromDoc(`${reason}：已合并 ${applied} 条离线协作更新`);
+  collabPlanDoc.transact(() => {
+    recordPendingPlanReplayActivity({ reason, applied, failed });
+  }, "pending:replay-activity");
+  persistCurrentPlanFromDoc(`${reason}：离线重放活动已记录`, { refreshViews: false, scheduleSave: false, updateStatus: false });
   const pushed = await pushRemoteState(`${reason}：已同步 ${applied} 条离线协作更新`, { skipPendingFlush: true });
   if (pushed) {
     clearPendingPlanUpdatesById(appliedIds);
@@ -2857,8 +2889,9 @@ async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
       persistCurrentPlanFromDoc(`${reason}：计划结构协作快照已同步`, { refreshViews: false, scheduleSave: false, updateStatus: false });
       lastSyncedState = clone(state);
     }
+    const remainingCount = pendingPlanUpdates().length;
     dom.collabStatus.textContent = failed
-      ? `${reason}：${applied} 条离线协作更新已同步到云端，${failed} 条暂未应用，稍后会继续重试。`
+      ? `${reason}：${applied} 条离线协作更新已同步到云端，${remainingCount || failed} 条仍保留，稍后会继续重试。`
       : `${reason}：${applied} 条离线协作更新已同步到云端。`;
   }
   return pushed;

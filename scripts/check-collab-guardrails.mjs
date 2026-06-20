@@ -453,6 +453,18 @@ for (const functionName of [
   assert(body.includes("shouldSkipLegacyStructureFallback(payload"), `${functionName} must skip legacy JSON fallback when planYjs verification fails.`);
 }
 
+assert(source.includes('{ value: "sync", label: "同步" }'), "Activity filters must expose sync replay events.");
+assert(source.includes('sync: "同步"'), "Activity type labels must include sync replay events.");
+assert(extractFunctionBody("inferActivityType").includes('return "sync"'), "Activity inference must classify offline replay/sync entries.");
+assert(source.includes("function recordPendingPlanReplayActivity"), "Offline plan replay must record a durable sync activity.");
+const pendingReplayActivityBody = extractFunctionBody("recordPendingPlanReplayActivity");
+assert(pendingReplayActivityBody.includes('type: "sync"'), "Offline replay activity must use the sync activity type.");
+assert(pendingReplayActivityBody.includes('action: "pending-plan-replay"'), "Offline replay activity must carry a pending-plan-replay target.");
+const flushPendingBody = extractFunctionBody("flushPendingPlanUpdates");
+assert(flushPendingBody.includes("recordPendingPlanReplayActivity({ reason, applied, failed })"), "Flushing pending plan updates must record the replay result.");
+assert(flushPendingBody.includes('"pending:replay-activity"'), "Replay activity transaction must not enqueue a fresh pending update.");
+assert(flushPendingBody.includes("remainingCount || failed"), "Replay status must report retained pending updates when some entries fail.");
+
 if (failures.length) {
   console.error("Collaboration guardrail check failed:");
   for (const failure of failures) console.error(`- ${failure}`);
