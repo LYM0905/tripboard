@@ -1823,11 +1823,39 @@ function showConflictPanel(conflict) {
       diff.overlap.length || diff.overlapExtra
         ? renderGroup("同位置冲突", diff.overlap, diff.overlapExtra, "")
         : "",
+      renderConflictPresenceImpact(),
     ].join("");
   }
   dom.collabMode.textContent = "待处理冲突";
   dom.saveState.textContent = "发现协作冲突";
   refreshIcons();
+}
+
+function renderConflictPresenceImpact() {
+  const impact = versionRestoreImpactSummary();
+  if (!impact.members.length && !impact.extra) {
+    return `
+      <div class="conflict-diff-group conflict-presence-impact">
+        <strong>在线协作者</strong>
+        <ul><li>当前没有其他成员在线编辑。</li></ul>
+      </div>
+    `;
+  }
+  return `
+    <div class="conflict-diff-group conflict-presence-impact">
+      <strong>在线协作者</strong>
+      <ul>
+        ${impact.members.map((member) => `<li>${escapeHtml(member.name)} · ${escapeHtml(member.day)} · ${escapeHtml(member.activity)}</li>`).join("")}
+        ${impact.extra ? `<li>还有 ${impact.extra} 位成员在线</li>` : ""}
+      </ul>
+    </div>
+  `;
+}
+
+function refreshConflictPresenceImpact() {
+  if (!pendingConflict || !dom.conflictDiff) return;
+  const current = dom.conflictDiff.querySelector(".conflict-presence-impact");
+  if (current) current.outerHTML = renderConflictPresenceImpact();
 }
 
 function hideConflictPanel() {
@@ -5612,6 +5640,7 @@ function refreshPresenceViews() {
   if (!refreshDayBlockPresenceDom(currentDay())) {
     renderDayBlocks(currentDay());
   }
+  refreshConflictPresenceImpact();
   renderEditorLockState();
 }
 

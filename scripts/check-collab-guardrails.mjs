@@ -217,6 +217,9 @@ for (const call of findCalls("broadcastPlanReplaced")) {
 
 const remoteReplaceBody = extractFunctionBody("applyRemotePlanReplaced");
 assert(remoteReplaceBody.includes("PLAN_REPLACE_REASONS.has(payload.replacementType || \"\")"), "applyRemotePlanReplaced must reject untrusted replacementType values.");
+assert(source.includes("function renderConflictPresenceImpact"), "Conflict panel must render online collaborator impact.");
+assert(extractFunctionBody("showConflictPanel").includes("renderConflictPresenceImpact()"), "Conflict panel must include online collaborator impact in its diff summary.");
+assert(extractFunctionBody("refreshPresenceViews").includes("refreshConflictPresenceImpact()"), "Presence changes must refresh the conflict collaborator impact block.");
 
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");
