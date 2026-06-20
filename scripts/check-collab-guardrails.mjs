@@ -283,6 +283,15 @@ assert(extractFunctionBody("optimizeCurrentDayRoute").includes("confirmRemoteSto
 assert(extractFunctionBody("applyBudgetEstimateFromToken").includes("confirmRemoteStopStructureEdit(stop.id"), "Single stop budget estimate adoption must confirm when another member is actively editing the affected stop.");
 assert(extractFunctionBody("adoptAllBudgetEstimates").includes("confirmRemoteStopStructureEdit(affectedStopIds"), "Batch budget estimate adoption must confirm when another member is actively editing affected stops.");
 assert(extractFunctionBody("enrichPlacesFromAmap").includes("confirmRemoteStopStructureEdit(affectedStopIds"), "Batch Amap place enrichment must confirm when another member is actively editing affected stops.");
+assert(source.includes("function confirmRemoteCandidateEdit"), "Candidate record edits must have a remote active editor confirmation helper.");
+assert(source.includes("function confirmRemoteTransportQuoteEdit"), "Transport quote edits must have a remote active editor confirmation helper.");
+assert(extractFunctionBody("presencePayload").includes("activeCandidateId"), "Presence payload must publish the candidate currently being edited.");
+assert(extractFunctionBody("presencePayload").includes("activeTransportQuoteId"), "Presence payload must publish the transport quote currently being edited.");
+assert(extractFunctionBody("toggleCandidateSelection").includes("confirmRemoteCandidateEdit(candidateId"), "Candidate selection must confirm when another member is editing that candidate.");
+assert(extractFunctionBody("toggleTransportQuoteSelection").includes("confirmRemoteTransportQuoteEdit(quoteId"), "Transport quote selection must confirm when another member is editing that quote.");
+assert(extractFunctionBody("applyBudgetEstimateFromToken").includes("confirmRemoteCandidateEdit(candidate.id"), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");
+assert(extractFunctionBody("adoptAllBudgetEstimates").includes("confirmRemoteCandidateEdit(affectedCandidateIds"), "Batch budget estimate adoption must confirm when another member is editing affected candidates.");
+assert(extractFunctionBody("enrichPlacesFromAmap").includes("confirmRemoteCandidateEdit(affectedCandidateIds"), "Batch Amap place enrichment must confirm when another member is editing affected candidates.");
 
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");

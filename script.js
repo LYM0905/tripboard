@@ -2582,6 +2582,48 @@ function stopIdsForStructureEdit(stops = []) {
   return (Array.isArray(stops) ? stops : []).map((stop) => stop?.id).filter(Boolean);
 }
 
+function remoteActiveEditorsForRecord(field = "", ids = []) {
+  const recordIds = new Set((Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean));
+  if (!field || !recordIds.size) return [];
+  const ownMemberId = memberProfile?.id || sessionId;
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member)) return false;
+    return recordIds.has(String(member[field] || ""));
+  });
+}
+
+function confirmRemoteRecordEdit(kind, ids = [], action = "操作记录") {
+  const recordIds = (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean);
+  const uniqueIds = [...new Set(recordIds)];
+  if (!uniqueIds.length) return true;
+  const lockKey = `${kind}:${uniqueIds.sort().join("|")}:${action}`;
+  if (confirmedRemoteRecordEditUntil[lockKey] && confirmedRemoteRecordEditUntil[lockKey] > Date.now()) return true;
+  const field = kind === "candidate" ? "activeCandidateId" : "activeTransportQuoteId";
+  const label = kind === "candidate" ? "备选地点" : "交通报价";
+  const editors = remoteActiveEditorsForRecord(field, uniqueIds);
+  const names = [...new Set(editors.map((member) => member.name || "协作者"))];
+  if (!names.length) return true;
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  const ok = window.confirm(`${visible}${extra} 正在编辑相关${label}。继续${action}可能覆盖或打断对方正在修改的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteRecordEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的${label}`;
+  dom.collabStatus.textContent = `${visible}${extra} 仍在编辑相关${label}，稍后再操作更稳妥。`;
+  return false;
+}
+
+function confirmRemoteCandidateEdit(candidateIds = [], action = "操作备选地点") {
+  return confirmRemoteRecordEdit("candidate", candidateIds, action);
+}
+
+function confirmRemoteTransportQuoteEdit(quoteIds = [], action = "操作交通报价") {
+  return confirmRemoteRecordEdit("transportQuote", quoteIds, action);
+}
+
 function dayPresenceMetaForDocField(field = "") {
   const normalizedField = String(field || "");
   return [...COLLAB_DAY_STRUCT_PRESENCE_FIELDS, ...COLLAB_DAY_TEXT_FIELDS].find((meta) => (
@@ -10195,6 +10237,7 @@ let pendingPlanMetaInputSyncs = {};
 let confirmedRemotePlanFieldEditUntil = {};
 let confirmedRemoteDayFieldEditUntil = {};
 let confirmedRemoteStopFieldEditUntil = {};
+let confirmedRemoteRecordEditUntil = {};
 let planTextBaselines = {};
 let stopTextBaselines = {};
 let dayTextBaselines = {};
@@ -10578,6 +10621,8 @@ function presencePayload() {
     activeDay: day?.label || "D1",
     activeDayId: day?.id || "",
     activeStopId: stop?.id || "",
+    activeCandidateId: editingCandidateId || "",
+    activeTransportQuoteId: editingTransportQuoteId || "",
     activeBlockId: blockContext?.blockId || "",
     activeBlockText: blockContext?.blockText || "",
     blockSelection: blockContext?.blockSelection || null,
@@ -12134,6 +12179,7 @@ async function toggleTransportQuoteSelection(quoteId) {
     return;
   }
   const selected = !quote.selected;
+  if (!confirmRemoteTransportQuoteEdit(quoteId, selected ? "选择交通方案" : "取消交通方案")) return;
   if (await updateTransportQuoteInDoc(quoteId, { selected })) {
     persistCurrentPlanFromDoc("交通方案选择已同步");
     await logActivity(`${selected ? "选择" : "取消"}交通 ${quote.code}`, { target: transportQuoteActivityTarget(quoteId, quote.dayId || "", { action: selected ? "select" : "unselect" }) });
@@ -12152,6 +12198,7 @@ async function toggleCandidateSelection(candidateId) {
   const candidate = (state.candidates || []).find((item) => item.id === candidateId);
   if (!candidate || !requireEdit("选择备选地点")) return;
   const selected = !candidate.selected;
+  if (!confirmRemoteCandidateEdit(candidateId, selected ? "预选备选地点" : "取消预选备选地点")) return;
   if (await updateCandidateInDoc(candidateId, { selected })) {
     persistCurrentPlanFromDoc("备选预选已同步");
     await logActivity(`${selected ? "预选" : "取消预选"}${candidate.title}`, { target: candidateActivityTarget(candidateId, { action: selected ? "select" : "unselect" }) });
@@ -13029,6 +13076,7 @@ async function applyBudgetEstimateFromToken(token = "") {
       dom.saveState.textContent = "没有找到可采用的备选估算。";
       return;
     }
+    if (!confirmRemoteCandidateEdit(candidate.id, "采用备选门票估算")) return;
     const patch = {
       budget: estimate,
       tags: Array.from(new Set([...(candidate.tags || []), "门票估算待确认"])),
@@ -13063,6 +13111,11 @@ async function adoptAllBudgetEstimates() {
     dom.saveState.textContent = "已取消批量采用门票估算，保留协作者正在编辑的地点。";
     return;
   }
+  const affectedCandidateIds = entries
+    .filter((item) => item.refType === "candidate")
+    .map((item) => item.itemId)
+    .filter(Boolean);
+  if (!confirmRemoteCandidateEdit(affectedCandidateIds, "批量采用门票估算")) return;
   saveVersionSnapshot("批量采用门票估算前版本");
   let stopCount = 0;
   let candidateCount = 0;
@@ -13190,6 +13243,11 @@ async function enrichPlacesFromAmap() {
     dom.saveState.textContent = "已取消补全地点资料，保留协作者正在编辑的地点。";
     return;
   }
+  const affectedCandidateIds = candidates
+    .filter((item) => item.type === "candidate")
+    .map((item) => item.stop?.id)
+    .filter(Boolean);
+  if (!confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")) return;
   saveVersionSnapshot("补全地点图片前版本");
   dom.saveState.textContent = `正在通过高德补全 ${Math.min(candidates.length, 12)} 个地点...`;
   const fallbackDayIds = new Set();
@@ -14516,6 +14574,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
       dom.saveState.textContent = "这条备选已被其他成员移除，请重新选择。";
       return;
     }
+    if (!confirmRemoteCandidateEdit(editingCandidateId, "更新备选地点")) return;
     const patch = {
       title: draft.title,
       type: draft.type,
@@ -16392,6 +16451,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     const candidateId = deleteButton.dataset.deleteCandidate;
     const candidate = state.candidates.find((item) => item.id === candidateId);
     if (!candidate || !requireEdit("移除备选地点")) return;
+    if (!confirmRemoteCandidateEdit(candidateId, "移除备选地点")) return;
     if (await deleteCandidateFromDoc(candidateId)) {
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
       await logActivity(`移除备选「${candidate.title}」`, { target: candidateActivityTarget(candidateId, { deleted: true, action: "delete" }) });
@@ -16520,6 +16580,7 @@ dom.transportList.addEventListener("click", async (event) => {
   const quoteId = deleteButton.dataset.deleteQuote;
   const quote = (state.transportQuotes || []).find((item) => item.id === quoteId);
   if (!quote || !requireEdit("删除交通报价")) return;
+  if (!confirmRemoteTransportQuoteEdit(quoteId, "删除交通报价")) return;
   if (await deleteTransportQuoteFromDoc(quoteId)) {
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
@@ -16556,6 +16617,7 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
       dom.saveState.textContent = "这条报价已被其他成员删除，请重新保存。";
       return;
     }
+    if (!confirmRemoteTransportQuoteEdit(editingTransportQuoteId, "更新交通报价")) return;
     if (await updateTransportQuoteInDoc(editingTransportQuoteId, quote)) {
       persistCurrentPlanFromDoc("交通报价协作内容已实时同步");
       await logActivity(`更新交通报价「${code}」`, { target: transportQuoteActivityTarget(editingTransportQuoteId, quote.dayId || "", { action: "update" }) });
