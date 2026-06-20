@@ -2361,6 +2361,16 @@ function remoteStopEditorNamesForField(field = "") {
   return visible ? `${visible}${extra}` : "";
 }
 
+function remoteActiveEditorsForStop(stopId = currentStop()?.id || "") {
+  const ownMemberId = memberProfile?.id || sessionId;
+  if (!stopId) return [];
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member)) return false;
+    return member.activeStopId === stopId && member.textSelection?.scope === "stop";
+  });
+}
+
 function noteRemoteStopFieldEditors(fieldMeta = {}, action = "编辑") {
   const names = remoteStopEditorNamesForField(fieldMeta.structField || fieldMeta.field);
   if (!names) return;
@@ -2556,6 +2566,16 @@ function confirmRemoteStopFieldEdit(fields = [], action = "修改地点字段") 
   dom.saveState.textContent = "已取消地点字段修改，保留协作者正在编辑的内容";
   dom.collabStatus.textContent = `${visibleNames}${extra} 仍在编辑${fieldLabels || "地点字段"}，稍后再改更稳妥。`;
   return false;
+}
+
+function confirmRemoteStopStructureEdit(stopIds = [], action = "操作地点") {
+  const ids = (Array.isArray(stopIds) ? stopIds : [stopIds]).map((id) => String(id || "")).filter(Boolean);
+  const editors = ids.flatMap((stopId) => remoteActiveEditorsForStop(stopId));
+  const names = [...new Set(editors.map((member) => member.name || "协作者"))];
+  if (!names.length) return true;
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return window.confirm(`${visible}${extra} 正在编辑相关地点字段。继续${action}可能打断对方正在输入的内容，确定继续吗？`);
 }
 
 function dayPresenceMetaForDocField(field = "") {
@@ -14651,6 +14671,10 @@ dom.deleteStopBtn.addEventListener("click", async () => {
   }
   const deletedStop = clone(currentStop());
   const label = `删除「${deletedStop.title}」`;
+  if (!confirmRemoteStopStructureEdit(deletedStop.id, "删除地点")) {
+    dom.saveState.textContent = "已取消删除，保留协作者正在编辑的地点";
+    return;
+  }
   if (!confirmDeleteCommentedStop(deletedStop, "删除")) {
     dom.saveState.textContent = "已取消删除含评论的地点";
     return;
@@ -14671,6 +14695,10 @@ dom.moveUpBtn.addEventListener("click", async () => {
   let dayId = "";
   let nextStops = [];
   const movingStopId = currentStop()?.id || "";
+  if (!confirmRemoteStopStructureEdit(movingStopId, "上移地点")) {
+    dom.saveState.textContent = "已取消上移，保留协作者正在编辑的地点";
+    return;
+  }
   if (!mutate("上移地点", () => {
     const day = currentDay();
     const stops = day.stops;
@@ -14694,6 +14722,10 @@ dom.moveDownBtn.addEventListener("click", async () => {
   let dayId = "";
   let nextStops = [];
   const movingStopId = currentStop()?.id || "";
+  if (!confirmRemoteStopStructureEdit(movingStopId, "下移地点")) {
+    dom.saveState.textContent = "已取消下移，保留协作者正在编辑的地点";
+    return;
+  }
   if (!mutate("下移地点", () => {
     const day = currentDay();
     const dayStops = day.stops;

@@ -273,6 +273,10 @@ assert(extractFunctionBody("confirmRemoteStopFieldEdit").includes("window.confir
 assert(source.includes('confirmRemoteStopFieldEdit(field, "继续编辑地点字段")'), "Stop text input events must use remote field confirmation.");
 assert(source.includes('confirmRemoteStopFieldEdit(meta.field'), "Stop structural input events must use remote field confirmation.");
 assert(source.includes("noteRemoteStopFieldEditors(meta"), "Stop detail focus/input events must warn when another member is editing the same field.");
+assert(source.includes("function confirmRemoteStopStructureEdit"), "High-risk stop structure edits must confirm when another member is actively editing the same stop.");
+assert(source.includes('confirmRemoteStopStructureEdit(deletedStop.id, "删除地点")'), "Stop delete must confirm when another member is actively editing the stop.");
+assert(source.includes('confirmRemoteStopStructureEdit(movingStopId, "上移地点")'), "Stop move-up must confirm when another member is actively editing the stop.");
+assert(source.includes('confirmRemoteStopStructureEdit(movingStopId, "下移地点")'), "Stop move-down must confirm when another member is actively editing the stop.");
 
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");
