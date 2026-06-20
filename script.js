@@ -9421,11 +9421,14 @@ async function resolveConflict(mode) {
       return;
     }
     let mergedWithYjsSnapshot = false;
+    let appliedFieldChoices = false;
     if (mode === "merge") {
       mergedWithYjsSnapshot = await mergeConflictPlanYjsSnapshot(remotePlan, "已通过协作快照合并冲突");
       if (!mergedWithYjsSnapshot) state = mergePlans(localPlan, remotePlan, basePlan);
       if (conflictFieldChoices.size) {
         state = applyConflictFieldChoices(state, { ...conflict, local: localPlan, remote: remotePlan, base: basePlan });
+        appliedFieldChoices = true;
+        mergedWithYjsSnapshot = false;
       }
     } else {
       state = ensurePlanDates(localPlan);
@@ -9440,7 +9443,7 @@ async function resolveConflict(mode) {
         reason: mode === "merge" ? "conflict-merge" : "conflict-keep",
       });
     }
-    await pushRemoteState(mergedWithYjsSnapshot ? "已通过协作快照合并冲突" : mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
+    await pushRemoteState(appliedFieldChoices ? "已按逐项选择合并冲突" : mergedWithYjsSnapshot ? "已通过协作快照合并冲突" : mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
     render();
   } catch (error) {
     pendingConflict = conflict;
