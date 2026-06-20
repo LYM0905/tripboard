@@ -94,6 +94,7 @@ assert(source.includes("function confirmRemoteCandidateEdit"), "Candidate record
 assert(source.includes("function confirmRemoteTransportQuoteEdit"), "Transport quote record edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteStopEdit"), "Stop structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteDayBlockEdit"), "Day block structure edits must have a remote active editor confirmation helper.");
+assert(source.includes("function confirmRemoteDayEdit"), "Day-level structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
 assert(source.includes("let confirmedRemoteRecordEditUntil"), "Record-level remote edit confirmations must be throttled.");
 
@@ -128,6 +129,10 @@ assert(functionBody("planAmapRouteForCurrentDay").includes("confirmRemoteStopEdi
 assert(source.includes('confirmRemoteStopEdit(deletedStop.id, "删除地点")'), "Deleting a stop must confirm when another member is editing that stop.");
 assert(source.includes('confirmRemoteStopEdit(movingStopId, "上移地点")'), "Moving a stop up must confirm when another member is editing that stop.");
 assert(source.includes('confirmRemoteStopEdit(movingStopId, "下移地点")'), "Moving a stop down must confirm when another member is editing that stop.");
+assert(source.includes('confirmRemoteDayEdit(dayId, "保存当天设置")'), "Saving day settings must confirm when another member is editing that day.");
+assert(source.includes('confirmRemoteDayEdit(deletedDay.id, "删除当天")'), "Deleting a day must confirm when another member is editing that day.");
+assert(source.includes('confirmRemoteDayEdit([movingDayId, previousDayId], "上移当天")'), "Moving a day up must confirm when another member is editing affected days.");
+assert(source.includes('confirmRemoteDayEdit([movingDayId, nextDayId], "下移当天")'), "Moving a day down must confirm when another member is editing affected days.");
 assert(functionBody("applyDayBlockTypeChange").includes("confirmRemoteDayBlockEdit(blockId, presence)"), "Day block type changes must confirm when another member is editing that block.");
 assert(functionBody("moveDayBlockByDirection").includes('confirmRemoteDayBlockEdit(blockId, action === "keyboard-move" ? "键盘排序" : "排序")'), "Day block moves must confirm when another member is editing that block.");
 assert(functionBody("setSelectedDayBlockType").includes('confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), "批量切换类型")'), "Bulk day block type changes must confirm when another member is editing selected blocks.");

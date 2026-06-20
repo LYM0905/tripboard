@@ -2177,6 +2177,25 @@ function remoteActiveEditorsForStops(stopIds = []) {
   ));
 }
 
+function remoteActiveEditorsForDays(dayIds = []) {
+  const ids = new Set((Array.isArray(dayIds) ? dayIds : [dayIds]).map((id) => String(id || "")).filter(Boolean));
+  const ownMemberId = memberProfile?.id || sessionId;
+  if (!ids.size) return [];
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member) || !ids.has(String(member.activeDayId || ""))) return false;
+    return (
+      member.textSelection ||
+      member.textEditing ||
+      member.blockSelection ||
+      member.blockEditing ||
+      member.activeStopId ||
+      member.activeBlockId ||
+      member.lockMode === "editing"
+    );
+  });
+}
+
 function confirmRemoteRecordEdit(kind, ids = [], action = "操作记录") {
   const recordIds = (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean);
   const uniqueIds = [...new Set(recordIds)];
@@ -2218,6 +2237,27 @@ function confirmRemoteStopEdit(stopIds = [], action = "操作地点") {
   }
   dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的地点`;
   dom.collabStatus.textContent = `${visible}${extra} 仍在编辑相关地点，稍后再操作更稳妥。`;
+  return false;
+}
+
+function confirmRemoteDayEdit(dayIds = [], action = "操作当天") {
+  const ids = (Array.isArray(dayIds) ? dayIds : [dayIds]).map((id) => String(id || "")).filter(Boolean);
+  const uniqueIds = [...new Set(ids)];
+  if (!uniqueIds.length) return true;
+  const lockKey = `day:${uniqueIds.sort().join("|")}:${action}`;
+  if (confirmedRemoteRecordEditUntil[lockKey] && confirmedRemoteRecordEditUntil[lockKey] > Date.now()) return true;
+  const editors = remoteActiveEditorsForDays(uniqueIds);
+  const names = [...new Set(editors.map((member) => member.name || "协作者"))];
+  if (!names.length) return true;
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  const ok = window.confirm(`${visible}${extra} 正在这个日期里编辑地点、当天文本或协作块。继续${action}可能移动、删除或打断对方正在修改的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteRecordEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的日期内容`;
+  dom.collabStatus.textContent = `${visible}${extra} 仍在编辑这个日期，稍后再操作更稳妥。`;
   return false;
 }
 
@@ -12478,6 +12518,7 @@ dom.dayForm.addEventListener("submit", async (event) => {
   let updatedDay = null;
   const dayId = currentDay()?.id || "";
   const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
+  if (!confirmRemoteDayEdit(dayId, "保存当天设置")) return;
   const changed = mutate("保存当天设置", () => {
     updatedDay = applyDayEditorDraftToState(dayDraft);
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(dayId, { action: "settings" }) });
@@ -12584,6 +12625,7 @@ dom.deleteDayBtn.addEventListener("click", async () => {
   const deletedDay = clone(currentDay());
   const deletedDayIndex = activeDay;
   const label = `删除「${deletedDay.title || deletedDay.label}」`;
+  if (!confirmRemoteDayEdit(deletedDay.id, "删除当天")) return;
   if (!mutate(label, () => {
     state.days.splice(activeDay, 1);
     activeDay = Math.max(0, Math.min(activeDay, state.days.length - 1));
@@ -12605,6 +12647,8 @@ dom.moveDayUpBtn.addEventListener("click", async () => {
   if (activeDay <= 0) return;
   let changed = false;
   const movingDayId = currentDay()?.id || "";
+  const previousDayId = state.days[activeDay - 1]?.id || "";
+  if (!confirmRemoteDayEdit([movingDayId, previousDayId], "上移当天")) return;
   if (!mutate("上移当天", () => {
     [state.days[activeDay - 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay - 1]];
     activeDay -= 1;
@@ -12627,6 +12671,8 @@ dom.moveDayDownBtn.addEventListener("click", async () => {
   if (activeDay >= state.days.length - 1) return;
   let changed = false;
   const movingDayId = currentDay()?.id || "";
+  const nextDayId = state.days[activeDay + 1]?.id || "";
+  if (!confirmRemoteDayEdit([movingDayId, nextDayId], "下移当天")) return;
   if (!mutate("下移当天", () => {
     [state.days[activeDay + 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay + 1]];
     activeDay += 1;
