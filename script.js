@@ -15015,6 +15015,8 @@ dom.budgetLimitInput.addEventListener("change", async () => {
 
 async function syncPlanMetaFieldInput(field, value, label) {
   if (!canEdit() || isReadonlyMode) return;
+  const planFieldMeta = COLLAB_PLAN_TEXT_PRESENCE_FIELDS.find((meta) => meta.planField === field);
+  if (planFieldMeta && !confirmRemoteTextFieldEdit(planFieldMeta.field, "plan", label || "保存计划基础信息")) return;
   if (await syncPlanSettingToDoc(field, value)) {
     persistCurrentPlanFromDoc("计划基础信息协作内容已实时同步");
     await logActivity(label, { target: planMetaActivityTarget(field, { action: "update" }) });
@@ -15034,6 +15036,10 @@ async function syncPlanMetaPatchInput(patch = {}, label, targetField = "") {
     .filter(([field]) => PLAN_SETTING_FIELDS.some((meta) => meta.field === field))
     .map(([field, value]) => [field, normalizePlanSettingValue(field, value)]);
   if (!entries.length) return;
+  const changedPlanFields = entries
+    .map(([field]) => COLLAB_PLAN_TEXT_PRESENCE_FIELDS.find((meta) => meta.planField === field)?.field || "")
+    .filter(Boolean);
+  if (!confirmRemoteTextFieldEdit(changedPlanFields, "plan", label || "保存计划基础信息")) return;
   const changed = collabSettingsMap
     ? entries.some(([field, value]) => {
       const settingTextValue = PLAN_TEXT_SETTING_FIELDS.includes(field) ? collabSettingTextsMap?.get(field)?.toString() : undefined;
