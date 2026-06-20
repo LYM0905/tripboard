@@ -4248,6 +4248,21 @@ function commentRootsAndReplies(comments = []) {
   return { roots, repliesByParent, normalized };
 }
 
+function commentReplyCount(comments = [], commentId = "") {
+  if (!commentId) return 0;
+  const { repliesByParent } = commentRootsAndReplies(comments || []);
+  return (repliesByParent.get(commentId) || []).length;
+}
+
+function confirmDeleteCommentThread(comments = [], commentId = "", label = "评论") {
+  const normalized = normalizeComments(comments || []);
+  const comment = normalized.find((item) => item.id === commentId);
+  if (!comment || comment.parentId) return true;
+  const replyCount = commentReplyCount(normalized, commentId);
+  if (!replyCount) return true;
+  return window.confirm(`这条${label}下还有 ${replyCount} 条回复。删除后整条讨论串都会被移除，确定继续吗？`);
+}
+
 function commentStatsForField(comments = [], field = "") {
   const { roots, repliesByParent } = commentRootsAndReplies(comments);
   const related = roots.filter((comment) => comment.anchor?.field === field);
@@ -14495,6 +14510,10 @@ dom.commentList.addEventListener("click", async (event) => {
   const stop = currentStop();
   const comment = (stop.comments || []).find((item) => item.id === commentId);
   if (!comment || !requireEdit("删除评论")) return;
+  if (!confirmDeleteCommentThread(stop.comments || [], commentId, "评论")) {
+    dom.saveState.textContent = "已取消删除含回复的评论";
+    return;
+  }
   if (await deleteCollaborativeComment(commentId)) {
     stop.comments = commentsWithoutThread(stop.comments || [], commentId);
     if (replyingCommentId === commentId || !stop.comments.some((item) => item.id === replyingCommentId)) {
@@ -14642,6 +14661,10 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
   const day = currentDay();
   const comment = (day.comments || []).find((item) => item.id === commentId);
   if (!comment || !requireEdit("删除当天批注")) return;
+  if (!confirmDeleteCommentThread(day.comments || [], commentId, "当天批注")) {
+    dom.saveState.textContent = "已取消删除含回复的当天批注";
+    return;
+  }
   if (await deleteCollaborativeDayComment(commentId)) {
     day.comments = commentsWithoutThread(day.comments || [], commentId);
     if (dayReplyingCommentId === commentId || !day.comments.some((item) => item.id === dayReplyingCommentId)) {
@@ -14989,6 +15012,10 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId);
     if (!block || !comment || !requireEdit("删除块级评论")) return;
+    if (!confirmDeleteCommentThread(block.comments || [], commentId, "块级评论")) {
+      dom.saveState.textContent = "已取消删除含回复的块级评论";
+      return;
+    }
     activeBlockPresenceId = block.id;
     schedulePresenceTrack(0);
     if (await deleteDayBlockCommentFromDoc(day.id, block.id, commentId, "local-day-block-comment-delete")) {
