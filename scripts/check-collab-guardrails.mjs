@@ -448,6 +448,19 @@ assert(stopListsBody.includes("if (!replace && !deletedDayIds.size) return false
 const planMetaBody = extractFunctionBody("syncPlanMetaToDoc");
 assert(planMetaBody.includes("if (!replace && (!Array.isArray(fields)"), "syncPlanMetaToDoc must refuse broad non-replace calls without explicit fields.");
 
+for (const functionName of [
+  "broadcastStopCreated",
+  "broadcastStopDeleted",
+  "broadcastStopsReordered",
+  "broadcastDayUpdated",
+  "broadcastDayCreated",
+  "broadcastDayDeleted",
+  "broadcastDaysReordered",
+]) {
+  const body = extractFunctionBody(functionName);
+  assert(body.includes("requiresPlanYjs: true"), `${functionName} must mark modern structure broadcasts as planYjs-required.`);
+}
+
 for (const functionName of ["syncTransportQuotesToDoc", "syncCandidatesToDoc", "syncActivitiesToDoc"]) {
   const body = extractFunctionBody(functionName);
   assert(body.includes("hasExplicitYArrayFallbackIntent(options)"), `${functionName} must require explicit fallback intent.`);
@@ -465,6 +478,11 @@ for (const functionName of [
   const body = extractFunctionBody(functionName);
   assert(body.includes("shouldSkipLegacyStructureFallback(payload"), `${functionName} must skip legacy JSON fallback when planYjs verification fails.`);
 }
+
+assert(
+  extractFunctionBody("shouldSkipLegacyStructureFallback").includes("!payload?.planYjs && !payload?.requiresPlanYjs"),
+  "Legacy structure fallback must also skip modern broadcasts that require planYjs even when the snapshot is missing.",
+);
 
 assert(source.includes('{ value: "sync", label: "同步" }'), "Activity filters must expose sync replay events.");
 assert(source.includes('sync: "同步"'), "Activity type labels must include sync replay events.");

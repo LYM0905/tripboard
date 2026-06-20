@@ -6497,6 +6497,7 @@ function broadcastStopCreated(dayId, stop) {
       dayId,
       stop: clone(stop),
       planYjs,
+      requiresPlanYjs: true,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -6516,6 +6517,7 @@ function broadcastStopDeleted(dayId, stop) {
       stopId: stop.id,
       title: stop.title || "地点",
       planYjs,
+      requiresPlanYjs: true,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -6534,6 +6536,7 @@ function broadcastStopsReordered(dayId, stops) {
       dayId,
       stopOrder: (stops || []).map((stop) => stop.id).filter(Boolean),
       planYjs,
+      requiresPlanYjs: true,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -6561,6 +6564,7 @@ function broadcastDayUpdated(day) {
       }),
       planMeta: currentPlanMeta(),
       planYjs,
+      requiresPlanYjs: true,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -6580,6 +6584,7 @@ function broadcastDayCreated(day, index) {
       index,
       planMeta: currentPlanMeta(),
       planYjs,
+      requiresPlanYjs: true,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -6600,6 +6605,7 @@ function broadcastDayDeleted(day, index = activeDay) {
       index,
       planMeta: currentPlanMeta(),
       planYjs,
+      requiresPlanYjs: true,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -6618,6 +6624,7 @@ function broadcastDaysReordered() {
       dayOrder: state.days.map((day) => day.id).filter(Boolean),
       planMeta: currentPlanMeta(),
       planYjs,
+      requiresPlanYjs: true,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -8718,7 +8725,7 @@ async function applyRemoteStructureSnapshotOrFetch(payload = {}, label = "收到
 }
 
 function shouldSkipLegacyStructureFallback(payload = {}, label = "结构协作更新") {
-  if (!payload?.planYjs) return false;
+  if (!payload?.planYjs && !payload?.requiresPlanYjs) return false;
   dom.collabStatus.textContent = `${label}未通过协作快照校验，已跳过旧结构兜底，等待云端同步。`;
   return true;
 }
