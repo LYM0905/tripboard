@@ -1813,7 +1813,9 @@ button:disabled {
 .conflict-overlap-group summary {
   cursor: pointer;
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 6px;
+  align-items: center;
 }
 
 .conflict-overlap-group small {
@@ -1821,6 +1823,27 @@ button:disabled {
   font-size: 10px;
   font-weight: 800;
   line-height: 1.35;
+  grid-column: 1 / -1;
+}
+
+.conflict-locate-btn {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dfe9ea;
+  border-radius: 6px;
+  color: var(--green);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 900;
+  gap: 3px;
+  min-height: 24px;
+  padding: 0 7px;
+}
+
+.conflict-locate-btn svg {
+  width: 13px;
+  height: 13px;
 }
 
 .conflict-value-compare {

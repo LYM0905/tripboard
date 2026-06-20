@@ -334,6 +334,28 @@ function isSelectableConflictKey(key = "") {
   return false;
 }
 
+function conflictTargetForKey(key = "") {
+  const parts = String(key || "").split(".");
+  if (parts[0] === "plan" && (parts[1] === "partySize" || parts[1] === "budgetLimit")) return budgetSettingActivityTarget(parts[1], { action: "conflict" });
+  if (parts[0] === "plan" && parts[1]) return planMetaActivityTarget(parts[1], { action: "conflict" });
+  if (parts[0] === "transportQuotes") return { type: "transportQuote", quoteId: parts[1] === "order" ? "" : parts[1] || "", action: "conflict" };
+  if (parts[0] === "candidates") return { type: "candidate", candidateId: parts[1] === "order" ? "" : parts[1] || "", action: "conflict" };
+  if (parts[0] === "activities") return { type: "activity", action: "conflict" };
+  if (parts[0] !== "days") return null;
+  const dayId = parts[1] || "";
+  if (dayId === "order") return { type: "dayOrder", action: "conflict" };
+  if (!dayId || parts.length <= 3 || parts[2] === "removed" || parts[2] === "added") {
+    return dayActivityTarget(dayId, { action: "conflict" });
+  }
+  if (parts[2] === "stops") {
+    return stopActivityTarget(dayId, parts[3] === "order" ? "" : parts[3] || "", { field: parts[4] || "", action: "conflict" });
+  }
+  if (parts[2] === "blocks") {
+    return dayBlockActivityTarget(dayId, parts[3] === "order" ? "" : parts[3] || "", { field: parts[4] || "", action: "conflict" });
+  }
+  return dayActivityTarget(dayId, { field: parts[2] || "", action: "conflict" });
+}
+
 function collectListDiffChanges(changes, baseItems = [], nextItems = [], options = {}) {
   const {
     path = "list",
@@ -453,6 +475,7 @@ function conflictDiffSummary(conflict = {}) {
       localDetail: conflictValueDetail(localChanges.get(key)?.value),
       remoteDetail: conflictValueDetail(remoteChanges.get(key)?.value),
       selectable: isSelectableConflictKey(key),
+      target: conflictTargetForKey(key),
       choice: conflictFieldChoices.get(key) || "merge",
     }));
   return {
@@ -1928,6 +1951,7 @@ function showConflictPanel(conflict) {
               <details>
                 <summary>
                   <span>${escapeHtml(item.label)}</span>
+                  ${item.target ? `<button type="button" class="conflict-locate-btn" data-conflict-locate="${escapeHtml(encodeURIComponent(JSON.stringify(item.target)))}">${icon("map-pin")}定位</button>` : ""}
                   <small>我的：${escapeHtml(item.local)} / 云端：${escapeHtml(item.remote)}</small>
                 </summary>
                 <div class="conflict-value-compare">
@@ -13459,6 +13483,49 @@ function focusPlanMetaActivityTarget(detail = null) {
   return true;
 }
 
+function focusConflictFieldAfterTarget(detail = null) {
+  if (!detail || typeof detail !== "object") return false;
+  const field = String(detail.field || "");
+  if (!field) return false;
+  let target = null;
+  if (detail.type === "dayBlock") {
+    const block = detail.blockId ? dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(detail.blockId)}"]`) : null;
+    target = field === "type"
+      ? block?.querySelector(`[data-day-block-type="${CSS.escape(detail.blockId || "")}"]`)
+      : block?.querySelector("[data-edit-day-block]");
+  } else if (detail.type === "stop") {
+    const textMeta = COLLAB_TEXT_FIELDS.find((item) => item.field === field);
+    const structMeta = COLLAB_STRUCT_FIELDS.find((item) => item.field === field);
+    target = dom[textMeta?.domKey] || dom[structMeta?.domKey] || null;
+  } else if (detail.type === "day") {
+    const dayMeta = COLLAB_DAY_TEXT_FIELDS.find((item) => item.docField === field);
+    target = dom[dayMeta?.domKey] || (field === "date" ? dom.fieldDayDate : null);
+  } else if (detail.type === "planMeta") {
+    const planMeta = COLLAB_PLAN_TEXT_PRESENCE_FIELDS.find((item) => item.planField === field);
+    target = dom[planMeta?.domKey] || (field === "dateRange" ? dom.startDateInput : null);
+  }
+  if (!target) return false;
+  pulseActivityTarget(target, { focus: true, block: "center" });
+  return true;
+}
+
+function focusConflictTarget(detail = null) {
+  if (!detail || typeof detail !== "object") return false;
+  let focused = false;
+  if (detail.type === "planMeta") focused = focusPlanMetaActivityTarget(detail);
+  else if (detail.type === "dayBlock") focused = focusDayBlockActivityTarget(detail);
+  else if (detail.type === "stop") focused = focusStopActivityTarget(detail);
+  else if (detail.type === "day") focused = focusDayActivityTarget(detail);
+  else if (detail.type === "dayOrder") focused = focusActivityTarget(".day-list");
+  else if (detail.type === "transportQuote") focused = focusTransportQuoteActivityTarget(detail);
+  else if (detail.type === "candidate") focused = focusCandidateActivityTarget(detail);
+  else if (detail.type === "activity") focused = focusActivityTarget(".activity-panel");
+  if (!focused) return false;
+  focusConflictFieldAfterTarget(detail);
+  dom.saveState.textContent = "已定位到冲突对应位置";
+  return true;
+}
+
 function focusDeletedCommentActivityTarget(detail = null) {
   if (!detail || typeof detail !== "object") return false;
   if (detail.scope === "block" && focusDayBlockActivityTarget({ type: "dayBlock", dayId: detail.dayId || "", blockId: detail.blockId || "", deletedComment: true })) {
@@ -16603,6 +16670,14 @@ dom.editAccessForm?.addEventListener("submit", async (event) => {
 dom.mergeConflictBtn?.addEventListener("click", () => resolveConflict("merge"));
 dom.keepLocalConflictBtn?.addEventListener("click", () => resolveConflict("local"));
 dom.useRemoteConflictBtn?.addEventListener("click", () => resolveConflict("remote"));
+dom.conflictDiff?.addEventListener("click", (event) => {
+  const locateButton = event.target.closest?.("[data-conflict-locate]");
+  if (!locateButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const target = parseActivityDetail(locateButton.dataset.conflictLocate || "");
+  if (!focusConflictTarget(target)) dom.saveState.textContent = "暂时无法定位这项冲突";
+});
 dom.conflictDiff?.addEventListener("change", (event) => {
   const input = event.target.closest?.("[data-conflict-choice]");
   if (!input) return;

@@ -229,6 +229,16 @@ assert(extractFunctionBody("conflictDiffSummary").includes("remoteDetail: confli
 assert(extractFunctionBody("showConflictPanel").includes("renderOverlapGroup(diff.overlap"), "Conflict panel must render overlap entries with local/remote value previews.");
 assert(extractFunctionBody("showConflictPanel").includes("<details>"), "Conflict panel overlap entries must be expandable for detailed review.");
 assert(extractFunctionBody("showConflictPanel").includes("conflict-value-compare"), "Conflict panel overlap entries must show detailed local/remote comparisons.");
+assert(source.includes("function conflictTargetForKey"), "Conflict overlap entries must derive focus targets from diff keys.");
+const conflictTargetBody = extractFunctionBody("conflictTargetForKey");
+assert(conflictTargetBody.includes("budgetSettingActivityTarget"), "Conflict targets must route budget setting conflicts to budget controls.");
+assert(conflictTargetBody.includes('type: "dayOrder"'), "Conflict targets must route day order conflicts to the day list.");
+assert(conflictTargetBody.includes('parts[3] === "order"'), "Conflict targets must handle stop/block order conflicts as section targets.");
+assert(extractFunctionBody("conflictDiffSummary").includes("target: conflictTargetForKey(key)"), "Conflict overlap summaries must carry focus targets.");
+assert(extractFunctionBody("showConflictPanel").includes("data-conflict-locate"), "Conflict overlap entries must expose locate buttons.");
+assert(source.includes("function focusConflictTarget"), "Conflict locate buttons must focus the corresponding app area.");
+assert(source.includes("function focusConflictFieldAfterTarget"), "Conflict locate buttons must focus the specific field when possible.");
+assert(source.includes('dom.conflictDiff?.addEventListener("click"'), "Conflict locate buttons must be handled by the conflict panel.");
 assert(source.includes("let conflictFieldChoices = new Map()"), "Conflict field choices must be tracked while the conflict panel is open.");
 assert(source.includes("function isSelectableConflictKey"), "Conflict panel must distinguish field-level choices from structural conflicts.");
 assert(source.includes("function applyConflictFieldChoices"), "Conflict resolution must be able to apply per-field local/remote choices.");
