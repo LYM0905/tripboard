@@ -1560,12 +1560,10 @@ function mergeDayBlocks(localBlocks = [], remoteBlocks = [], baseBlocks = []) {
     if (!remoteBlock) return block;
     const baseBlock = baseById.get(block.id) || {};
     const mergedText = mergeTextScalarField(baseBlock.text, block.text, remoteBlock.text);
-    const mergedComments = transformCommentAnchorsForField(
-      mergeComments(block.comments || [], remoteBlock.comments || []),
-      `block:${block.id}`,
-      block.text || "",
-      mergedText,
-    );
+    const blockField = `block:${block.id}`;
+    const localComments = transformCommentAnchorsForField(block.comments || [], blockField, block.text || "", mergedText);
+    const remoteComments = transformCommentAnchorsForField(remoteBlock.comments || [], blockField, remoteBlock.text || "", mergedText);
+    const mergedComments = mergeComments(localComments, remoteComments);
     return normalizeDayBlock({
       ...remoteBlock,
       ...block,

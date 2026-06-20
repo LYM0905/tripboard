@@ -247,6 +247,7 @@ const dayBlockMergeBody = extractFunctionBody("mergeDayBlocks");
 assert(dayBlockMergeBody.includes("baseBlocks") && dayBlockMergeBody.includes("mergeTextScalarField(baseBlock.text"), "Day block text conflicts must use base-aware text merge.");
 assert(dayBlockMergeBody.includes('textYjs: mergedText === block.text ? block.textYjs : ""'), "Merged day block text must discard stale textYjs when text changed.");
 assert(dayBlockMergeBody.includes("transformCommentAnchorsForField") && dayBlockMergeBody.includes("`block:${block.id}`"), "Merged day block text must move block comment anchors.");
+assert(dayBlockMergeBody.includes("const localComments = transformCommentAnchorsForField") && dayBlockMergeBody.includes("const remoteComments = transformCommentAnchorsForField"), "Merged day block comments must move local and remote anchors from their own text baselines.");
 for (const field of ["name", "destination", "origin", "startDate", "endDate", "dateRange"]) {
   assert(source.includes(`syncCollabPlanTextFieldToDoc("${field}"`), `Plan ${field} input must write to plan-level Y.Text before cloud save.`);
 }
