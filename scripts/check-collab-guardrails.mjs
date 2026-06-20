@@ -235,6 +235,8 @@ assert(source.includes("function applyConflictFieldChoices"), "Conflict resoluti
 assert(extractFunctionBody("resolveConflict").includes("applyConflictFieldChoices"), "Smart merge conflict resolution must apply per-field choices.");
 assert(extractFunctionBody("resolveConflict").includes("appliedFieldChoices = true"), "Smart merge must track when per-field choices override the merged result.");
 assert(extractFunctionBody("resolveConflict").includes("mergedWithYjsSnapshot = false"), "Per-field choices must force rebuilding the plan-level Yjs snapshot before saving.");
+assert(extractFunctionBody("resolveConflict").includes("fieldChoiceCount = conflictFieldChoices.size"), "Conflict activity logs must include how many field choices were applied.");
+assert(extractFunctionBody("resolveConflict").includes("fieldChoiceCount} 项"), "Conflict activity logs must show the applied field choice count.");
 assert(extractFunctionBody("resolveConflict").includes("已按逐项选择合并冲突"), "Saving after per-field choices must use a distinct conflict resolution label.");
 assert(extractFunctionBody("conflictDiffSummary").includes("selectable: isSelectableConflictKey"), "Conflict overlap entries must mark whether they support per-field choices.");
 assert(extractFunctionBody("showConflictPanel").includes("data-conflict-choice"), "Conflict overlap entries must expose per-field choice controls.");

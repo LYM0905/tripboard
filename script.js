@@ -9422,10 +9422,12 @@ async function resolveConflict(mode) {
     }
     let mergedWithYjsSnapshot = false;
     let appliedFieldChoices = false;
+    let fieldChoiceCount = 0;
     if (mode === "merge") {
       mergedWithYjsSnapshot = await mergeConflictPlanYjsSnapshot(remotePlan, "已通过协作快照合并冲突");
       if (!mergedWithYjsSnapshot) state = mergePlans(localPlan, remotePlan, basePlan);
       if (conflictFieldChoices.size) {
+        fieldChoiceCount = conflictFieldChoices.size;
         state = applyConflictFieldChoices(state, { ...conflict, local: localPlan, remote: remotePlan, base: basePlan });
         appliedFieldChoices = true;
         mergedWithYjsSnapshot = false;
@@ -9436,7 +9438,7 @@ async function resolveConflict(mode) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     lastRemoteUpdatedAt = conflict.updatedAt || lastRemoteUpdatedAt;
     hideConflictPanel();
-    await logActivity(mergedWithYjsSnapshot ? "通过协作快照合并冲突" : mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
+    await logActivity(appliedFieldChoices ? `按逐项选择合并冲突（${fieldChoiceCount} 项）` : mergedWithYjsSnapshot ? "通过协作快照合并冲突" : mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
     if (!mergedWithYjsSnapshot) {
       await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep", {
         allowReplace: true,
