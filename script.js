@@ -1560,13 +1560,19 @@ function mergeDayBlocks(localBlocks = [], remoteBlocks = [], baseBlocks = []) {
     if (!remoteBlock) return block;
     const baseBlock = baseById.get(block.id) || {};
     const mergedText = mergeTextScalarField(baseBlock.text, block.text, remoteBlock.text);
+    const mergedComments = transformCommentAnchorsForField(
+      mergeComments(block.comments || [], remoteBlock.comments || []),
+      `block:${block.id}`,
+      block.text || "",
+      mergedText,
+    );
     return normalizeDayBlock({
       ...remoteBlock,
       ...block,
       text: mergedText,
       textYjs: mergedText === block.text ? block.textYjs : "",
       done: block.done || remoteBlock.done,
-      comments: mergeComments(block.comments || [], remoteBlock.comments || []),
+      comments: mergedComments,
       updatedAt: block.updatedAt || remoteBlock.updatedAt,
       updatedBy: block.updatedBy || remoteBlock.updatedBy,
     });
