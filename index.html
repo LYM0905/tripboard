@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260617-amap-sdk" />
+    <link rel="stylesheet" href="styles.css?v=20260619-yjs-route-patch-live" />
   </head>
   <body>
     <div class="app-shell">
@@ -48,6 +48,7 @@
             <button class="text-btn" id="createSharedTripBtn"><i data-lucide="cloud-upload"></i>创建共享计划</button>
             <button class="text-btn" id="copySharedLinkBtn"><i data-lucide="key-round"></i>复制口令编辑链接</button>
             <button class="text-btn" id="copyInviteLinkBtn"><i data-lucide="user-plus"></i>复制直入邀请</button>
+            <button class="text-btn" id="copyCommentLinkBtn"><i data-lucide="message-square-more"></i>复制评论链接</button>
             <button class="text-btn" id="copyReadonlyLinkBtn"><i data-lucide="eye"></i>复制只读链接</button>
           </div>
           <form class="access-form" id="editAccessForm">
@@ -84,6 +85,10 @@
           </div>
           <div class="meter" aria-hidden="true"><span id="budgetMeter"></span></div>
           <div class="budget-grid" id="budgetGrid"></div>
+          <div class="budget-actions">
+            <button type="button" class="text-btn" id="budgetAdoptEstimatesBtn"><i data-lucide="ticket-check"></i>采用门票估算</button>
+            <button type="button" class="text-btn" id="budgetEnrichPlacesBtn"><i data-lucide="image-plus"></i>补全地点图片</button>
+          </div>
           <div class="budget-tools">
             <label>
               同行人数
@@ -94,6 +99,7 @@
               <input id="budgetLimitInput" type="number" min="0" step="100" value="10000" />
             </label>
             <div class="budget-settlement" id="budgetSettlement"></div>
+            <div class="budget-combo" id="budgetCombo"></div>
           </div>
         </section>
 
@@ -357,13 +363,23 @@
 
         <section class="quick-add-panel">
           <div class="section-title">
-            <span>快速加入景点</span>
-            <strong>可用高德关键词</strong>
+            <span>快速加入景点/费用</span>
+            <strong>可预选进预算</strong>
           </div>
           <form class="quick-add-form" id="quickAddForm">
             <label>
-              景点名称
-              <input id="quickPlaceName" placeholder="例如：莫高窟、嘉峪关关城" required />
+              名称
+              <input id="quickPlaceName" placeholder="例如：莫高窟、敦煌住宿" required />
+            </label>
+            <label>
+              类型
+              <select id="quickType">
+                <option value="Scenic">景点/门票</option>
+                <option value="Hotel">住宿</option>
+                <option value="Food">餐饮</option>
+                <option value="Transport">交通</option>
+                <option value="Other">其他</option>
+              </select>
             </label>
             <label>
               高德地点关键词
@@ -377,9 +393,21 @@
               预算
               <input id="quickBudget" type="number" min="0" step="1" placeholder="240" />
             </label>
+            <label>
+              已付
+              <input id="quickPaid" type="number" min="0" step="1" placeholder="可选" />
+            </label>
+            <label>
+              付款人
+              <input id="quickPayer" placeholder="例如：林 / AA" />
+            </label>
             <label class="full">
               地址/备注
               <input id="quickAddress" placeholder="可粘贴高德地址、集合点或订单里的地点" />
+            </label>
+            <label class="quick-check full">
+              <input id="quickSelected" type="checkbox" />
+              <span>加入备选池时纳入预算组合</span>
             </label>
             <div class="quick-actions full">
               <button type="button" class="text-btn" id="openAmapBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
@@ -531,6 +559,7 @@
             <div class="amap-place-results full" id="fieldAmapCandidates" hidden></div>
             <div class="form-actions full">
               <button type="button" class="text-btn" id="amapLookupBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
+              <a class="text-btn" id="officialImageSearchLink" href="#" target="_blank" rel="noopener"><i data-lucide="image-search"></i>查官方图</a>
               <button type="button" class="text-btn" id="moveUpBtn"><i data-lucide="arrow-up"></i>上移</button>
               <button type="button" class="text-btn" id="moveDownBtn"><i data-lucide="arrow-down"></i>下移</button>
               <button type="button" class="danger-btn" id="deleteStopBtn"><i data-lucide="trash-2"></i>删除</button>
@@ -691,7 +720,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-amap-sdk"></script>
-    <script src="script.js?v=20260617-amap-sdk"></script>
+    <script src="config.js?v=20260619-yjs-route-patch-live"></script>
+    <script src="script.js?v=20260619-yjs-route-patch-live"></script>
   </body>
 </html>

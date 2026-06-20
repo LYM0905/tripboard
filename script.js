@@ -1,10 +1,14 @@
-const STORAGE_KEY = "tripboard-editable-v1";
+﻿const STORAGE_KEY = "tripboard-editable-v1";
 const CTRIP_CONFIG_KEY = "tripboard-ctrip-connector-v1";
 const MEMBER_PROFILE_KEY = "tripboard-member-profile-v1";
 const SERVICE_CONFIG_KEY = "tripboard-service-connectors-v1";
 const EXTERNAL_IMPORT_CONFIG_KEY = "tripboard-external-import-v1";
 const EDIT_ACCESS_PREFIX = "tripboard-edit-access:";
 const EDIT_KEY_VALUE_PREFIX = "tripboard-edit-key-value:";
+const ACCESS_ROLE_PARAM = "access";
+const ACCESS_ROLE_VIEWER = "viewer";
+const ACCESS_ROLE_COMMENTER = "commenter";
+const ACCESS_ROLE_EDITOR = "editor";
 const VERSION_PREFIX = "tripboard-version-history:";
 const PENDING_PLAN_UPDATES_PREFIX = "tripboard-pending-plan-yjs:";
 const COLLAPSED_BLOCKS_PREFIX = "tripboard-collapsed-day-blocks:";
@@ -73,6 +77,13 @@ const COLLAB_STRUCT_FIELDS = [
   { field: "userVoted", type: "boolean" },
   { field: "favorite", type: "boolean" },
 ];
+const COLLAB_STOP_PATCH_FIELDS = Array.from(new Set([
+  ...COLLAB_TEXT_FIELDS.map((item) => item.field),
+  ...COLLAB_STRUCT_FIELDS.map((item) => item.field),
+  "comments",
+  "x",
+  "y",
+]));
 const COLLAB_STRUCT_PRESENCE_FIELDS = COLLAB_STRUCT_FIELDS
   .filter((field) => field.domKey && field.presenceId)
   .map((field) => ({ ...field, field: `struct:${field.field}`, structField: field.field, scope: "stop" }));
@@ -100,7 +111,17 @@ const PLAN_SETTING_FIELDS = [
   { field: "editKeyHint", type: "string" },
 ];
 const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "dateRange", "startDate", "endDate", "cover", "editKeyHint"];
-const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading", "callout"];
+const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading", "callout", "quote", "divider", "checklist"];
+const DAY_BLOCK_COMMANDS = [
+  { type: "todo", command: "/todo", aliases: ["/待办", "/task"], label: "待办", description: "确认事项、清单、办理步骤", keywords: ["待办", "任务", "清单", "todo", "task"] },
+  { type: "note", command: "/note", aliases: ["/备注", "/memo"], label: "备注", description: "普通文字、补充信息、想法", keywords: ["备注", "笔记", "文字", "note", "memo"] },
+  { type: "decision", command: "/decision", aliases: ["/决定", "/决策"], label: "决定", description: "已经确认的选择和结论", keywords: ["决定", "决策", "选择", "decision"] },
+  { type: "heading", command: "/heading", aliases: ["/h", "/h2", "/标题"], label: "标题", description: "分隔当天行程段落", keywords: ["标题", "分组", "heading", "h2"] },
+  { type: "callout", command: "/callout", aliases: ["/tip", "/提醒", "/提示", "/注意"], label: "提醒", description: "证件、预约、天气、避峰提示", keywords: ["提醒", "提示", "注意", "callout", "tip"] },
+  { type: "quote", command: "/quote", aliases: ["/引用", "/摘录"], label: "引用", description: "资料摘录、攻略原文、参考信息", keywords: ["引用", "摘录", "攻略", "quote"] },
+  { type: "divider", command: "/divider", aliases: ["/line", "/hr", "/分隔线", "/分割线"], label: "分隔线", description: "把当天行程拆成清晰段落", keywords: ["分隔", "分割", "段落", "divider", "line", "hr"] },
+  { type: "checklist", command: "/checklist", aliases: ["/check", "/清单", "/检查清单"], label: "检查清单", description: "一块内记录多项准备事项", keywords: ["检查", "清单", "子任务", "checklist", "check"] },
+];
 
 const images = {
   kyoto:
@@ -784,8 +805,60 @@ function amapMarkerUrl(stop) {
   return amapSearchUrl(keyword);
 }
 
+function officialImageSearchUrl(stopOrKeyword = "") {
+  const keyword = typeof stopOrKeyword === "string"
+    ? stopOrKeyword
+    : [stopOrKeyword?.address, stopOrKeyword?.title || stopOrKeyword?.amapKeyword, "官方 图片"].filter(Boolean).join(" ");
+  return `https://www.baidu.com/s?wd=${encodeURIComponent(keyword || "景点 官方 图片")}`;
+}
+
+function uniqueTexts(values = []) {
+  const seen = new Set();
+  return values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function amapCityHint(keyword = "") {
+  const text = `${keyword || ""} ${state.destination || ""}`;
+  const rules = [
+    [/兰州|甘肃省博物馆|黄河铁桥|中山桥|张掖路/, "兰州"],
+    [/敦煌|莫高窟|鸣沙山|月牙泉|阳关|玉门关|雅丹/, "敦煌"],
+    [/张掖|七彩丹霞|马蹄寺|平山湖/, "张掖"],
+    [/嘉峪关|关城|悬壁长城/, "嘉峪关"],
+    [/酒泉/, "酒泉"],
+  ];
+  const matched = rules.find(([pattern]) => pattern.test(text));
+  if (matched) return matched[1];
+  const cityMatch = text.match(/([\u4e00-\u9fa5]{2,12}(?:市|州|盟|县|区))/);
+  if (cityMatch) return cityMatch[1].replace(/[县区]$/, "");
+  if (state.destination && !/[省自治区]$/.test(state.destination)) return state.destination;
+  return "";
+}
+
+function amapKeywordVariants(keyword = "") {
+  const value = String(keyword || "").replace(/\s+/g, " ").trim();
+  const destination = String(state.destination || "").trim();
+  const parts = value.split(/\s+/).filter(Boolean);
+  return uniqueTexts([
+    value,
+    destination && value.startsWith(destination) ? value.slice(destination.length).trim() : "",
+    destination ? value.replace(destination, "").trim() : "",
+    parts.length > 1 ? parts.at(-1) : "",
+    value.replace(/^(甘肃|甘肃省|兰州|兰州市|敦煌|敦煌市|张掖|张掖市|嘉峪关|嘉峪关市)\s*/, "").trim(),
+  ]);
+}
+
 function normalizeAmapPlace(place, keyword = "") {
   if (!place) return null;
+  const photos = Array.isArray(place.photos) ? place.photos : [];
+  const firstPhoto = photos.find((photo) => photo?.url || photo?.src || photo?.image);
   return {
     id: place.id || place.uid || "",
     title: place.title || place.name || keyword,
@@ -795,21 +868,45 @@ function normalizeAmapPlace(place, keyword = "") {
     adcode: place.adcode || "",
     city: place.city || "",
     type: place.type || "",
+    image: place.image || place.photo || firstPhoto?.url || firstPhoto?.src || firstPhoto?.image || "",
+    photos,
     source: place.source || "高德 Web服务",
   };
 }
 
 async function lookupAmapPlaces(keyword, { limit = 6 } = {}) {
   if (!serviceConfig.amapEndpoint || !keyword) return null;
-  const response = await fetch(serviceConfig.amapEndpoint, {
-    method: "POST",
-    headers: serviceHeaders("", serviceConfig.amapEndpoint),
-    body: JSON.stringify({ keyword, city: state.destination || "", limit }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
-  const places = Array.isArray(data.places) ? data.places : [data.place || data].filter(Boolean);
-  return places.map((place) => normalizeAmapPlace(place, keyword)).filter(Boolean);
+  const variants = amapKeywordVariants(keyword);
+  const cityHints = uniqueTexts([amapCityHint(keyword), state.destination]).concat("");
+  const seen = new Set();
+  let lastError = "";
+  for (const variant of variants) {
+    for (const city of cityHints) {
+      try {
+        const response = await fetch(serviceConfig.amapEndpoint, {
+          method: "POST",
+          headers: serviceHeaders("", serviceConfig.amapEndpoint),
+          body: JSON.stringify({ keyword: variant, city, limit }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+        const places = (Array.isArray(data.places) ? data.places : [data.place || data].filter(Boolean))
+          .map((place) => normalizeAmapPlace(place, variant))
+          .filter(Boolean)
+          .filter((place) => {
+            const key = place.id || `${place.title}:${place.lng}:${place.lat}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        if (places.length) return places.slice(0, limit);
+      } catch (error) {
+        lastError = error.message;
+      }
+    }
+  }
+  if (lastError) throw new Error(lastError);
+  return [];
 }
 
 async function lookupAmapPlace(keyword) {
@@ -826,6 +923,13 @@ function clearAmapOverlay() {
   amapMapPolylines.forEach((polyline) => polyline.setMap(null));
   amapMapMarkers = [];
   amapMapPolylines = [];
+}
+
+function destroyAmapMap() {
+  if (!amapMap) return;
+  clearAmapOverlay();
+  amapMap.destroy();
+  amapMap = null;
 }
 
 function coordinateForAmap(stop) {
@@ -899,6 +1003,8 @@ async function renderAmapSdkMap(day) {
   const points = day.stops.map(coordinateForAmap);
   const validPoints = points.filter(Boolean);
   if (!validPoints.length) {
+    destroyAmapMap();
+    renderFallbackMap(day);
     if (dom.mapProviderStatus) dom.mapProviderStatus.textContent = "高德地图 · 待定位";
     return;
   }
@@ -927,8 +1033,7 @@ async function renderAmapSdkMap(day) {
       },
     });
     marker.on("click", () => {
-      activeStop = index;
-      render();
+      switchActiveStop(index);
     });
     amapMap.add(marker);
     amapMapMarkers.push(marker);
@@ -1580,6 +1685,17 @@ function conflictSummary(conflict) {
   return `${who} 在 ${when} 保存了云端版本，同时你本地也有未同步修改。`;
 }
 
+function timestampValue(value = "") {
+  const time = Date.parse(value || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isStaleRemoteUpdate(updatedAt = "") {
+  const nextTime = timestampValue(updatedAt);
+  const currentTime = timestampValue(lastRemoteUpdatedAt);
+  return Boolean(nextTime && currentTime && nextTime <= currentTime);
+}
+
 function showConflictPanel(conflict) {
   pendingConflict = { ...conflict, base: conflict.base || clone(lastSyncedState || {}) };
   if (!dom.conflictPanel) return;
@@ -1925,6 +2041,15 @@ function currentFocusedBlockContext() {
   };
 }
 
+function dayBlockSelectionForPresence(day = currentDay()) {
+  const validIds = new Set(normalizeDayBlocks(day?.blocks || []).map((block) => block.id));
+  const selectedIds = [...selectedDayBlockIds].filter((blockId) => validIds.has(blockId));
+  return {
+    ids: selectedIds.slice(0, 50),
+    count: selectedIds.length,
+  };
+}
+
 function blockEditingLabel(context = {}) {
   if (!context?.blockId) return "";
   if (context.mode === "comment") return "正在评论协作块";
@@ -1943,6 +2068,17 @@ function remoteEditorsForBlock(blockId = "") {
   });
 }
 
+function remoteSelectorsForBlock(blockId = "") {
+  const dayId = currentDay()?.id || "";
+  const ownMemberId = memberProfile?.id || sessionId;
+  if (!blockId) return [];
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member) || member.activeDayId !== dayId) return false;
+    return Array.isArray(member.selectedDayBlockIds) && member.selectedDayBlockIds.includes(blockId);
+  });
+}
+
 function remoteActiveEditorsForBlock(blockId = "") {
   return remoteEditorsForBlock(blockId).filter((member) => (
     member.blockSelection ||
@@ -1952,6 +2088,13 @@ function remoteActiveEditorsForBlock(blockId = "") {
 
 function remoteBlockEditorNames(blockId = "") {
   const names = [...new Set(remoteActiveEditorsForBlock(blockId).map((member) => member.name || "协作者"))];
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return visible ? `${visible}${extra}` : "";
+}
+
+function remoteBlockSelectorNames(blockId = "") {
+  const names = [...new Set(remoteSelectorsForBlock(blockId).map((member) => member.name || "协作者"))];
   const visible = names.slice(0, 3).join("、");
   const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
   return visible ? `${visible}${extra}` : "";
@@ -2094,6 +2237,12 @@ function upsertOnlineMember(member = {}) {
   onlineMembers = onlineMembers.filter((item) => freshMember(item));
 }
 
+function refreshTextSelectionPresenceViews() {
+  renderMembers();
+  renderTextPresence();
+  renderEditorLockState();
+}
+
 function currentTextRoomId(stopId = currentStop()?.id) {
   return tripId && stopId ? `text:${tripId}:${stopId}` : "";
 }
@@ -2213,6 +2362,37 @@ function normalizeStopListsFromDays(days = []) {
     lists[day.id] = normalizeCollaborativeStopList(day.stops || []);
   });
   return lists;
+}
+
+function mergeInsertedStopsIntoLatest(latestStops = [], localStops = [], insertedIds = new Set()) {
+  const next = normalizeCollaborativeStopList(latestStops);
+  const nextIds = new Set(next.map((stop) => stop.id));
+  const normalizedLocal = normalizeCollaborativeStopList(localStops);
+  normalizedLocal.forEach((stop, localIndex) => {
+    if (!insertedIds.has(stop.id) || nextIds.has(stop.id)) return;
+    let insertIndex = next.length;
+    for (let index = localIndex - 1; index >= 0; index -= 1) {
+      const previousId = normalizedLocal[index]?.id || "";
+      const previousIndex = next.findIndex((item) => item.id === previousId);
+      if (previousIndex >= 0) {
+        insertIndex = previousIndex + 1;
+        break;
+      }
+    }
+    if (insertIndex === next.length) {
+      for (let index = localIndex + 1; index < normalizedLocal.length; index += 1) {
+        const nextId = normalizedLocal[index]?.id || "";
+        const nextIndex = next.findIndex((item) => item.id === nextId);
+        if (nextIndex >= 0) {
+          insertIndex = nextIndex;
+          break;
+        }
+      }
+    }
+    next.splice(insertIndex, 0, stop);
+    nextIds.add(stop.id);
+  });
+  return normalizeCollaborativeStopList(next);
 }
 
 function normalizeStopTextStateEntries(entries = []) {
@@ -2335,10 +2515,9 @@ function queuePendingPlanUpdate(updateBase64, origin = "local-plan-yjs") {
 }
 
 async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
-  if (!tripId || !supabaseClient || isReadonlyMode || !canEdit() || pendingConflict) return false;
+  if (!tripId || !supabaseClient || isReadonlyMode || !canWriteCollaborativeData() || pendingConflict) return false;
   const updates = pendingPlanUpdates();
   if (!updates.length) return true;
-  const replayedIds = new Set(updates.map((entry) => entry.id).filter(Boolean));
   await bindCollabPlanDoc();
   if (!collabPlanDoc) return false;
   let Y;
@@ -2348,13 +2527,17 @@ async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
     return false;
   }
   let applied = 0;
+  let failed = 0;
+  const appliedIds = new Set();
   isApplyingCollabPlanRemote = true;
   try {
     updates.forEach((entry) => {
       try {
         Y.applyUpdate(collabPlanDoc, base64ToBytes(entry.update), `pending:${entry.origin || "local"}`);
         applied += 1;
+        if (entry.id) appliedIds.add(entry.id);
       } catch (error) {
+        failed += 1;
         console.warn("Pending plan update could not be applied", error);
       }
     });
@@ -2365,11 +2548,20 @@ async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
   persistCurrentPlanFromDoc(`${reason}：已合并 ${applied} 条离线协作更新`);
   const pushed = await pushRemoteState(`${reason}：已同步 ${applied} 条离线协作更新`, { skipPendingFlush: true });
   if (pushed) {
-    clearPendingPlanUpdatesById(replayedIds);
+    clearPendingPlanUpdatesById(appliedIds);
     if (collabTextDoc && collabTextStopId) {
-      await persistCurrentTextFromDoc(`${reason}：当前地点文本协作快照已同步`);
+      await persistCurrentTextFromDoc(`${reason}：当前地点文本协作快照已同步`, { scheduleSave: false });
     }
-    dom.collabStatus.textContent = `${reason}：${applied} 条离线协作更新已同步到云端。`;
+    if (collabDayTextDoc && collabDayTextDayId) {
+      await persistCurrentDayTextFromDoc(`${reason}：当前当天文本协作快照已同步`, { scheduleSave: false });
+    }
+    if (collabPlanDoc) {
+      persistCurrentPlanFromDoc(`${reason}：计划结构协作快照已同步`, { refreshViews: false, scheduleSave: false, updateStatus: false });
+      lastSyncedState = clone(state);
+    }
+    dom.collabStatus.textContent = failed
+      ? `${reason}：${applied} 条离线协作更新已同步到云端，${failed} 条暂未应用，稍后会继续重试。`
+      : `${reason}：${applied} 条离线协作更新已同步到云端。`;
   }
   return pushed;
 }
@@ -2393,6 +2585,7 @@ function normalizeTransportQuotes(quotes = []) {
       source: quote.source || "手动保存",
       carrier: quote.carrier || quote.airline || "",
       stops: Number(quote.stops || 0),
+      selected: Boolean(quote.selected),
       createdBy: quote.createdBy || "",
       createdAt: quote.createdAt || new Date().toISOString(),
       updatedBy: quote.updatedBy || "",
@@ -2421,6 +2614,12 @@ function normalizeCandidateStops(candidates = []) {
       note: stop.note || "备选池地点，可加入任意一天继续编辑。",
       tags: normalizeTags(stop.tags || ["备选"]),
       budget: numberValue(stop.budget),
+      paid: numberValue(stop.paid),
+      payer: String(stop.payer || "").trim(),
+      selected: Boolean(stop.selected || stop.preselected),
+      lng: String(stop.lng || "").trim(),
+      lat: String(stop.lat || "").trim(),
+      amapKeyword: String(stop.amapKeyword || "").trim(),
       image: stop.image || state.cover || images.city,
       createdBy: stop.createdBy || "",
       createdAt: stop.createdAt || new Date().toISOString(),
@@ -2474,7 +2673,7 @@ function normalizeDayBlock(block = {}) {
     level,
     text,
     textYjs: block.textYjs || "",
-    done: Boolean(block.done),
+    done: type === "divider" ? false : Boolean(block.done),
     comments,
     createdBy: block.createdBy || "",
     createdAt: block.createdAt || new Date().toISOString(),
@@ -2502,6 +2701,51 @@ function normalizeDayBlocksFromDays(days = []) {
     lists[day.id] = normalizeDayBlocks(day.blocks || []);
   });
   return lists;
+}
+
+function sameDayBlockSetAndContent(a = [], b = []) {
+  const first = normalizeDayBlocks(a);
+  const second = normalizeDayBlocks(b);
+  if (first.length !== second.length) return false;
+  const secondById = new Map(second.map((block) => [block.id, block]));
+  return first.every((block) => {
+    const other = secondById.get(block.id);
+    return other && sameSerialized(block, other);
+  });
+}
+
+function dayBlockDeleteDiff(a = [], b = []) {
+  const previous = normalizeDayBlocks(a);
+  const next = normalizeDayBlocks(b);
+  if (!previous.length || previous.length <= next.length) return null;
+  const nextById = new Map(next.map((block) => [block.id, block]));
+  const deletedIds = [];
+  for (const block of previous) {
+    const nextBlock = nextById.get(block.id);
+    if (!nextBlock) {
+      deletedIds.push(block.id);
+      continue;
+    }
+    if (!sameSerialized(block, nextBlock)) return null;
+  }
+  return deletedIds.length ? deletedIds : null;
+}
+
+function dayBlockInsertDiff(a = [], b = []) {
+  const previous = normalizeDayBlocks(a);
+  const next = normalizeDayBlocks(b);
+  if (next.length <= previous.length) return null;
+  const previousById = new Map(previous.map((block) => [block.id, block]));
+  const insertedIds = [];
+  for (const block of next) {
+    const previousBlock = previousById.get(block.id);
+    if (!previousBlock) {
+      insertedIds.push(block.id);
+      continue;
+    }
+    if (!sameSerialized(block, previousBlock)) return null;
+  }
+  return insertedIds.length ? insertedIds : null;
 }
 
 function moveDayBlockList(blocks = [], blockId = "", direction = "down", patch = {}) {
@@ -2666,16 +2910,18 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
   const commentsChanged = !sameSerialized(normalizeComments(stop.comments || []), nextComments);
   const changed = textChanged || structChanged || commentsChanged || stop.textYjs !== nextYjs;
   if (!changed) return;
-  COLLAB_TEXT_FIELDS.forEach(({ field }) => {
-    stop[field] = nextValues[field];
-  });
-  COLLAB_STRUCT_FIELDS.forEach(({ field }) => {
-    stop[field] = clone(nextStructValues[field]);
-  });
+  if (canEdit()) {
+    COLLAB_TEXT_FIELDS.forEach(({ field }) => {
+      stop[field] = nextValues[field];
+    });
+    COLLAB_STRUCT_FIELDS.forEach(({ field }) => {
+      stop[field] = clone(nextStructValues[field]);
+    });
+    stop.textYjs = nextYjs;
+    stop.noteYjs = nextYjs;
+  }
   stop.comments = nextComments;
-  stop.textYjs = nextYjs;
-  stop.noteYjs = nextYjs;
-  await syncStopSnapshotToPlanDoc(stop.id, "local-stop-detail-snapshot");
+  await syncStopSnapshotToPlanDoc(stop.id, "local-stop-detail-snapshot", canEdit() ? undefined : { patchFields: ["comments"] });
   applyStopRealtimeFields(stop);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (updateStatus) setNoteCollabStatus(label);
@@ -2683,8 +2929,9 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
   if (!scheduleSave) return;
   clearTimeout(collabTextSaveTimer);
   collabTextSaveTimer = setTimeout(() => {
-    if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    pushRemoteState("地点协作内容已实时同步").then((pushed) => {
+    if (!canWriteCollaborativeData() || !supabaseClient || !tripId || pendingConflict) return;
+    if (!canEdit() && (!commentsChanged || textChanged || structChanged)) return;
+    pushRemoteState(canEdit() ? "地点协作内容已实时同步" : "地点批注协作内容已同步", { commentOnly: !canEdit() }).then((pushed) => {
       if (pushed) return;
       const pendingCount = pendingPlanUpdates().length;
       if (pendingCount) {
@@ -2715,7 +2962,7 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
   if (collabPlanDoc && !isApplyingCollabPlanRemote && (collabDayTextStatesMap || collabDayMetasArray)) {
     const planOrigin = isApplyingCollabDayTextRemote ? "remote" : "local-day-text-state";
     collabPlanDoc?.transact(() => {
-      if (collabDayTextStatesMap && collabDayTextStatesMap.get(day.id) !== nextYjs) {
+      if (canEdit() && collabDayTextStatesMap && collabDayTextStatesMap.get(day.id) !== nextYjs) {
         collabDayTextStatesMap.set(day.id, nextYjs);
       }
       if (collabDayMetasArray) {
@@ -2727,7 +2974,7 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
             ...latest,
             id: day.id,
             label: latest.label || day.label,
-            ...nextValues,
+            ...(canEdit() ? nextValues : {}),
             comments: nextComments,
           }])[0];
           if (!sameSerialized(latest, merged)) {
@@ -2738,7 +2985,8 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
       }
     }, planOrigin);
   } else {
-    patchDayMetaInDoc(day.id, nextValues, "local-day-text-meta-patch").catch((error) => {
+    const metaPatch = canEdit() ? nextValues : { comments: nextComments };
+    patchDayMetaInDoc(day.id, metaPatch, "local-day-text-meta-patch").catch((error) => {
       console.warn("Day text meta patch failed", error);
     });
   }
@@ -2763,8 +3011,9 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
   if (!scheduleSave) return;
   clearTimeout(collabDayTextSaveTimer);
   collabDayTextSaveTimer = setTimeout(() => {
-    if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
-    saveCollaborativePlanChange("当天文本协作内容已实时同步");
+    if (!canWriteCollaborativeData() || !supabaseClient || !tripId || pendingConflict) return;
+    if (canEdit()) saveCollaborativePlanChange("当天文本协作内容已实时同步");
+    else if (commentsChanged && !textChanged) saveCollaborativeCommentChange("当天批注协作内容已同步");
   }, 900);
 }
 
@@ -3127,6 +3376,60 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   const changed = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || settingTextStatesChanged || settingTextValuesChanged || stopListsChanged || stopTextStatesChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged || planYjsChanged;
   if (!changed) return;
   const visibleChanged = dayMetasChanged || dayTextStatesChanged || dayBlockTextStatesChanged || dayBlockTextValuesChanged || settingTextValuesChanged || stopListsChanged || dayBlocksChanged || quotesChanged || candidatesChanged || activitiesChanged || settingsChanged;
+  const currentDayId = currentDay()?.id || "";
+  const changedDayBlockKeys = new Set();
+  const changedDayBlockTextKeys = new Set();
+  const changedDayBlockCommentKeys = new Set();
+  const changedDayBlockOrderKeys = new Set();
+  const changedDayBlockDeleteKeys = new Map();
+  const changedDayBlockInsertKeys = new Map();
+  if (dayBlocksChanged) {
+    const currentBlocks = normalizeDayBlocksFromDays(state.days || []);
+    const nextBlocksByDay = nextDayBlocks || {};
+    [...new Set([...Object.keys(currentBlocks), ...Object.keys(nextBlocksByDay)])].forEach((dayId) => {
+      const currentDayBlocks = currentBlocks[dayId] || [];
+      const nextDayBlocksForDay = nextBlocksByDay[dayId] || [];
+      if (!sameSerialized(currentDayBlocks, nextDayBlocksForDay)) {
+        changedDayBlockKeys.add(dayId);
+        if (sameDayBlockSetAndContent(currentDayBlocks, nextDayBlocksForDay)) changedDayBlockOrderKeys.add(dayId);
+        const deletedIds = dayBlockDeleteDiff(currentDayBlocks, nextDayBlocksForDay);
+        if (deletedIds?.length) changedDayBlockDeleteKeys.set(dayId, deletedIds);
+        const insertedIds = dayBlockInsertDiff(currentDayBlocks, nextDayBlocksForDay);
+        if (insertedIds?.length) changedDayBlockInsertKeys.set(dayId, insertedIds);
+      }
+      const currentById = new Map(currentDayBlocks.map((block) => [block.id, block]));
+      nextDayBlocksForDay.forEach((nextBlock) => {
+        const currentBlock = currentById.get(nextBlock.id);
+        if (!currentBlock) return;
+        const currentWithoutComments = { ...currentBlock, comments: [] };
+        const nextWithoutComments = { ...nextBlock, comments: [] };
+        if (sameSerialized(currentWithoutComments, nextWithoutComments) && !sameSerialized(normalizeComments(currentBlock.comments || []), normalizeComments(nextBlock.comments || []))) {
+          changedDayBlockCommentKeys.add(`${dayId}:${nextBlock.id}`);
+        }
+      });
+    });
+  }
+  if (dayBlockTextStatesChanged || dayBlockTextValuesChanged) {
+    const currentTextStates = dayBlockTextStateSnapshotFromDays(state.days || [], yjsModule);
+    const currentTextValues = dayBlockTextValueSnapshotFromDays(state.days || []);
+    [...new Set([...Object.keys(currentTextStates), ...Object.keys(nextDayBlockTextStates), ...Object.keys(currentTextValues), ...Object.keys(nextDayBlockTextValues)])].forEach((key) => {
+      if (currentTextStates[key] !== nextDayBlockTextStates[key] || currentTextValues[key] !== nextDayBlockTextValues[key]) {
+        const [dayId, blockId] = String(key).split(":");
+        if (dayId) changedDayBlockKeys.add(dayId);
+        if (dayId && blockId) changedDayBlockTextKeys.add(`${dayId}:${blockId}`);
+      }
+    });
+  }
+  const dayBlockOnlyVisibleChange = visibleChanged && !dayMetasChanged && !dayTextStatesChanged && !settingTextValuesChanged && !stopListsChanged && !quotesChanged && !candidatesChanged && !activitiesChanged && !settingsChanged && !stopTextStatesChanged && (dayBlockTextStatesChanged || dayBlockTextValuesChanged || dayBlocksChanged);
+  const currentDayBlockChanged = Boolean(currentDayId && changedDayBlockKeys.has(currentDayId));
+  const currentDayChangedTextBlockIds = [...changedDayBlockTextKeys]
+    .map((key) => key.split(":"))
+    .filter(([dayId, blockId]) => dayId === currentDayId && blockId)
+    .map(([, blockId]) => blockId);
+  const currentDayChangedCommentBlockIds = [...changedDayBlockCommentKeys]
+    .map((key) => key.split(":"))
+    .filter(([dayId, blockId]) => dayId === currentDayId && blockId)
+    .map(([, blockId]) => blockId);
   if (dayMetasChanged) applyDayMetasToState(nextDayMetas);
   if (dayTextStatesChanged) applyDayTextStatesToState(nextDayTextStates);
   if (stopListsChanged) applyStopListsToState(nextStopLists);
@@ -3148,7 +3451,32 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   syncGuideStateFromPlan();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (updateStatus) dom.collabStatus.textContent = label;
-  if (refreshViews && visibleChanged) refreshRealtimePlanViews();
+  if (refreshViews && visibleChanged) {
+    if (dayBlockOnlyVisibleChange && currentDayBlockChanged) {
+      const textOnlyCurrentDayChange = !dayBlocksChanged && currentDayChangedTextBlockIds.length > 0;
+      const commentsOnlyCurrentDayChange = dayBlocksChanged && currentDayChangedCommentBlockIds.length > 0 && changedDayBlockKeys.size === 1 && changedDayBlockKeys.has(currentDayId) && currentDayChangedCommentBlockIds.length === changedDayBlockCommentKeys.size && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
+      const orderOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockOrderKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
+      const deleteOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockDeleteKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
+      const insertOnlyCurrentDayChange = dayBlocksChanged && changedDayBlockKeys.size === 1 && changedDayBlockInsertKeys.has(currentDayId) && !dayBlockTextStatesChanged && !dayBlockTextValuesChanged;
+      if (textOnlyCurrentDayChange && refreshDayBlockTextDom(currentDay(), currentDayChangedTextBlockIds)) {
+        // Text-only update handled without rebuilding the block list.
+      } else if (commentsOnlyCurrentDayChange && currentDayChangedCommentBlockIds.every((blockId) => refreshDayBlockCommentsDom(currentDay(), blockId))) {
+        // Comment-only update handled without rebuilding the block list.
+      } else if (orderOnlyCurrentDayChange && refreshDayBlockOrderDom(currentDay())) {
+        // Order-only update handled by moving existing block nodes.
+      } else if (deleteOnlyCurrentDayChange && refreshDayBlockDeleteDom(currentDay(), changedDayBlockDeleteKeys.get(currentDayId))) {
+        // Delete-only update handled by removing affected block nodes.
+      } else if (insertOnlyCurrentDayChange && refreshDayBlockInsertDom(currentDay(), changedDayBlockInsertKeys.get(currentDayId))) {
+        // Insert-only update handled by inserting new block nodes.
+      } else {
+        renderDayBlocks(currentDay());
+      }
+    } else if (dayBlockOnlyVisibleChange) {
+      requestAnimationFrame(() => refreshDayBlockTextPresence());
+    } else {
+      refreshRealtimePlanViews();
+    }
+  }
   if (!scheduleSave) return;
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = setTimeout(() => {
@@ -3161,6 +3489,63 @@ async function saveCollaborativePlanChange(label = "计划结构协作内容已�
   clearTimeout(collabPlanSaveTimer);
   collabPlanSaveTimer = null;
   await saveState(label);
+}
+
+function scheduleCollaborativePlanSave(label = "计划结构协作内容已实时同步", delay = 900) {
+  clearTimeout(collabPlanSaveTimer);
+  collabPlanSaveTimer = setTimeout(() => {
+    if (!canEdit() || !supabaseClient || !tripId || pendingConflict) return;
+    pushRemoteState(label);
+  }, Math.max(0, Number(delay) || 0));
+}
+
+async function flushPendingDayEditorSyncForSave() {
+  if (!pendingDayEditorSync || !canEdit() || isReadonlyMode) return false;
+  clearTimeout(dayFieldSyncTimer);
+  dayFieldSyncTimer = null;
+  pendingDayEditorSync = false;
+  const dayId = currentDay()?.id || "";
+  const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
+  const updatedDay = applyDayEditorDraftToState(dayDraft);
+  if (!updatedDay || !Object.keys(dayPatch).length) return false;
+  if (Object.prototype.hasOwnProperty.call(dayPatch, "date")) {
+    await syncDayMetasToDoc("save-guard-day-date-field-change", { patchDayIds: [dayId], patchFields: ["date", "label", "title"] });
+  } else {
+    const patched = await patchDayMetaInDoc(dayId, dayPatch, "save-guard-day-field-change-patch");
+    if (!patched) await syncDayMetasToDoc("save-guard-day-field-change-fallback", { patchDayIds: [dayId], patchFields: Object.keys(dayPatch) });
+  }
+  await syncPlanMetaToDoc("save-guard-day-field-change-meta", { fields: ["startDate", "endDate", "dateRange"] });
+  broadcastDayUpdated(updatedDay);
+  return true;
+}
+
+async function flushPendingPlanMetaInputSyncsForSave() {
+  if (!canEdit() || isReadonlyMode) return false;
+  const entries = Object.entries(pendingPlanMetaInputSyncs || {});
+  if (!entries.length) return false;
+  entries.forEach(([key]) => {
+    clearTimeout(planMetaInputSyncTimers[key]);
+    delete planMetaInputSyncTimers[key];
+  });
+  pendingPlanMetaInputSyncs = {};
+  let flushed = false;
+  for (const [, entry] of entries) {
+    if (!entry) continue;
+    if (entry.type === "field") {
+      state[entry.field] = normalizePlanSettingValue(entry.field, entry.value);
+      const synced = await syncPlanSettingToDoc(entry.field, state[entry.field]);
+      if (!synced) await syncPlanMetaToDoc("save-guard-plan-meta-field-fallback", { fields: [entry.field] });
+      flushed = true;
+    } else if (entry.type === "patch") {
+      Object.entries(entry.patch || {}).forEach(([field, value]) => {
+        state[field] = normalizePlanSettingValue(field, value);
+      });
+      await syncPlanMetaToDoc("save-guard-plan-meta-patch", { fields: Object.keys(entry.patch || {}) });
+      flushed = true;
+    }
+  }
+  if (flushed) persistCurrentPlanFromDoc("保存前已刷新计划基础信息防抖输入", { refreshViews: false, scheduleSave: false, updateStatus: false });
+  return flushed;
 }
 
 async function saveCollaborativeTextChange(label = "地点协作内容已实时同步") {
@@ -3177,14 +3562,28 @@ async function saveCollaborativeTextChange(label = "地点协作内容已实时�
   await saveState(label);
 }
 
-async function refreshLiveCollabStateBeforeRemoteSave(label = "保存前已刷新协作快照") {
+async function refreshLiveCollabStateBeforeRemoteSave(label = "保存前已刷新协作快照", options = {}) {
   if (!tripId || isReadonlyMode) return;
+  const { commentOnly = false } = options || {};
+  const pendingBlockTextSyncs = Object.values(dayBlockTextSyncChains || {}).filter(Boolean);
+  if (pendingBlockTextSyncs.length) {
+    await Promise.allSettled(pendingBlockTextSyncs);
+  }
+  if (!commentOnly) {
+    await flushPendingDayEditorSyncForSave();
+    await flushPendingPlanMetaInputSyncsForSave();
+  }
   if (collabTextDoc && collabTextStopId) {
     await persistCurrentTextFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
   }
   if (collabDayTextDoc && collabDayTextDayId) {
     await persistCurrentDayTextFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
   }
+  if (commentOnly && collabPlanDoc) {
+    persistCurrentPlanFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
+    return;
+  }
+  if (commentOnly) return;
   if (!collabPlanDoc || collabPlanTripId !== tripId) {
     await bindCollabPlanDoc();
   }
@@ -3927,6 +4326,7 @@ function renderCommentThreads(comments = [], options = {}) {
     emptyPrefix = "还没有评论",
   } = options;
   const editable = canEdit();
+  const commentable = canComment();
   const { roots, repliesByParent } = commentRootsAndReplies(comments || []);
   const counts = commentFilterCounts(comments || []);
   const activeFilter = counts[filter] ? filter : "all";
@@ -3956,8 +4356,8 @@ function renderCommentThreads(comments = [], options = {}) {
             </div>
             <p>${escapeHtml(comment.text)}</p>
             <div class="comment-actions">
-              ${editable ? `<button type="button" class="comment-action" ${replyAttr}="${escapeHtml(comment.id || "")}">${icon("reply")}回复${replies.length ? ` ${replies.length}` : ""}</button>` : replies.length ? `<span>${replies.length} 条回复</span>` : ""}
-              ${editable ? `<button type="button" class="comment-action" ${resolveAttr}="${escapeHtml(comment.id || "")}">${comment.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}标记解决`}</button>` : ""}
+              ${commentable ? `<button type="button" class="comment-action" ${replyAttr}="${escapeHtml(comment.id || "")}">${icon("reply")}回复${replies.length ? ` ${replies.length}` : ""}</button>` : replies.length ? `<span>${replies.length} 条回复</span>` : ""}
+              ${commentable ? `<button type="button" class="comment-action" ${resolveAttr}="${escapeHtml(comment.id || "")}">${comment.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}标记解决`}</button>` : ""}
             </div>
             ${replies.length ? `<div class="comment-replies">${replies.map((reply) => renderCommentReply(reply, editable, deleteAttr)).join("")}</div>` : ""}
           </div>
@@ -4023,7 +4423,38 @@ function renderDayComments(day = currentDay()) {
   refreshIcons();
 }
 
+function refreshStopCommentMutationViews(stop = currentStop()) {
+  if (!stop || !dom.commentList) return false;
+  renderStopComments(stop);
+  if (dom.commentCount) dom.commentCount.textContent = (stop.comments || []).length;
+  renderCommentIndex();
+  refreshIcons();
+  return true;
+}
+
+function refreshDayCommentMutationViews(day = currentDay()) {
+  if (!day || !dom.dayCommentList) return false;
+  renderDayComments(day);
+  renderCommentIndex();
+  refreshIcons();
+  return true;
+}
+
+function refreshStopInteractionViews(stop = currentStop()) {
+  if (!stop) return false;
+  dom.favoriteBtn?.classList.toggle("selected", Boolean(stop.favorite));
+  dom.mustVote?.classList.toggle("is-active", Boolean(stop.userVoted));
+  if (dom.voteCount) dom.voteCount.textContent = stop.votes || 0;
+  if (dom.commentCount) dom.commentCount.textContent = (stop.comments || []).length;
+  renderTimeline();
+  refreshIcons();
+  return true;
+}
+
 function dayBlockTypeLabel(type = "todo") {
+  if (type === "checklist") return "检查清单";
+  if (type === "divider") return "分隔线";
+  if (type === "quote") return "引用";
   if (type === "callout") return "提醒";
   if (type === "heading") return "标题";
   if (type === "note") return "备注";
@@ -4032,6 +4463,9 @@ function dayBlockTypeLabel(type = "todo") {
 }
 
 function dayBlockIcon(type = "todo") {
+  if (type === "checklist") return "list-checks";
+  if (type === "divider") return "minus";
+  if (type === "quote") return "quote";
   if (type === "callout") return "info";
   if (type === "heading") return "heading-2";
   if (type === "note") return "notebook-text";
@@ -4043,26 +4477,207 @@ function dayBlockTypeOptions(currentType = "todo") {
   return DAY_BLOCK_TYPES.map((type) => `<option value="${escapeHtml(type)}"${type === currentType ? " selected" : ""}>${escapeHtml(dayBlockTypeLabel(type))}</option>`).join("");
 }
 
+function dayBlockCommandTokens(command) {
+  return [
+    command.command,
+    ...(command.aliases || []),
+    command.label,
+    command.description,
+    ...(command.keywords || []),
+    dayBlockTypeLabel(command.type),
+  ].filter(Boolean).map((token) => String(token).toLowerCase());
+}
+
 function dayBlockSlashCommand(value = "") {
   const command = String(value || "").trim().toLowerCase();
-  const commands = {
-    "/todo": "todo",
-    "/待办": "todo",
-    "/note": "note",
-    "/备注": "note",
-    "/decision": "decision",
-    "/决定": "decision",
-    "/heading": "heading",
-    "/h": "heading",
-    "/h2": "heading",
-    "/标题": "heading",
-    "/callout": "callout",
-    "/tip": "callout",
-    "/提醒": "callout",
-    "/提示": "callout",
-    "/注意": "callout",
+  return DAY_BLOCK_COMMANDS.find((item) => [item.command, ...(item.aliases || [])].map((alias) => alias.toLowerCase()).includes(command))?.type || "";
+}
+
+function dayBlockCommandQueryFromValue(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw.startsWith("/") || /\s/.test(raw.slice(1))) return "";
+  return raw.toLowerCase();
+}
+
+function dayBlockCommandCandidates(query = "") {
+  const normalized = String(query || "").trim().toLowerCase();
+  if (!normalized.startsWith("/")) return [];
+  const keyword = normalized.slice(1);
+  if (!keyword) return DAY_BLOCK_COMMANDS;
+  return DAY_BLOCK_COMMANDS.filter((command) => dayBlockCommandTokens(command).some((token) => (
+    token.startsWith(normalized) || token.replace(/^\//, "").includes(keyword)
+  )));
+}
+
+function clearDayBlockCommandMenu() {
+  activeDayBlockCommand = { blockId: "", index: 0, query: "" };
+  dom.dayBlockList?.querySelectorAll(".day-block-command-menu").forEach((item) => item.remove());
+}
+
+function renderDayBlockCommandMenu(input) {
+  dom.dayBlockList?.querySelectorAll(".day-block-command-menu").forEach((item) => item.remove());
+  if (!input || isReadonlyMode || !canEdit()) {
+    activeDayBlockCommand = { blockId: "", index: 0, query: "" };
+    return [];
+  }
+  const blockId = input.dataset.editDayBlock || "";
+  const query = dayBlockCommandQueryFromValue(input.value);
+  const candidates = dayBlockCommandCandidates(query);
+  const wrap = input.closest(".day-block-text-wrap");
+  if (!blockId || !query || !candidates.length || !wrap) {
+    activeDayBlockCommand = { blockId: "", index: 0, query: "" };
+    return [];
+  }
+  const index = activeDayBlockCommand.blockId === blockId && activeDayBlockCommand.query === query
+    ? Math.max(0, Math.min(activeDayBlockCommand.index, candidates.length - 1))
+    : 0;
+  activeDayBlockCommand = { blockId, index, query };
+  const html = `
+    <div class="day-block-command-menu" role="listbox" aria-label="协作块命令">
+      <strong>块类型</strong>
+      ${candidates.map((command, itemIndex) => `
+        <button type="button" class="${itemIndex === index ? "is-active" : ""}" data-day-block-command="${escapeHtml(command.type)}" data-command-index="${itemIndex}" role="option" aria-selected="${itemIndex === index ? "true" : "false"}">
+          ${icon(dayBlockIcon(command.type))}
+          <span><b>${escapeHtml(command.label)}</b><small>${escapeHtml(command.command)} · ${escapeHtml(command.description)}</small></span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+  wrap.insertAdjacentHTML("beforeend", html);
+  refreshIcons();
+  return candidates;
+}
+
+function checklistLineParts(text = "") {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line, sourceIndex) => ({ line, sourceIndex, trimmed: line.trim() }))
+    .filter((item) => item.trimmed)
+    .map((item, visibleIndex) => {
+      const done = /^[-*]?\s*\[[xX✓]\]\s*/.test(item.trimmed);
+      const clean = item.trimmed.replace(/^[-*]?\s*\[[ xX✓]\]\s*/, "").replace(/^[-*]\s+/, "").trim();
+      return { text: clean || item.trimmed, done, sourceIndex: item.sourceIndex, visibleIndex };
+    });
+}
+
+function checklistLineWithDone(line = "", done = false) {
+  const text = String(line || "").trim()
+    .replace(/^[-*]?\s*\[[ xX✓]\]\s*/, "")
+    .replace(/^[-*]\s+/, "")
+    .trim();
+  return `- [${done ? "x" : " "}] ${text || "检查项"}`;
+}
+
+function checklistTextWithToggledItem(text = "", sourceIndex = 0) {
+  const lines = String(text || "").split(/\r?\n/);
+  const index = Math.max(0, Math.min(Number(sourceIndex) || 0, lines.length - 1));
+  const current = lines[index] || "";
+  const done = /^[-*]?\s*\[[xX✓]\]\s*/.test(current.trim());
+  lines[index] = checklistLineWithDone(current, !done);
+  return lines.join("\n").trim();
+}
+
+function checklistTextWithAddedItem(text = "", itemText = "") {
+  const cleanText = String(itemText || "").trim();
+  if (!cleanText) return String(text || "").trim();
+  return [...String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean), checklistLineWithDone(cleanText, false)].join("\n").trim();
+}
+
+function checklistTextWithoutItem(text = "", sourceIndex = 0) {
+  const lines = String(text || "").split(/\r?\n/);
+  const index = Math.max(0, Math.min(Number(sourceIndex) || 0, lines.length - 1));
+  lines.splice(index, 1);
+  return lines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
+}
+
+function checklistTextWithMovedItem(text = "", sourceIndex = 0, direction = "down") {
+  const lines = String(text || "").split(/\r?\n/);
+  const index = Math.max(0, Math.min(Number(sourceIndex) || 0, lines.length - 1));
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (targetIndex < 0 || targetIndex >= lines.length) return lines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
+  const nextLines = [...lines];
+  const [item] = nextLines.splice(index, 1);
+  nextLines.splice(targetIndex, 0, item);
+  return nextLines.map((line) => line.trim()).filter(Boolean).join("\n").trim();
+}
+
+function dayBlockFormattedText(value = "", start = 0, end = 0, format = "bold", options = {}) {
+  const text = String(value || "");
+  const formats = {
+    bold: { open: "**", close: "**", sample: "重点" },
+    italic: { open: "*", close: "*", sample: "说明" },
+    code: { open: "`", close: "`", sample: "字段" },
+    link: { open: "[", close: `](${options.url || "https://example.com"})`, sample: "链接" },
   };
-  return commands[command] || "";
+  const marker = formats[format] || formats.bold;
+  const from = Math.max(0, Math.min(Number(start) || 0, text.length));
+  const to = Math.max(from, Math.min(Number(end) || from, text.length));
+  const selected = text.slice(from, to);
+  const content = selected || marker.sample;
+  const nextText = `${text.slice(0, from)}${marker.open}${content}${marker.close}${text.slice(to)}`;
+  const selectionStart = from + marker.open.length;
+  const selectionEnd = selectionStart + content.length;
+  return { text: nextText, selectionStart, selectionEnd };
+}
+
+function safeMarkdownUrl(url = "") {
+  const value = String(url || "").trim();
+  if (/^(https?:|mailto:|tel:)/i.test(value)) return escapeHtml(value);
+  if (/^[./#]/.test(value)) return escapeHtml(value);
+  return "#";
+}
+
+function renderInlineMarkdown(text = "") {
+  const placeholders = [];
+  const token = (html) => {
+    const key = `\u0000${placeholders.length}\u0000`;
+    placeholders.push(html);
+    return key;
+  };
+  let escaped = escapeHtml(String(text || ""));
+  escaped = escaped.replace(/`([^`\n]+)`/g, (_, value) => token(`<code>${value}</code>`));
+  escaped = escaped.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_, label, url) => token(`<a href="${safeMarkdownUrl(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`));
+  escaped = escaped.replace(/\*\*([^*\n]+)\*\*/g, (_, value) => token(`<strong>${value}</strong>`));
+  escaped = escaped.replace(/(^|[^*])\*([^*\n]+)\*/g, (_, prefix, value) => `${prefix}${token(`<em>${value}</em>`)}`);
+  placeholders.forEach((html, index) => {
+    escaped = escaped.replaceAll(`\u0000${index}\u0000`, html);
+  });
+  return escaped;
+}
+
+function renderDayBlockMarkdownPreview(block, force = false) {
+  if (!block?.text || block.type === "checklist" || block.type === "divider") return "";
+  const hasMarkup = /(\[[^\]\n]+\]\([^)]+\)|\*\*[^*\n]+\*\*|(^|[^*])\*[^*\n]+\*|`[^`\n]+`)/.test(block.text);
+  if (!force && !hasMarkup) return "";
+  return `<div class="day-block-markdown-preview${force ? " is-full-preview" : ""}">${String(block.text).split(/\r?\n/).map((line) => `<p>${renderInlineMarkdown(line)}</p>`).join("")}</div>`;
+}
+
+function renderChecklistPreview(block) {
+  if (block.type !== "checklist") return "";
+  const items = checklistLineParts(block.text || "");
+  return `
+    <div class="day-block-checklist-preview${items.length ? "" : " is-empty"}" aria-label="检查清单项">
+      ${items.length ? "" : `<p>每行一个检查项，可用 [x] 标记完成</p>`}
+      ${items.slice(0, 6).map((item) => `
+        <span class="day-block-checklist-row">
+          <button type="button" class="${item.done ? "is-done" : ""}" data-toggle-checklist-item="${item.sourceIndex}" aria-label="${item.done ? "取消完成" : "标记完成"}：${escapeHtml(item.text)}">
+            ${icon(item.done ? "check-square" : "square")}
+            <b>${escapeHtml(item.text)}</b>
+          </button>
+          <span class="day-block-checklist-move">
+            <button type="button" data-move-checklist-item="${item.sourceIndex}" data-direction="up" aria-label="上移检查项：${escapeHtml(item.text)}"${item.visibleIndex === 0 ? " disabled" : ""}>${icon("chevron-up")}</button>
+            <button type="button" data-move-checklist-item="${item.sourceIndex}" data-direction="down" aria-label="下移检查项：${escapeHtml(item.text)}"${item.visibleIndex === items.length - 1 ? " disabled" : ""}>${icon("chevron-down")}</button>
+          </span>
+          <button type="button" class="day-block-checklist-delete" data-delete-checklist-item="${item.sourceIndex}" aria-label="删除检查项：${escapeHtml(item.text)}">${icon("x")}</button>
+        </span>
+      `).join("")}
+      ${items.length > 6 ? `<small>还有 ${items.length - 6} 项</small>` : ""}
+      <form class="day-block-checklist-add" data-add-checklist-item="${escapeHtml(block.id)}">
+        <input type="text" data-add-checklist-input="${escapeHtml(block.id)}" placeholder="新增检查项" />
+        <button type="submit" aria-label="新增检查项">${icon("plus")}</button>
+      </form>
+    </div>
+  `;
 }
 
 function dayBlockMarkdownShortcut(value = "") {
@@ -4070,8 +4685,16 @@ function dayBlockMarkdownShortcut(value = "") {
   const shortcuts = {
     "#": "heading",
     "##": "heading",
+    "---": "divider",
+    "***": "divider",
     ">": "callout",
+    ">>": "quote",
+    "\"": "quote",
+    "“": "quote",
     "!": "callout",
+    "- [ ]": "checklist",
+    "-[]": "checklist",
+    "check": "checklist",
     "-": "todo",
     "*": "todo",
     "[]": "todo",
@@ -4096,12 +4719,22 @@ function renderDayBlockComments(block) {
 
 function renderDayBlockPresence(block) {
   const editors = remoteActiveEditorsForBlock(block.id).slice(0, 3);
-  if (!editors.length) return "";
+  const selectors = remoteSelectorsForBlock(block.id);
+  const selectorOnly = selectors
+    .filter((member) => !editors.some((editor) => editor.memberId === member.memberId))
+    .slice(0, Math.max(0, 3 - editors.length));
+  if (!editors.length && !selectors.length) return "";
   const names = remoteBlockEditorNames(block.id);
+  const selectorNames = remoteBlockSelectorNames(block.id);
   return `
-    <span class="day-block-presence" title="${escapeHtml(editors.map((member) => `${member.name || "协作者"} ${member.blockEditing || "正在编辑协作块"}`).join("、"))}">
-      <span class="day-block-presence-warning">${escapeHtml(names)} 同块编辑中</span>
+    <span class="day-block-presence" title="${escapeHtml([
+      ...editors.map((member) => `${member.name || "协作者"} ${member.blockEditing || "正在编辑协作块"}`),
+      ...selectorOnly.map((member) => `${member.name || "协作者"} 已选中此块`),
+    ].join("、"))}">
+      ${names ? `<span class="day-block-presence-warning">${escapeHtml(names)} 同块编辑中</span>` : ""}
+      ${selectorNames ? `<span class="day-block-presence-warning is-selection">${escapeHtml(selectorNames)} 已选中此块</span>` : ""}
       ${editors.map((member, index) => `<span class="text-presence-chip ${memberPresenceClass(member, index)}">${escapeHtml(memberInitial(member.name))}<span>${escapeHtml(member.blockEditing || "正在编辑")}</span></span>`).join("")}
+      ${selectorOnly.map((member, index) => `<span class="text-presence-chip ${memberPresenceClass(member, editors.length + index)}">${escapeHtml(memberInitial(member.name))}<span>已选中</span></span>`).join("")}
     </span>
   `;
 }
@@ -4110,87 +4743,623 @@ function refreshDayBlockTextPresence() {
   dom.dayBlockList?.querySelectorAll("[data-day-block]").forEach((blockElement) => {
     const blockId = blockElement.dataset.dayBlock || "";
     const block = normalizeDayBlocks(currentDay()?.blocks || []).find((item) => item.id === blockId);
-    const wrap = blockElement.querySelector(".day-block-text-wrap");
-    if (!block || !wrap) return;
-    wrap.querySelector(".day-block-text-presence")?.remove();
-    wrap.querySelectorAll(".comment-highlight").forEach((item) => item.remove());
-    wrap.insertAdjacentHTML("beforeend", renderDayBlockCommentHighlights(block));
-    wrap.insertAdjacentHTML("beforeend", renderDayBlockTextPresence(block));
+    if (block) refreshDayBlockOverlayDom(block);
   });
+}
+
+function selectedDayBlockList(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
+  return blocks.filter((block) => selectedDayBlockIds.has(block.id));
+}
+
+function clearSelectedDayBlocks() {
+  selectedDayBlockIds.clear();
+  lastSelectedDayBlockId = "";
+}
+
+function selectAllDayBlocks(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
+  selectedDayBlockIds = new Set(blocks.map((block) => block.id).filter(Boolean));
+}
+
+function setDayBlockRangeSelection(blocks = [], startId = "", endId = "", selected = true) {
+  const startIndex = blocks.findIndex((block) => block.id === startId);
+  const endIndex = blocks.findIndex((block) => block.id === endId);
+  if (startIndex < 0 || endIndex < 0) return false;
+  const [from, to] = startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+  blocks.slice(from, to + 1).forEach((block) => {
+    if (!block.id) return;
+    if (selected) selectedDayBlockIds.add(block.id);
+    else selectedDayBlockIds.delete(block.id);
+  });
+  return true;
+}
+
+function syncSelectedDayBlocks(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
+  const validIds = new Set(blocks.map((block) => block.id));
+  selectedDayBlockIds.forEach((blockId) => {
+    if (!validIds.has(blockId)) selectedDayBlockIds.delete(blockId);
+  });
+}
+
+function renderDayBlockBulkBar(blocks = []) {
+  const selectedBlocks = selectedDayBlockList(blocks);
+  if (!selectedBlocks.length) return "";
+  const count = selectedBlocks.length;
+  const disabledAttr = canEdit() ? "" : " disabled";
+  return `
+    <div class="day-block-bulk-bar" role="toolbar" aria-label="协作块批量操作">
+      <strong>${count} 个块已选择</strong>
+      <button type="button" class="text-btn" data-day-block-bulk="all">${icon("list-checks")}全选</button>
+      <button type="button" class="text-btn" data-day-block-bulk="copy"${disabledAttr}>${icon("copy")}复制</button>
+      <button type="button" class="text-btn" data-day-block-bulk="done"${disabledAttr}>${icon("check-circle-2")}完成</button>
+      <button type="button" class="text-btn" data-day-block-bulk="open"${disabledAttr}>${icon("circle")}重开</button>
+      <button type="button" class="text-btn" data-day-block-bulk="todo"${disabledAttr}>${icon("check-square")}设为待办</button>
+      <button type="button" class="text-btn" data-day-block-bulk="note"${disabledAttr}>${icon("notebook-text")}设为备注</button>
+      <button type="button" class="text-btn" data-day-block-bulk="indent"${disabledAttr}>${icon("indent-increase")}缩进</button>
+      <button type="button" class="text-btn" data-day-block-bulk="outdent"${disabledAttr}>${icon("indent-decrease")}取消缩进</button>
+      <button type="button" class="text-btn danger-text" data-day-block-bulk="delete"${disabledAttr}>${icon("trash-2")}删除</button>
+      <button type="button" class="text-btn" data-day-block-bulk="clear">${icon("x")}取消选择</button>
+    </div>
+  `;
+}
+
+function refreshDayBlockSelectionDom(day = currentDay()) {
+  if (!day || !dom.dayBlockList) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  syncSelectedDayBlocks(blocks);
+  let allBlocksFound = true;
+  for (const block of blocks) {
+    if (!block?.id) continue;
+    const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(block.id)}"]`);
+    if (!blockElement) {
+      allBlocksFound = false;
+      continue;
+    }
+    const selected = selectedDayBlockIds.has(block.id);
+    blockElement.classList.toggle("is-selected", selected);
+    const checkbox = blockElement.querySelector(`[data-select-day-block="${CSS.escape(block.id)}"]`);
+    if (checkbox) checkbox.checked = selected;
+  }
+  const existingBulkBar = dom.dayBlockList.querySelector(".day-block-bulk-bar");
+  const nextBulkBarHtml = renderDayBlockBulkBar(blocks);
+  if (nextBulkBarHtml) {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = nextBulkBarHtml.trim();
+    const nextBulkBar = wrapper.firstElementChild;
+    if (!nextBulkBar) return false;
+    if (existingBulkBar) existingBulkBar.replaceWith(nextBulkBar);
+    else dom.dayBlockList.insertAdjacentElement("afterbegin", nextBulkBar);
+  } else if (existingBulkBar) {
+    existingBulkBar.remove();
+  }
+  refreshIcons();
+  return allBlocksFound;
+}
+
+function dayBlockFocusSnapshot() {
+  const input = dom.dayBlockList?.querySelector("[data-edit-day-block]:focus");
+  if (!input) return null;
+  const blockId = input.dataset.editDayBlock || "";
+  if (!blockId) return null;
+  const valueLength = String(input.value || "").length;
+  const start = typeof input.selectionStart === "number" ? input.selectionStart : valueLength;
+  const end = typeof input.selectionEnd === "number" ? input.selectionEnd : start;
+  return {
+    blockId,
+    value: String(input.value || ""),
+    start: Math.max(0, Math.min(start, valueLength)),
+    end: Math.max(0, Math.min(end, valueLength)),
+    scrollTop: input.scrollTop || 0,
+  };
+}
+
+function restoreDayBlockFocus(snapshot = null) {
+  if (!snapshot?.blockId || !dom.dayBlockList || isReadonlyMode) return;
+  requestAnimationFrame(() => {
+    const input = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(snapshot.blockId)}"]`);
+    if (!input) return;
+    const value = String(input.value || "");
+    const valueLength = value.length;
+    const start = transformTextPosition(snapshot.value || "", value, Number(snapshot.start) || 0);
+    const end = transformTextPosition(snapshot.value || "", value, Number(snapshot.end) || start);
+    const safeStart = Math.max(0, Math.min(start, valueLength));
+    const safeEnd = Math.max(safeStart, Math.min(end, valueLength));
+    input.focus({ preventScroll: true });
+    input.setSelectionRange?.(safeStart, safeEnd);
+    input.scrollTop = snapshot.scrollTop || 0;
+    activeBlockPresenceId = snapshot.blockId;
+    schedulePresenceTrack(90);
+  });
+}
+
+function refreshDayBlockOverlayDom(block) {
+  if (!block?.id || !dom.dayBlockList) return false;
+  const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(block.id)}"]`);
+  const wrap = blockElement?.querySelector(".day-block-text-wrap");
+  if (!wrap) return false;
+  wrap.querySelector(".day-block-text-presence")?.remove();
+  wrap.querySelectorAll(".comment-highlight").forEach((item) => item.remove());
+  wrap.insertAdjacentHTML("beforeend", renderDayBlockCommentHighlights(block));
+  wrap.insertAdjacentHTML("beforeend", renderDayBlockTextPresence(block));
+  return true;
+}
+
+function refreshDayBlockTextDom(day = currentDay(), blockIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let updated = false;
+  for (const blockId of blockIds) {
+    const block = blocks.find((item) => item.id === blockId);
+    const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+    const input = blockElement?.querySelector("[data-edit-day-block]");
+    if (!block || !blockElement || !input) return false;
+    const focused = document.activeElement === input;
+    if (!focused && input.value !== block.text) input.value = block.text || "";
+    const previewMode = previewDayBlockIds.has(block.id);
+    const textWrap = blockElement.querySelector(".day-block-text-wrap");
+    const oldPreview = textWrap?.querySelector(".day-block-markdown-preview");
+    const nextPreview = renderDayBlockMarkdownPreview(block, previewMode);
+    if (oldPreview) oldPreview.remove();
+    if (nextPreview && input) input.insertAdjacentHTML("afterend", nextPreview);
+    const oldChecklistPreview = textWrap?.querySelector(".day-block-checklist-preview");
+    const nextChecklistPreview = renderChecklistPreview(block);
+    if (oldChecklistPreview) oldChecklistPreview.remove();
+    if (nextChecklistPreview) {
+      const previewElement = textWrap?.querySelector(".day-block-markdown-preview");
+      (previewElement || input).insertAdjacentHTML("afterend", nextChecklistPreview);
+    }
+    const collapsedPreview = blockElement.querySelector(".day-block-collapsed-text");
+    if (collapsedPreview) collapsedPreview.textContent = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+    const metaElement = blockElement.querySelector(".day-block-meta");
+    if (metaElement) {
+      metaElement.textContent = block.updatedBy || block.createdBy
+        ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+        : dayBlockTypeLabel(block.type);
+    }
+    refreshDayBlockOverlayDom(block);
+    updated = true;
+  }
+  if (updated) {
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return updated;
+}
+
+function refreshDayBlocksStatusText(blocks = normalizeDayBlocks(currentDay()?.blocks || [])) {
+  if (!dom.dayBlocksStatus) return;
+  const openCount = blocks.filter((block) => block.type === "todo" && !block.done).length;
+  const commentCount = blocks.reduce((sum, block) => sum + commentRootsAndReplies(block.comments || []).roots.length, 0);
+  dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办 · ${commentCount} 条评论` : "可添加块";
+}
+
+function refreshDayBlockDoneDom(day = currentDay(), blockIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let updated = false;
+  for (const blockId of blockIds) {
+    const block = blocks.find((item) => item.id === blockId);
+    const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+    if (!block || !blockElement) return false;
+    blockElement.classList.toggle("is-done", Boolean(block.done));
+    const toggleButton = blockElement.querySelector(`[data-toggle-day-block="${CSS.escape(blockId)}"]`);
+    if (toggleButton) {
+      const toggleLabel = block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成";
+      toggleButton.setAttribute("aria-label", toggleLabel);
+      toggleButton.innerHTML = icon(block.done ? "check-circle-2" : dayBlockIcon(block.type));
+    }
+    const metaElement = blockElement.querySelector(".day-block-meta");
+    if (metaElement) {
+      metaElement.textContent = block.updatedBy || block.createdBy
+        ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+        : dayBlockTypeLabel(block.type);
+    }
+    updated = true;
+  }
+  if (updated) {
+    refreshDayBlocksStatusText(blocks);
+    refreshDayBlockSelectionDom(day);
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return updated;
+}
+
+function refreshDayBlockLevelDom(day = currentDay(), blockIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let updated = false;
+  for (const blockId of blockIds) {
+    const block = blocks.find((item) => item.id === blockId);
+    const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+    if (!block || !blockElement) return false;
+    const level = Math.max(0, Math.min(Number(block.level) || 0, 3));
+    blockElement.dataset.blockLevel = String(level);
+    blockElement.style.setProperty("--block-level", String(level));
+    const metaElement = blockElement.querySelector(".day-block-meta");
+    if (metaElement) {
+      metaElement.textContent = block.updatedBy || block.createdBy
+        ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+        : dayBlockTypeLabel(block.type);
+    }
+    refreshDayBlockOverlayDom(block);
+    updated = true;
+  }
+  if (updated) {
+    refreshDayBlockSelectionDom(day);
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return updated;
+}
+
+function refreshDayBlockOrderDom(day = currentDay(), focusBlockId = "") {
+  if (!day || !dom.dayBlockList) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  if (!blocks.length) return false;
+  const focusSnapshot = dayBlockFocusSnapshot();
+  const blockElements = new Map();
+  for (const block of blocks) {
+    const blockElement = block.id ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(block.id)}"]`) : null;
+    if (!blockElement) return false;
+    blockElements.set(block.id, blockElement);
+  }
+  const validIds = new Set(blocks.map((block) => block.id));
+  dom.dayBlockList.querySelectorAll("[data-day-block]").forEach((blockElement) => {
+    if (!validIds.has(blockElement.dataset.dayBlock || "")) blockElement.remove();
+  });
+  blocks.forEach((block, index) => {
+    const blockElement = blockElements.get(block.id);
+    blockElement.querySelectorAll(`[data-move-day-block="${CSS.escape(block.id)}"]`).forEach((button) => {
+      const direction = button.dataset.direction === "up" ? "up" : "down";
+      button.disabled = isReadonlyMode || (direction === "up" ? index === 0 : index === blocks.length - 1);
+    });
+    dom.dayBlockList.appendChild(blockElement);
+    refreshDayBlockOverlayDom(block);
+  });
+  refreshDayBlocksStatusText(blocks);
+  refreshDayBlockSelectionDom(day);
+  refreshIcons();
+  requestAnimationFrame(() => refreshDayBlockTextPresence());
+  if (focusSnapshot?.blockId) restoreDayBlockFocus(focusSnapshot);
+  else if (focusBlockId) focusDayBlockInput(focusBlockId);
+  return true;
+}
+
+function refreshDayBlockDeleteDom(day = currentDay(), deletedIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(deletedIds) || !deletedIds.length) return false;
+  let removed = false;
+  deletedIds.forEach((blockId) => {
+    if (!blockId) return;
+    const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+    if (!blockElement) return;
+    blockElement.remove();
+    removed = true;
+  });
+  if (!removed) return false;
+  deletedIds.forEach((blockId) => {
+    selectedDayBlockIds.delete(blockId);
+    previewDayBlockIds.delete(blockId);
+    collapsedDayBlockIds.delete(blockId);
+    delete blockCommentFilters[blockId];
+  });
+  if (deletedIds.includes(lastSelectedDayBlockId)) lastSelectedDayBlockId = "";
+  if (deletedIds.includes(activeBlockPresenceId)) activeBlockPresenceId = "";
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  if (!blocks.length) {
+    renderDayBlocks(day);
+    return true;
+  }
+  refreshDayBlockOrderDom(day);
+  return true;
+}
+
+function refreshDayBlockInsertDom(day = currentDay(), insertedIds = [], focusBlockId = "") {
+  if (!day || !dom.dayBlockList || !Array.isArray(insertedIds) || !insertedIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  const insertedSet = new Set(insertedIds.filter(Boolean));
+  if (!blocks.length) return false;
+  dom.dayBlockList.querySelector(".empty-state")?.remove();
+  const disabledAttr = canEdit() ? "" : " disabled";
+  let inserted = false;
+  for (const blockId of insertedSet) {
+    const index = blocks.findIndex((block) => block.id === blockId);
+    const block = index >= 0 ? blocks[index] : null;
+    if (!block) return false;
+    const existing = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+    if (existing) continue;
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = renderDayBlockHtml(block, index, blocks, disabledAttr).trim();
+    const blockElement = wrapper.firstElementChild;
+    if (!blockElement) return false;
+    const nextBlock = blocks.slice(index + 1).find((item) => !insertedSet.has(item.id));
+    const nextElement = nextBlock?.id ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(nextBlock.id)}"]`) : null;
+    if (nextElement) dom.dayBlockList.insertBefore(blockElement, nextElement);
+    else dom.dayBlockList.appendChild(blockElement);
+    inserted = true;
+  }
+  if (!inserted) return refreshDayBlockOrderDom(day, focusBlockId);
+  refreshDayBlockOrderDom(day, focusBlockId);
+  return true;
+}
+
+function dayBlockRowsForType(type = "todo") {
+  if (type === "heading" || type === "divider") return 1;
+  if (type === "checklist") return 3;
+  return 2;
+}
+
+function dayBlockPlaceholderForType(type = "todo") {
+  if (type === "divider") return "分隔线标题（可选）";
+  if (type === "checklist") return "每行一个检查项，可写 [x] 表示已完成";
+  return "";
+}
+
+function refreshDayBlockTypeDom(day = currentDay(), blockIds = []) {
+  if (!day || !dom.dayBlockList || !Array.isArray(blockIds) || !blockIds.length) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let updated = false;
+  for (const blockId of blockIds) {
+    const block = blocks.find((item) => item.id === blockId);
+    const blockElement = blockId ? dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+    const input = blockElement?.querySelector("[data-edit-day-block]");
+    if (!block || !blockElement || !input) return false;
+    DAY_BLOCK_TYPES.forEach((type) => blockElement.classList.toggle(`is-${type}`, type === block.type));
+    blockElement.classList.toggle("is-done", Boolean(block.done));
+    input.rows = dayBlockRowsForType(block.type);
+    input.placeholder = dayBlockPlaceholderForType(block.type);
+    input.setAttribute("aria-label", dayBlockTypeLabel(block.type));
+    const typeSelect = blockElement.querySelector(`[data-day-block-type="${CSS.escape(blockId)}"]`);
+    if (typeSelect) typeSelect.innerHTML = dayBlockTypeOptions(block.type);
+    const toggleButton = blockElement.querySelector(`[data-toggle-day-block="${CSS.escape(blockId)}"]`);
+    if (toggleButton) {
+      const disabled = block.type === "divider" || isReadonlyMode;
+      toggleButton.disabled = disabled;
+      toggleButton.setAttribute("aria-label", block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成");
+      toggleButton.innerHTML = icon(block.done ? "check-circle-2" : dayBlockIcon(block.type));
+    }
+    const collapsedPreview = blockElement.querySelector(".day-block-collapsed-text");
+    if (collapsedPreview) collapsedPreview.textContent = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+    const metaElement = blockElement.querySelector(".day-block-meta");
+    if (metaElement) {
+      metaElement.textContent = block.updatedBy || block.createdBy
+        ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+        : dayBlockTypeLabel(block.type);
+    }
+    if (!refreshDayBlockTextDom(day, [blockId])) return false;
+    updated = true;
+  }
+  if (updated) {
+    refreshDayBlocksStatusText(blocks);
+    refreshDayBlockSelectionDom(day);
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return updated;
+}
+
+function refreshDayBlockPreviewDom(day = currentDay(), blockId = "") {
+  if (!day || !dom.dayBlockList || !blockId) return false;
+  const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+  const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+  const textWrap = blockElement?.querySelector(".day-block-text-wrap");
+  const input = blockElement?.querySelector("[data-edit-day-block]");
+  const button = blockElement?.querySelector(`[data-toggle-day-block-preview="${CSS.escape(blockId)}"]`);
+  if (!block || !blockElement || !textWrap || !input || !button) return false;
+  const previewMode = previewDayBlockIds.has(blockId);
+  blockElement.classList.toggle("is-previewing", previewMode);
+  const oldPreview = textWrap.querySelector(".day-block-markdown-preview");
+  const nextPreview = renderDayBlockMarkdownPreview(block, previewMode);
+  if (oldPreview) oldPreview.remove();
+  if (nextPreview) input.insertAdjacentHTML("afterend", nextPreview);
+  button.title = previewMode ? "编辑" : "预览";
+  button.setAttribute("aria-label", previewMode ? "切回编辑" : "预览富文本");
+  button.innerHTML = icon(previewMode ? "pencil" : "eye");
+  refreshDayBlockOverlayDom(block);
+  refreshIcons();
+  requestAnimationFrame(() => refreshDayBlockTextPresence());
+  return true;
+}
+
+function refreshDayBlockCollapseDom(day = currentDay(), blockId = "") {
+  if (!day || !dom.dayBlockList || !blockId) return false;
+  const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+  const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+  if (!block || !blockElement) return false;
+  const collapsed = collapsedDayBlockIds.has(blockId);
+  blockElement.classList.toggle("is-collapsed", collapsed);
+  const collapsedPreview = blockElement.querySelector(".day-block-collapsed-text");
+  if (collapsedPreview) {
+    collapsedPreview.textContent = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+  }
+  blockElement.querySelectorAll(`[data-toggle-day-block-collapse="${CSS.escape(blockId)}"]`).forEach((button) => {
+    const isSummaryButton = button.classList.contains("day-block-collapsed-text");
+    button.setAttribute("aria-label", isSummaryButton || collapsed ? "展开协作块" : "折叠协作块");
+    if (!isSummaryButton) button.innerHTML = icon(collapsed ? "chevrons-down-up" : "chevrons-up-down");
+  });
+  refreshDayBlockOverlayDom(block);
+  refreshIcons();
+  requestAnimationFrame(() => refreshDayBlockTextPresence());
+  return true;
+}
+
+function refreshDayBlockCommentsDom(day = currentDay(), blockId = "") {
+  if (!day || !dom.dayBlockList || !blockId) return false;
+  const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+  const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+  const commentsElement = blockElement?.querySelector(`[data-block-comments="${CSS.escape(blockId)}"]`);
+  if (!block || !blockElement || !commentsElement) return false;
+  const rendered = renderDayBlockComments(block);
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = rendered;
+  const nextCommentsElement = wrapper.firstElementChild;
+  if (!nextCommentsElement) return false;
+  commentsElement.replaceWith(nextCommentsElement);
+  const openCommentCount = commentRootsAndReplies(block.comments || []).roots.filter((comment) => !comment.resolved).length;
+  const toggleButton = blockElement.querySelector("[data-toggle-block-comments]");
+  if (toggleButton) {
+    toggleButton.innerHTML = `${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}`;
+  }
+  const metaElement = blockElement.querySelector(".day-block-meta");
+  if (metaElement) {
+    metaElement.textContent = block.updatedBy || block.createdBy
+      ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+      : dayBlockTypeLabel(block.type);
+  }
+  refreshDayBlockOverlayDom(block);
+  refreshIcons();
+  return true;
+}
+
+function refreshDayBlockCommentMutationViews(day = currentDay(), blockId = "") {
+  const refreshed = refreshDayBlockCommentsDom(day, blockId);
+  if (!refreshed) return false;
+  refreshDayBlocksStatusText(normalizeDayBlocks(day.blocks || []));
+  renderCommentIndex();
+  refreshIcons();
+  return true;
+}
+
+function refreshDayBlockPresenceDom(day = currentDay()) {
+  if (!day || !dom.dayBlockList) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  let allBlocksFound = true;
+  let updated = false;
+  for (const block of blocks) {
+    if (!block?.id) continue;
+    const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(block.id)}"]`);
+    if (!blockElement) {
+      allBlocksFound = false;
+      continue;
+    }
+    const remoteSelected = remoteSelectorsForBlock(block.id).length > 0;
+    blockElement.classList.toggle("is-remote-selected", remoteSelected);
+    blockElement.querySelector(".day-block-presence")?.remove();
+    const presenceHtml = renderDayBlockPresence(block);
+    if (presenceHtml) {
+      const commentToggle = blockElement.querySelector(".day-block-comment-toggle");
+      if (commentToggle) commentToggle.insertAdjacentHTML("beforebegin", presenceHtml);
+      else blockElement.insertAdjacentHTML("beforeend", presenceHtml);
+    }
+    refreshDayBlockOverlayDom(block);
+    updated = true;
+  }
+  if (updated) {
+    refreshIcons();
+    requestAnimationFrame(() => refreshDayBlockTextPresence());
+  }
+  return allBlocksFound;
+}
+
+function refreshPresenceViews() {
+  renderMembers();
+  if (!refreshDayBlockPresenceDom(currentDay())) {
+    renderDayBlocks(currentDay());
+  }
+  renderEditorLockState();
+}
+
+function renderDayBlockHtml(block, index = 0, blocks = normalizeDayBlocks(currentDay()?.blocks || []), disabledAttr = canEdit() ? "" : " disabled") {
+  const doneClass = block.done ? " is-done" : "";
+  const typeClass = ` is-${block.type || "todo"}`;
+  const collapsed = collapsedDayBlockIds.has(block.id);
+  const collapsedClass = collapsed ? " is-collapsed" : "";
+  const selected = selectedDayBlockIds.has(block.id);
+  const selectedClass = selected ? " is-selected" : "";
+  const previewMode = previewDayBlockIds.has(block.id);
+  const previewClass = previewMode ? " is-previewing" : "";
+  const remoteSelectors = remoteSelectorsForBlock(block.id);
+  const remoteSelectedClass = remoteSelectors.length ? " is-remote-selected" : "";
+  const comments = normalizeComments(block.comments || []);
+  const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
+  const commentPanelId = `block-comments-${block.id}`;
+  const meta = block.updatedBy || block.createdBy
+    ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
+    : dayBlockTypeLabel(block.type);
+  const upDisabled = !canEdit() || index === 0 ? " disabled" : "";
+  const downDisabled = !canEdit() || index === blocks.length - 1 ? " disabled" : "";
+  const commentDisabledAttr = canComment() ? "" : " disabled";
+  const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
+  const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
+  const presenceHtml = renderDayBlockPresence(block);
+  const rows = dayBlockRowsForType(block.type);
+  const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
+  const toggleDisabled = block.type === "divider" ? " disabled" : disabledAttr;
+  const toggleLabel = block.type === "divider" ? "分隔线" : block.done ? "标记未完成" : "标记完成";
+  const textPlaceholder = dayBlockPlaceholderForType(block.type);
+  return `
+    <article class="day-block${doneClass}${typeClass}${collapsedClass}${selectedClass}${previewClass}${remoteSelectedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
+      <label class="day-block-select" title="选择协作块">
+        <input type="checkbox" data-select-day-block="${escapeHtml(block.id)}" aria-label="选择协作块"${selected ? " checked" : ""} />
+      </label>
+      <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${canEdit() ? "true" : "false"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
+      <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${toggleLabel}"${toggleDisabled}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
+      <span class="day-block-text-wrap">
+        <span class="day-block-format-toolbar" role="toolbar" aria-label="协作块文字格式">
+          <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="bold" title="加粗" aria-label="加粗"${disabledAttr}>${icon("bold")}</button>
+          <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="italic" title="斜体" aria-label="斜体"${disabledAttr}>${icon("italic")}</button>
+          <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="code" title="行内代码" aria-label="行内代码"${disabledAttr}>${icon("code-2")}</button>
+          <button type="button" data-format-day-block="${escapeHtml(block.id)}" data-format="link" title="链接" aria-label="链接"${disabledAttr}>${icon("link")}</button>
+          <button type="button" data-toggle-day-block-preview="${escapeHtml(block.id)}" title="${previewMode ? "编辑" : "预览"}" aria-label="${previewMode ? "切回编辑" : "预览富文本"}">${icon(previewMode ? "pencil" : "eye")}</button>
+        </span>
+        <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}" placeholder="${escapeHtml(textPlaceholder)}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
+        ${renderDayBlockMarkdownPreview(block, previewMode)}
+        ${renderChecklistPreview(block)}
+        ${renderDayBlockTextPresence(block)}
+      </span>
+      <button type="button" class="day-block-collapsed-text" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="展开协作块">${escapeHtml(collapsedPreview)}</button>
+      <label class="day-block-type-control" title="切换块类型">
+        <span>类型</span>
+        <select data-day-block-type="${escapeHtml(block.id)}" aria-label="切换协作块类型"${disabledAttr}>${dayBlockTypeOptions(block.type)}</select>
+      </label>
+      <span class="day-block-meta">${escapeHtml(meta)}</span>
+      ${presenceHtml}
+      <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
+      <span class="day-block-order">
+        <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
+        <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
+        <button type="button" class="icon-btn subtle" data-duplicate-day-block="${escapeHtml(block.id)}" aria-label="复制协作块"${disabledAttr}>${icon("copy")}</button>
+        <button type="button" class="icon-btn subtle" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="${collapsed ? "展开协作块" : "折叠协作块"}">${icon(collapsed ? "chevrons-down-up" : "chevrons-up-down")}</button>
+      </span>
+      <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
+      <div class="day-block-comment-panel" id="${escapeHtml(commentPanelId)}">
+        ${renderDayBlockComments(block)}
+        <form class="comment-form day-block-comment-form" data-block-comment-form="${escapeHtml(block.id)}">
+          <input data-block-comment-input="${escapeHtml(block.id)}" placeholder="${escapeHtml(placeholder)}"${commentDisabledAttr} />
+          <button class="primary-btn" type="submit" aria-label="${replyTarget ? "回复块级评论" : "添加块级评论"}"${commentDisabledAttr}>${icon(replyTarget ? "reply" : "send")}</button>
+        </form>
+      </div>
+    </article>
+  `;
 }
 
 function renderDayBlocks(day = currentDay()) {
   if (!day || !dom.dayBlockList) return;
+  const focusSnapshot = dayBlockFocusSnapshot();
   const blocks = normalizeDayBlocks(day.blocks || []);
-  const disabledAttr = isReadonlyMode ? " disabled" : "";
+  const disabledAttr = canEdit() ? "" : " disabled";
   const blockIds = new Set(blocks.map((block) => block.id));
+  syncSelectedDayBlocks(blocks);
   Object.keys(blockCommentFilters).forEach((blockId) => {
     if (!blockIds.has(blockId)) delete blockCommentFilters[blockId];
+  });
+  previewDayBlockIds.forEach((blockId) => {
+    if (!blockIds.has(blockId)) previewDayBlockIds.delete(blockId);
   });
   if (blockReplyingCommentId && !blocks.some((block) => normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId))) {
     blockReplyingCommentId = "";
   }
-  if (dom.dayBlocksStatus) {
-    const openCount = blocks.filter((block) => block.type === "todo" && !block.done).length;
-    const commentCount = blocks.reduce((sum, block) => sum + commentRootsAndReplies(block.comments || []).roots.length, 0);
-    dom.dayBlocksStatus.textContent = blocks.length ? `${blocks.length} 个块 · ${openCount} 个待办 · ${commentCount} 条评论` : "可添加块";
-  }
-  dom.dayBlockList.innerHTML = blocks.length
+  dayBlockTextBaselines = Object.fromEntries(blocks.map((block) => [block.id, block.text || ""]));
+  refreshDayBlocksStatusText(blocks);
+  const blocksHtml = blocks.length
     ? blocks
-        .map((block, index) => {
-          const doneClass = block.done ? " is-done" : "";
-          const typeClass = ` is-${block.type || "todo"}`;
-          const collapsed = collapsedDayBlockIds.has(block.id);
-          const collapsedClass = collapsed ? " is-collapsed" : "";
-          const comments = normalizeComments(block.comments || []);
-          const openCommentCount = commentRootsAndReplies(comments).roots.filter((comment) => !comment.resolved).length;
-          const commentPanelId = `block-comments-${block.id}`;
-          const meta = block.updatedBy || block.createdBy
-            ? `${block.updatedBy ? `更新：${block.updatedBy}` : `创建：${block.createdBy}`}`
-            : dayBlockTypeLabel(block.type);
-          const upDisabled = isReadonlyMode || index === 0 ? " disabled" : "";
-          const downDisabled = isReadonlyMode || index === blocks.length - 1 ? " disabled" : "";
-          const replyTarget = blockReplyingCommentId ? comments.find((comment) => comment.id === blockReplyingCommentId && !comment.parentId) : null;
-          const placeholder = replyTarget ? `回复 ${replyTarget.author || "成员"}：${replyTarget.text.slice(0, 18)}` : "评论这个协作块";
-          const presenceHtml = renderDayBlockPresence(block);
-          const rows = block.type === "heading" ? 1 : 2;
-          const collapsedPreview = block.text ? block.text.replace(/\s+/g, " ").slice(0, 96) : dayBlockTypeLabel(block.type);
-          return `
-            <article class="day-block${doneClass}${typeClass}${collapsedClass}" data-day-block="${escapeHtml(block.id)}" data-block-level="${block.level || 0}" style="--block-level:${block.level || 0}">
-              <button type="button" class="day-block-drag" data-drag-day-block="${escapeHtml(block.id)}" draggable="${isReadonlyMode ? "false" : "true"}" aria-label="拖拽排序协作块"${disabledAttr}>${icon("grip-vertical")}</button>
-              <button type="button" class="day-block-toggle" data-toggle-day-block="${escapeHtml(block.id)}" aria-label="${block.done ? "标记未完成" : "标记完成"}"${disabledAttr}>${icon(block.done ? "check-circle-2" : dayBlockIcon(block.type))}</button>
-              <span class="day-block-text-wrap">
-                <textarea class="day-block-text" data-edit-day-block="${escapeHtml(block.id)}" rows="${rows}" aria-label="${escapeHtml(dayBlockTypeLabel(block.type))}"${disabledAttr}>${escapeHtml(block.text)}</textarea>
-                ${renderDayBlockTextPresence(block)}
-              </span>
-              <button type="button" class="day-block-collapsed-text" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="展开协作块">${escapeHtml(collapsedPreview)}</button>
-              <label class="day-block-type-control" title="切换块类型">
-                <span>类型</span>
-                <select data-day-block-type="${escapeHtml(block.id)}" aria-label="切换协作块类型"${disabledAttr}>${dayBlockTypeOptions(block.type)}</select>
-              </label>
-              <span class="day-block-meta">${escapeHtml(meta)}</span>
-              ${presenceHtml}
-              <button type="button" class="comment-action day-block-comment-toggle" data-toggle-block-comments="${escapeHtml(block.id)}" aria-controls="${escapeHtml(commentPanelId)}">${icon("message-square")}评论${openCommentCount ? ` ${openCommentCount}` : ""}</button>
-              <span class="day-block-order">
-                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="up" aria-label="上移协作块"${upDisabled}>${icon("chevron-up")}</button>
-                <button type="button" class="icon-btn subtle" data-move-day-block="${escapeHtml(block.id)}" data-direction="down" aria-label="下移协作块"${downDisabled}>${icon("chevron-down")}</button>
-                <button type="button" class="icon-btn subtle" data-duplicate-day-block="${escapeHtml(block.id)}" aria-label="复制协作块"${disabledAttr}>${icon("copy")}</button>
-                <button type="button" class="icon-btn subtle" data-toggle-day-block-collapse="${escapeHtml(block.id)}" aria-label="${collapsed ? "展开协作块" : "折叠协作块"}">${icon(collapsed ? "chevrons-down-up" : "chevrons-up-down")}</button>
-              </span>
-              <button type="button" class="icon-btn subtle danger-icon" data-delete-day-block="${escapeHtml(block.id)}" aria-label="删除协作块"${disabledAttr}>${icon("trash-2")}</button>
-              <div class="day-block-comment-panel" id="${escapeHtml(commentPanelId)}">
-                ${renderDayBlockComments(block)}
-                <form class="comment-form day-block-comment-form" data-block-comment-form="${escapeHtml(block.id)}">
-                  <input data-block-comment-input="${escapeHtml(block.id)}" placeholder="${escapeHtml(placeholder)}"${disabledAttr} />
-                  <button class="primary-btn" type="submit" aria-label="${replyTarget ? "回复块级评论" : "添加块级评论"}"${disabledAttr}>${icon(replyTarget ? "reply" : "send")}</button>
-                </form>
-              </div>
-            </article>
-          `;
-        })
+        .map((block, index) => renderDayBlockHtml(block, index, blocks, disabledAttr))
         .join("")
     : `<div class="empty-state">还没有协作块，可以添加待办、备注、决定、标题或提醒。</div>`;
+  dom.dayBlockList.innerHTML = `${renderDayBlockBulkBar(blocks)}${blocksHtml}`;
   refreshIcons();
+  if (focusSnapshot && blocks.some((block) => block.id === focusSnapshot.blockId)) {
+    restoreDayBlockFocus(focusSnapshot);
+  }
   requestAnimationFrame(() => refreshDayBlockTextPresence());
 }
 
@@ -4203,6 +5372,467 @@ function focusDayBlockInput(blockId = "") {
     const length = input.value.length;
     input.setSelectionRange?.(length, length);
   });
+}
+
+async function applyDayBlockTypeChange(day, blockId, nextType, options = {}) {
+  const {
+    clearText = false,
+    source = "local-day-block-type-change",
+    fallbackSource = `${source}-fallback`,
+    presence = "切换类型",
+    action = "type-change",
+    requireLabel = "切换协作块类型",
+    status = "已切换协作块类型",
+    focus = true,
+  } = options;
+  if (!day || !blockId || !DAY_BLOCK_TYPES.includes(nextType)) return false;
+  const blocks = normalizeDayBlocks(day.blocks || []);
+  const block = blocks.find((item) => item.id === blockId);
+  if (!block) return false;
+  const patch = clearText ? { type: nextType, text: "", textYjs: "" } : { type: nextType };
+  const hasChange = block.type !== nextType || (clearText && (block.text || block.textYjs));
+  if (!hasChange) {
+    if (focus) focusDayBlockInput(blockId);
+    return false;
+  }
+  if (!requireEdit(requireLabel)) return false;
+  activeBlockPresenceId = blockId;
+  schedulePresenceTrack(0);
+  noteRemoteBlockEditors(blockId, presence);
+  const updated = await updateDayBlockInDoc(day.id, blockId, patch, source);
+  if (updated) {
+    const visiblePatch = typeof updated === "object" ? { ...patch, ...updated } : patch;
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+      item.id === blockId ? { ...item, ...visiblePatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+    )));
+    clearDayBlockCommandMenu();
+    if (clearText || !refreshDayBlockTypeDom(day, [blockId])) renderDayBlocks(day);
+    await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action, blockType: nextType }) });
+    await saveCollaborativePlanChange(status);
+    if (focus) focusDayBlockInput(blockId);
+    return true;
+  }
+  if (!mutate(requireLabel, () => {
+    currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
+  }, { requireUnlocked: false, save: false, render: false })) return false;
+  await syncDayBlocksToDoc(day.id, fallbackSource, { patchBlockIds: [blockId], patchFields: clearText ? ["type", "text", "textYjs"] : ["type"] });
+  clearDayBlockCommandMenu();
+  if (clearText || !refreshDayBlockTypeDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
+  await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action, blockType: nextType }) });
+  await saveCollaborativePlanChange(status);
+  if (focus) focusDayBlockInput(blockId);
+  return true;
+}
+
+async function applyDayBlockCommandSelection(input, index = activeDayBlockCommand.index) {
+  if (!input) return false;
+  const day = currentDay();
+  const blockId = input.dataset.editDayBlock || "";
+  const candidates = dayBlockCommandCandidates(dayBlockCommandQueryFromValue(input.value));
+  const command = candidates[Math.max(0, Math.min(index || 0, candidates.length - 1))];
+  if (!day || !blockId || !command) return false;
+  clearTimeout(dayBlockEditTimer);
+  return applyDayBlockTypeChange(day, blockId, command.type, {
+    clearText: true,
+    source: "local-day-block-command-menu",
+    fallbackSource: "local-day-block-command-menu-fallback",
+    presence: "使用命令菜单",
+    action: "command-menu",
+    requireLabel: "使用协作块命令",
+    status: "已使用协作块命令",
+  });
+}
+
+async function saveDayBlockTextChange(day, block, nextText, action = "text-format", label = "协作块已更新") {
+  if (!day || !block?.id || !requireEdit("更新协作块文本")) return false;
+  activeBlockPresenceId = block.id;
+  schedulePresenceTrack(0);
+  noteRemoteBlockEditors(block.id, "更新文本");
+  const origin = `local-day-block-${action}`;
+  const updatedText = await updateDayBlockTextInDoc(day.id, block.id, nextText, origin);
+  if (updatedText) {
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+      item.id === block.id ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+    )));
+    if (!refreshDayBlockTextDom(day, [block.id])) renderDayBlocks(day);
+    await logActivity(`编辑协作块「${String(nextText || "").slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+    await saveCollaborativePlanChange(label);
+    return true;
+  }
+  if (!mutate("更新协作块文本", () => {
+    currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, text: nextText } : item)));
+  }, { requireUnlocked: false, save: false, render: false })) return false;
+  await syncDayBlocksToDoc(day.id, `${origin}-fallback`, { patchBlockIds: [block.id], patchFields: ["text", "textYjs"] });
+  await logActivity(`编辑协作块「${String(nextText || "").slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+  await saveCollaborativePlanChange(label);
+  render();
+  return true;
+}
+
+async function syncDayBlockInputText(day, blockId, text, input = null) {
+  if (!day || !blockId) return false;
+  const syncTask = async () => {
+    const currentBlocks = normalizeDayBlocks(day.blocks || []);
+    const baseText = Object.prototype.hasOwnProperty.call(dayBlockTextBaselines, blockId)
+      ? dayBlockTextBaselines[blockId]
+      : (currentBlocks.find((item) => item.id === blockId)?.text || "");
+    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, text, "local-day-block-text-realtime", { baseText });
+    if (updatedText) {
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
+      dayBlockTextBaselines[blockId] = updatedText.text || "";
+      if (input && input.value.trim() !== (updatedText.text || "")) input.value = updatedText.text || "";
+      const blockElement = dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
+      const metaElement = blockElement?.querySelector(".day-block-meta");
+      if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;
+      scheduleCollaborativePlanSave("协作块已更新", 1000);
+      return updatedText;
+    }
+    const block = currentBlocks.find((item) => item.id === blockId);
+    if (!block) return false;
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text } : item)));
+    await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback", { patchBlockIds: [blockId], patchFields: ["text", "textYjs"] });
+    dayBlockTextBaselines[blockId] = text || "";
+    scheduleCollaborativePlanSave("协作块已更新", 1000);
+    return { text };
+  };
+  const previous = dayBlockTextSyncChains[blockId] || Promise.resolve();
+  const next = previous.catch(() => false).then(syncTask);
+  dayBlockTextSyncChains[blockId] = next.finally(() => {
+    if (dayBlockTextSyncChains[blockId] === next) delete dayBlockTextSyncChains[blockId];
+  });
+  return next;
+}
+
+async function formatDayBlockInput(day, block, input, format = "bold") {
+  if (!day || !block?.id || !input) return false;
+  let formatOptions = {};
+  if (format === "link") {
+    const currentSelection = input.value.slice(input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length).trim();
+    const url = window.prompt("输入链接地址", /^https?:\/\//i.test(currentSelection) ? currentSelection : "https://");
+    if (url === null) return false;
+    const safeUrl = safeMarkdownUrl(url);
+    if (safeUrl === "#") {
+      dom.saveState.textContent = "链接地址需要以 http、https、mailto、tel、/、. 或 # 开头";
+      return false;
+    }
+    formatOptions = { url: safeUrl };
+  }
+  const formatted = dayBlockFormattedText(input.value, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, format, formatOptions);
+  const saved = await saveDayBlockTextChange(day, block, formatted.text, `format-${format}`, "已格式化协作块文本");
+  if (saved) {
+    requestAnimationFrame(() => {
+      const nextInput = dom.dayBlockList?.querySelector(`[data-edit-day-block="${CSS.escape(block.id)}"]`);
+      if (!nextInput) return;
+      nextInput.focus();
+      nextInput.setSelectionRange?.(formatted.selectionStart, formatted.selectionEnd);
+    });
+  }
+  return saved;
+}
+
+async function saveChecklistTextChange(day, block, nextText, action = "checklist-update") {
+  if (!day || !block?.id || block.type !== "checklist" || !requireEdit("更新检查清单")) return false;
+  activeBlockPresenceId = block.id;
+  schedulePresenceTrack(0);
+  noteRemoteBlockEditors(block.id, "更新检查清单");
+  const origin = `local-day-block-${action}`;
+  const updatedText = await updateDayBlockTextInDoc(day.id, block.id, nextText, origin);
+  if (updatedText) {
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+      item.id === block.id ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+    )));
+    if (!refreshDayBlockTextDom(day, [block.id])) renderDayBlocks(day);
+    await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+    await saveCollaborativePlanChange("已更新检查清单");
+    return true;
+  }
+  if (!mutate("更新检查清单", () => {
+    currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, text: nextText } : item)));
+  }, { requireUnlocked: false, save: false, render: false })) return false;
+  await syncDayBlocksToDoc(day.id, `${origin}-fallback`, { patchBlockIds: [block.id], patchFields: ["text", "textYjs"] });
+  await logActivity(`更新检查清单「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+  await saveCollaborativePlanChange("已更新检查清单");
+  render();
+  return true;
+}
+
+async function moveDayBlockByDirection(day, blockId, direction = "down", action = "move") {
+  const blocks = normalizeDayBlocks(day?.blocks || []);
+  const block = blocks.find((item) => item.id === blockId);
+  if (!day || !block || !requireEdit("排序协作块")) return false;
+  const offset = direction === "up" ? -1 : 1;
+  const index = blocks.findIndex((item) => item.id === blockId);
+  const targetIndex = index + offset;
+  if (targetIndex < 0 || targetIndex >= blocks.length) {
+    dom.saveState.textContent = direction === "up" ? "已经是第一个协作块" : "已经是最后一个协作块";
+    return false;
+  }
+  activeBlockPresenceId = blockId;
+  schedulePresenceTrack(0);
+  noteRemoteBlockEditors(blockId, action === "keyboard-move" ? "键盘排序" : "排序");
+  if (await moveDayBlockInDoc(day.id, blockId, direction, `local-day-block-${action}`)) {
+    day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
+      updatedBy: getCollabName(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!refreshDayBlockOrderDom(day, blockId)) renderDayBlocks(day);
+    await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action, direction }) });
+    await saveCollaborativePlanChange("已排序协作块");
+    return true;
+  }
+  if (!mutate("排序协作块", () => {
+    currentDay().blocks = moveDayBlockList(currentDay().blocks || [], blockId, direction);
+  }, { requireUnlocked: false, save: false, render: false })) return false;
+  await syncDayBlocksToDoc(day.id, `local-day-block-${action}-fallback`, { orderOnly: true, patchFields: [] });
+  await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action, direction }) });
+  await saveCollaborativePlanChange("已排序协作块");
+  if (!refreshDayBlockOrderDom(currentDay(), blockId)) renderDayBlocks(currentDay());
+  return true;
+}
+
+async function setSelectedDayBlockType(day, nextType) {
+  const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
+  if (!day || !selectedBlocks.length || !DAY_BLOCK_TYPES.includes(nextType) || !requireEdit("批量切换协作块类型")) return false;
+  let changedCount = 0;
+  for (const block of selectedBlocks) {
+    if (block.type === nextType) continue;
+    noteRemoteBlockEditors(block.id, "批量切换类型");
+    const updated = await updateDayBlockInDoc(day.id, block.id, { type: nextType }, "local-day-block-bulk-type");
+    if (updated) {
+      changedCount += 1;
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+        item.id === block.id ? { ...item, type: nextType, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+      )));
+    }
+  }
+  if (!changedCount) {
+    const fallbackBlocks = normalizeDayBlocks((day.blocks || []).map((block) => (
+      selectedDayBlockIds.has(block.id) && block.type !== nextType ? { ...block, type: nextType } : block
+    )));
+    changedCount = fallbackBlocks.filter((block) => selectedDayBlockIds.has(block.id) && block.type === nextType).length;
+    if (changedCount && mutate("批量切换协作块类型", () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-type-fallback", { patchBlockIds: selectedBlocks.map((block) => block.id), patchFields: ["type"] });
+      day = currentDay();
+    }
+  }
+  if (!changedCount) {
+    dom.saveState.textContent = `所选块已经是${dayBlockTypeLabel(nextType)}`;
+    return false;
+  }
+  activeBlockPresenceId = selectedBlocks[0]?.id || activeBlockPresenceId;
+  const changedIds = selectedBlocks.map((block) => block.id).filter((blockId) => {
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    return block && block.type === nextType;
+  });
+  if (!refreshDayBlockTypeDom(day, changedIds)) renderDayBlocks(day);
+  await logActivity(`批量切换 ${changedCount} 个协作块为${dayBlockTypeLabel(nextType)}`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-type" } });
+  await saveCollaborativePlanChange("已批量切换协作块类型");
+  dom.saveState.textContent = `已批量切换 ${changedCount} 个块`;
+  return true;
+}
+
+async function setSelectedDayBlockDone(day, done) {
+  const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
+  if (!day || !selectedBlocks.length || !requireEdit(done ? "批量完成协作块" : "批量重新打开协作块")) return false;
+  let changedCount = 0;
+  for (const block of selectedBlocks) {
+    if (Boolean(block.done) === Boolean(done)) continue;
+    noteRemoteBlockEditors(block.id, done ? "批量完成" : "批量重开");
+    const updated = await updateDayBlockInDoc(day.id, block.id, { done }, "local-day-block-bulk-done");
+    if (updated) {
+      changedCount += 1;
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+        item.id === block.id ? { ...item, done, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+      )));
+    }
+  }
+  if (!changedCount) {
+    const fallbackBlocks = normalizeDayBlocks((day.blocks || []).map((block) => (
+      selectedDayBlockIds.has(block.id) && Boolean(block.done) !== Boolean(done) ? { ...block, done } : block
+    )));
+    changedCount = fallbackBlocks.filter((block) => selectedDayBlockIds.has(block.id) && Boolean(block.done) === Boolean(done)).length;
+    if (changedCount && mutate(done ? "批量完成协作块" : "批量重新打开协作块", () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-done-fallback", { patchBlockIds: selectedBlocks.map((block) => block.id), patchFields: ["done"] });
+      day = currentDay();
+    }
+  }
+  if (!changedCount) {
+    dom.saveState.textContent = done ? "所选待办已经完成" : "所选块已经重新打开";
+    return false;
+  }
+  const changedIds = selectedBlocks.map((block) => block.id).filter((blockId) => {
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    return block && Boolean(block.done) === Boolean(done);
+  });
+  if (!refreshDayBlockDoneDom(day, changedIds)) renderDayBlocks(day);
+  await logActivity(`${done ? "批量完成" : "批量重新打开"} ${changedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: done ? "bulk-block-done" : "bulk-block-open" } });
+  await saveCollaborativePlanChange(done ? "已批量完成协作块" : "已批量重新打开协作块");
+  dom.saveState.textContent = done ? `已完成 ${changedCount} 个块` : `已重新打开 ${changedCount} 个块`;
+  return true;
+}
+
+async function indentSelectedDayBlocks(day, delta = 1) {
+  const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
+  const actionLabel = delta > 0 ? "批量增加协作块缩进" : "批量减少协作块缩进";
+  if (!day || !selectedBlocks.length || !requireEdit(actionLabel)) return false;
+  let changedCount = 0;
+  for (const block of selectedBlocks) {
+    const nextLevel = Math.max(0, Math.min((Number(block.level) || 0) + delta, 3));
+    if (nextLevel === (Number(block.level) || 0)) continue;
+    noteRemoteBlockEditors(block.id, delta > 0 ? "批量缩进" : "批量取消缩进");
+    const updated = await updateDayBlockInDoc(day.id, block.id, { level: nextLevel }, "local-day-block-bulk-indent");
+    if (updated) {
+      changedCount += 1;
+      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (
+        item.id === block.id ? { ...item, level: nextLevel, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
+      )));
+    }
+  }
+  if (!changedCount) {
+    const previousLevels = new Map(normalizeDayBlocks(day.blocks || []).map((block) => [block.id, Number(block.level) || 0]));
+    const fallbackBlocks = normalizeDayBlocks((day.blocks || []).map((block) => {
+      if (!selectedDayBlockIds.has(block.id)) return block;
+      const nextLevel = Math.max(0, Math.min((Number(block.level) || 0) + delta, 3));
+      return nextLevel === (Number(block.level) || 0) ? block : { ...block, level: nextLevel };
+    }));
+    changedCount = fallbackBlocks.filter((block) => selectedDayBlockIds.has(block.id) && (Number(block.level) || 0) !== (previousLevels.get(block.id) || 0)).length;
+    if (changedCount && mutate(actionLabel, () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-indent-fallback", { patchBlockIds: selectedBlocks.map((block) => block.id), patchFields: ["level"] });
+      day = currentDay();
+    }
+  }
+  if (!changedCount) {
+    dom.saveState.textContent = delta > 0 ? "所选块已经达到最大缩进" : "所选块已经没有缩进";
+    return false;
+  }
+  const changedIds = selectedBlocks.map((block) => block.id).filter((blockId) => {
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    return block && selectedDayBlockIds.has(block.id);
+  });
+  if (!refreshDayBlockLevelDom(day, changedIds)) renderDayBlocks(day);
+  await logActivity(`${delta > 0 ? "批量增加" : "批量减少"} ${changedCount} 个协作块缩进`, { target: { type: "day", dayId: day.id || "", action: delta > 0 ? "bulk-block-indent" : "bulk-block-outdent" } });
+  await saveCollaborativePlanChange(delta > 0 ? "已批量增加协作块缩进" : "已批量减少协作块缩进");
+  dom.saveState.textContent = delta > 0 ? `已缩进 ${changedCount} 个块` : `已取消缩进 ${changedCount} 个块`;
+  return true;
+}
+
+function duplicateDayBlockDraft(block) {
+  return normalizeDayBlock({
+    ...block,
+    id: uid(),
+    text: block.text ? `${block.text} 副本` : dayBlockTypeLabel(block.type),
+    textYjs: "",
+    comments: [],
+    done: false,
+    createdBy: getCollabName(),
+    createdAt: new Date().toISOString(),
+    updatedBy: "",
+    updatedAt: "",
+  });
+}
+
+async function duplicateSelectedDayBlocks(day) {
+  const blocks = normalizeDayBlocks(day?.blocks || []);
+  const selectedBlocks = selectedDayBlockList(blocks);
+  if (!day || !selectedBlocks.length || !requireEdit("批量复制协作块")) return false;
+  let workingBlocks = blocks;
+  let insertedCount = 0;
+  let lastAddedId = "";
+  const insertedIds = [];
+  for (const block of selectedBlocks) {
+    const sourceIndex = workingBlocks.findIndex((item) => item.id === block.id);
+    if (sourceIndex < 0) continue;
+    noteRemoteBlockEditors(block.id, "批量复制");
+    const duplicateBlock = duplicateDayBlockDraft(block);
+    if (!duplicateBlock) continue;
+    const insertIndex = sourceIndex + 1;
+    const added = await addDayBlockToDoc(day.id, duplicateBlock, "local-day-block-bulk-duplicate", insertIndex);
+    if (!added) continue;
+    const addedBlock = added === true ? duplicateBlock : added;
+    workingBlocks = insertDayBlockList(workingBlocks, addedBlock, insertIndex);
+    insertedCount += 1;
+    lastAddedId = addedBlock.id;
+    insertedIds.push(addedBlock.id);
+  }
+  if (!insertedCount) {
+    let fallbackBlocks = blocks;
+    for (const block of selectedBlocks) {
+      const sourceIndex = fallbackBlocks.findIndex((item) => item.id === block.id);
+      if (sourceIndex < 0) continue;
+      const duplicateBlock = duplicateDayBlockDraft(block);
+      if (!duplicateBlock) continue;
+      fallbackBlocks = insertDayBlockList(fallbackBlocks, duplicateBlock, sourceIndex + 1);
+      insertedCount += 1;
+      lastAddedId = duplicateBlock.id;
+      insertedIds.push(duplicateBlock.id);
+    }
+    if (insertedCount && mutate("批量复制协作块", () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-duplicate-fallback", { insertBlockIds: insertedIds, patchFields: [] });
+      day = currentDay();
+      workingBlocks = day.blocks;
+    }
+  }
+  if (!insertedCount) {
+    dom.saveState.textContent = "批量复制失败，请稍后再试";
+    return false;
+  }
+  day.blocks = normalizeDayBlocks(workingBlocks);
+  clearSelectedDayBlocks();
+  activeBlockPresenceId = lastAddedId || activeBlockPresenceId;
+  if (!refreshDayBlockInsertDom(day, insertedIds, lastAddedId)) renderDayBlocks(day);
+  schedulePresenceTrack(0);
+  if (lastAddedId) focusDayBlockInput(lastAddedId);
+  await logActivity(`批量复制 ${insertedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-duplicate" } });
+  await saveCollaborativePlanChange("已批量复制协作块");
+  dom.saveState.textContent = `已复制 ${insertedCount} 个块`;
+  return true;
+}
+
+async function deleteSelectedDayBlocks(day) {
+  const selectedBlocks = selectedDayBlockList(normalizeDayBlocks(day?.blocks || []));
+  if (!day || !selectedBlocks.length || !requireEdit("批量删除协作块")) return false;
+  let deletedCount = 0;
+  const deletedIds = new Set();
+  for (const block of selectedBlocks) {
+    noteRemoteBlockEditors(block.id, "批量删除");
+    const deleted = await deleteDayBlockFromDoc(day.id, block.id, "local-day-block-bulk-delete");
+    if (deleted) {
+      deletedIds.add(block.id);
+      deletedCount += 1;
+    }
+  }
+  if (!deletedCount) {
+    const selectedIds = new Set(selectedBlocks.map((block) => block.id));
+    const fallbackBlocks = normalizeDayBlocks((day.blocks || []).filter((block) => !selectedIds.has(block.id)));
+    deletedCount = normalizeDayBlocks(day.blocks || []).length - fallbackBlocks.length;
+    if (deletedCount && mutate("批量删除协作块", () => {
+      currentDay().blocks = fallbackBlocks;
+    }, { requireUnlocked: false, save: false, render: false })) {
+      await syncDayBlocksToDoc(currentDay().id, "local-day-block-bulk-delete-fallback", { deleteBlockIds: Array.from(selectedIds), patchFields: [] });
+      day = currentDay();
+    }
+  }
+  if (!deletedCount) {
+    dom.saveState.textContent = "批量删除失败，请稍后再试";
+    return false;
+  }
+  day.blocks = normalizeDayBlocks((day.blocks || []).filter((block) => !deletedIds.has(block.id)));
+  clearSelectedDayBlocks();
+  activeBlockPresenceId = "";
+  if (!refreshDayBlockDeleteDom(day, [...deletedIds])) renderDayBlocks(day);
+  schedulePresenceTrack(0);
+  await logActivity(`批量删除 ${deletedCount} 个协作块`, { target: { type: "day", dayId: day.id || "", action: "bulk-block-delete", deleted: true } });
+  await saveCollaborativePlanChange("已批量删除协作块");
+  dom.saveState.textContent = `已删除 ${deletedCount} 个块`;
+  return true;
 }
 
 function applyStopRealtimeFields(stop) {
@@ -4394,6 +6024,12 @@ function broadcastDaysReordered() {
 
 async function broadcastPlanReplaced(reason = "更新整份计划", meta = {}) {
   if (!realtimeChannel || !tripId || !state?.days?.length) return;
+  const replacementType = meta?.replacementType || "";
+  if (!PLAN_REPLACE_REASONS.has(replacementType)) {
+    console.warn("Blocked full plan replacement broadcast without explicit type", { reason, replacementType });
+    dom.collabStatus.textContent = "整份计划广播缺少明确替换类型，已阻止。";
+    return;
+  }
   await bindCollabPlanDoc();
   const planYjs = currentPlanYjsState();
   realtimeChannel.send({
@@ -4405,6 +6041,7 @@ async function broadcastPlanReplaced(reason = "更新整份计划", meta = {}) {
       planYjs,
       reason,
       ...clone(meta),
+      replacementType,
       memberId: memberProfile?.id || sessionId,
       name: getCollabName(),
       sentAt: new Date().toISOString(),
@@ -4442,6 +6079,10 @@ function destroyCollabPlanDoc() {
   collabPlanSaveTimer = null;
   Object.values(planMetaInputSyncTimers).forEach((timer) => clearTimeout(timer));
   planMetaInputSyncTimers = {};
+  pendingPlanMetaInputSyncs = {};
+  clearTimeout(dayFieldSyncTimer);
+  dayFieldSyncTimer = null;
+  pendingDayEditorSync = false;
   collabPlanTripId = "";
   collabDayMetasArray = null;
   collabDayTextStatesMap = null;
@@ -4466,7 +6107,7 @@ function attachCollabPlanDocObserver() {
   if (!collabPlanDoc) return;
   collabPlanDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentPlanFromDoc("收到协作者计划结构更新", { scheduleSave: !pendingConflict });
+      persistCurrentPlanFromDoc("收到协作者计划结构更新", { scheduleSave: false });
       return;
     }
     if (origin === "restore" || String(origin || "").startsWith("pending:")) {
@@ -4481,7 +6122,7 @@ function attachCollabPlanDocObserver() {
 }
 
 async function bindCollabPlanDoc() {
-  if (!tripId || isReadonlyMode || collabPlanTripId === tripId) return;
+  if (!tripId || isReadonlyMode || (!canWriteCollaborativeData() && !state.planYjs) || collabPlanTripId === tripId) return;
   const requestId = collabPlanBindRequestId + 1;
   collabPlanBindRequestId = requestId;
   destroyCollabPlanDoc();
@@ -4491,7 +6132,7 @@ async function bindCollabPlanDoc() {
   } catch {
     return;
   }
-  if (requestId !== collabPlanBindRequestId || !tripId || isReadonlyMode) return;
+  if (requestId !== collabPlanBindRequestId || !tripId || isReadonlyMode || (!canWriteCollaborativeData() && !state.planYjs)) return;
   collabPlanTripId = tripId;
   collabPlanDoc = new Y.Doc();
   let restored = false;
@@ -4530,7 +6171,12 @@ async function addCollaborativeTransportQuote(quote) {
   const existingIds = new Set(readTransportQuotesFromDoc().map((item) => item.id));
   if (existingIds.has(normalized.id)) return true;
   collabPlanDoc.transact(() => {
+    const freshIds = new Set(collabTransportQuotesArray.toArray().map((item) => item?.id).filter(Boolean));
+    if (freshIds.has(normalized.id)) return;
     collabTransportQuotesArray.insert(0, [normalized]);
+    if (collabTransportQuotesArray.length > 80) {
+      collabTransportQuotesArray.delete(80, collabTransportQuotesArray.length - 80);
+    }
   }, "local-transport-quote");
   return true;
 }
@@ -4553,7 +6199,12 @@ async function addCollaborativeTransportQuotes(quotes = [], origin = "local-tran
   const additions = normalized.filter((quote) => !existingIds.has(quote.id) && !existingKeys.has(transportOptionIdentity(quote)));
   if (!additions.length) return true;
   collabPlanDoc.transact(() => {
-    collabTransportQuotesArray.insert(0, additions);
+    const fresh = readTransportQuotesFromDoc();
+    const freshIds = new Set(fresh.map((item) => item.id));
+    const freshKeys = new Set(fresh.map(transportOptionIdentity));
+    const freshAdditions = additions.filter((quote) => !freshIds.has(quote.id) && !freshKeys.has(transportOptionIdentity(quote)));
+    if (!freshAdditions.length) return;
+    collabTransportQuotesArray.insert(0, freshAdditions);
     if (collabTransportQuotesArray.length > 80) {
       collabTransportQuotesArray.delete(80, collabTransportQuotesArray.length - 80);
     }
@@ -4570,7 +6221,12 @@ async function addCollaborativeCandidate(stop) {
   const existingIds = new Set(readCandidatesFromDoc().map((item) => item.id));
   if (existingIds.has(normalized.id)) return true;
   collabPlanDoc.transact(() => {
+    const freshIds = new Set(collabCandidatesArray.toArray().map((item) => item?.id).filter(Boolean));
+    if (freshIds.has(normalized.id)) return;
     collabCandidatesArray.insert(0, [normalized]);
+    if (collabCandidatesArray.length > 80) {
+      collabCandidatesArray.delete(80, collabCandidatesArray.length - 80);
+    }
   }, "local-candidate");
   return true;
 }
@@ -4657,7 +6313,7 @@ async function updateCandidateInDoc(candidateId, patch = {}) {
 }
 
 async function addCollaborativeActivity(activityInput) {
-  if (!canEdit() || isReadonlyMode || !tripId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !tripId) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabActivitiesArray || isApplyingCollabPlanRemote) return false;
   const input = typeof activityInput === "string" ? { text: activityInput } : activityInput || {};
@@ -4699,11 +6355,16 @@ async function syncPlanSettingToDoc(field, value) {
   return true;
 }
 
-async function syncPlanMetaToDoc(origin = "local-plan-meta") {
+async function syncPlanMetaToDoc(origin = "local-plan-meta", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabSettingsMap || isApplyingCollabPlanRemote) return false;
-  const entries = PLAN_SETTING_FIELDS.map((meta) => [meta.field, planSettingValue(state, meta)]);
+  const { fields = null, replace = false } = options || {};
+  const fieldSet = Array.isArray(fields) && !replace
+    ? new Set(fields.map((field) => String(field || "")).filter(Boolean))
+    : null;
+  const metas = fieldSet ? PLAN_SETTING_FIELDS.filter((meta) => fieldSet.has(meta.field)) : PLAN_SETTING_FIELDS;
+  const entries = metas.map((meta) => [meta.field, planSettingValue(state, meta)]);
   const changed = entries.some(([field, value]) => {
     const textValue = PLAN_TEXT_SETTING_FIELDS.includes(field) ? collabSettingTextsMap?.get(field)?.toString() : undefined;
     return !sameSerialized(collabSettingsMap.get(field), value) || (textValue !== undefined && textValue !== value);
@@ -4765,20 +6426,152 @@ function syncYArrayById(yArray, nextItems = [], normalizeItem = (item) => item) 
   return changed;
 }
 
-async function syncDayMetasToDoc(origin = "local-day-metas") {
+function mergeInsertedYArrayItemsIntoLatest(latestItems = [], localItems = [], insertedIds = new Set(), normalizeItem = (item) => item, limit = 80) {
+  const next = (latestItems || []).map((item) => normalizeItem(item)).filter((item) => item?.id);
+  const nextIds = new Set(next.map((item) => item.id));
+  const normalizedLocal = (localItems || []).map((item) => normalizeItem(item)).filter((item) => item?.id);
+  normalizedLocal.forEach((item, localIndex) => {
+    if (!insertedIds.has(item.id) || nextIds.has(item.id)) return;
+    let insertIndex = next.length;
+    for (let index = localIndex - 1; index >= 0; index -= 1) {
+      const previousId = normalizedLocal[index]?.id || "";
+      const previousIndex = next.findIndex((candidate) => candidate.id === previousId);
+      if (previousIndex >= 0) {
+        insertIndex = previousIndex + 1;
+        break;
+      }
+    }
+    if (insertIndex === next.length) {
+      for (let index = localIndex + 1; index < normalizedLocal.length; index += 1) {
+        const nextId = normalizedLocal[index]?.id || "";
+        const nextIndex = next.findIndex((candidate) => candidate.id === nextId);
+        if (nextIndex >= 0) {
+          insertIndex = nextIndex;
+          break;
+        }
+      }
+    }
+    next.splice(insertIndex, 0, item);
+    nextIds.add(item.id);
+  });
+  return next.slice(0, limit);
+}
+
+function hasExplicitYArrayFallbackIntent(options = {}) {
+  const {
+    replace = false,
+    deleteIds = [],
+    insertIds = [],
+    patchIds = null,
+    patchFields = null,
+    orderOnly = false,
+  } = options || {};
+  return Boolean(
+    replace ||
+    orderOnly ||
+    (Array.isArray(deleteIds) && deleteIds.length) ||
+    (Array.isArray(insertIds) && insertIds.length) ||
+    (Array.isArray(patchIds) && patchIds.length) ||
+    (Array.isArray(patchFields) && patchFields.length)
+  );
+}
+
+function mergedYArrayItemsForFallback(yArray, localItems = [], normalizeItem = (item) => item, options = {}) {
+  const {
+    replace = false,
+    deleteIds = [],
+    insertIds = [],
+    patchIds = null,
+    patchFields = null,
+    preserveRemoteOrder = true,
+    orderOnly = false,
+    limit = 80,
+  } = options || {};
+  const normalizedLocal = (localItems || []).map((item) => normalizeItem(item)).filter((item) => item?.id);
+  if (replace) return normalizedLocal.slice(0, limit);
+  const latestItems = (yArray?.toArray?.() || []).map((item) => normalizeItem(item)).filter((item) => item?.id);
+  const latestById = new Map(latestItems.map((item) => [item.id, item]));
+  const localIds = new Set(normalizedLocal.map((item) => item.id));
+  const deletedIds = new Set((deleteIds || []).map((id) => String(id || "")).filter(Boolean));
+  const insertedIds = new Set((insertIds || []).map((id) => String(id || "")).filter(Boolean));
+  const hasPatchIdConstraint = Array.isArray(patchIds);
+  const constrainedPatchIds = new Set((patchIds || []).map((id) => String(id || "")).filter(Boolean));
+  const hasPatchFieldConstraint = Array.isArray(patchFields);
+  const constrainedPatchFields = hasPatchFieldConstraint ? patchFields.filter(Boolean) : [];
+  const hasNewConstrainedLocalItem = normalizedLocal.some((item) => constrainedPatchIds.has(item.id) && !latestById.has(item.id));
+  const patchOnly = preserveRemoteOrder && hasPatchFieldConstraint && hasPatchIdConstraint && !deletedIds.size && !hasNewConstrainedLocalItem;
+  const insertOnly = insertedIds.size > 0 && !deletedIds.size && !orderOnly && (!hasPatchFieldConstraint || !constrainedPatchFields.length);
+  const deleteOnly = deletedIds.size > 0 && !insertedIds.size && !orderOnly && hasPatchFieldConstraint && !constrainedPatchFields.length;
+  const mergedLocal = normalizedLocal.map((item) => {
+    const latest = latestById.get(item.id);
+    if (!latest) return item;
+    if (orderOnly) return latest;
+    if (!hasPatchFieldConstraint) return item;
+    if (hasPatchIdConstraint && !constrainedPatchIds.has(item.id)) return latest;
+    const patch = {};
+    constrainedPatchFields.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(item, field)) patch[field] = item[field];
+    });
+    return normalizeItem({ ...latest, ...patch, id: item.id });
+  });
+  if (patchOnly) {
+    const localById = new Map(mergedLocal.map((item) => [item.id, item]));
+    const patchedRemoteOrder = latestItems.map((item) => localById.get(item.id) || item);
+    const newLocalItems = mergedLocal.filter((item) => !latestById.has(item.id));
+    return [...patchedRemoteOrder, ...newLocalItems].slice(0, limit);
+  }
+  if (orderOnly) {
+    return [
+      ...mergedLocal.filter((item) => latestById.has(item.id)),
+      ...latestItems.filter((item) => !localIds.has(item.id) && !deletedIds.has(item.id)),
+    ].slice(0, limit);
+  }
+  if (insertOnly) return mergeInsertedYArrayItemsIntoLatest(latestItems, mergedLocal, insertedIds, normalizeItem, limit);
+  if (deleteOnly) return latestItems.filter((item) => !deletedIds.has(item.id)).slice(0, limit);
+  const preservedRemote = latestItems.filter((item) => !localIds.has(item.id) && !deletedIds.has(item.id));
+  return [...mergedLocal, ...preservedRemote].slice(0, limit);
+}
+
+async function syncDayMetasToDoc(origin = "local-day-metas", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabDayMetasArray || isApplyingCollabPlanRemote) return false;
-  const nextDayMetas = normalizeDayMetas(state.days || []);
+  const { replace = false, deleteDayIds = [], insertDayIds = [], patchDayIds = null, patchFields = null, preserveRemoteOrder = true, orderOnly = false } = options || {};
+  const localDayMetas = normalizeDayMetas(state.days || []);
+  const patchDayIdSet = new Set((patchDayIds || []).map((id) => String(id || "")).filter(Boolean));
+  const insertedDayIdSet = new Set((insertDayIds || []).map((id) => String(id || "")).filter(Boolean));
+  const nextDayMetas = mergedYArrayItemsForFallback(
+    collabDayMetasArray,
+    localDayMetas,
+    (day) => normalizeDayMetas([day])[0],
+    { replace, deleteIds: deleteDayIds, insertIds: insertDayIds, patchIds: patchDayIds, patchFields, preserveRemoteOrder, orderOnly, limit: 30 },
+  );
+  const nextDayIds = new Set(nextDayMetas.map((day) => day.id));
+  const deletedDayIds = new Set((deleteDayIds || []).map((id) => String(id || "")).filter(Boolean));
+  const touchedDayIds = replace
+    ? nextDayIds
+    : insertedDayIdSet.size
+      ? insertedDayIdSet
+      : Array.isArray(patchDayIds)
+        ? patchDayIdSet
+        : orderOnly
+          ? new Set()
+          : new Set(localDayMetas.map((day) => day.id));
   const nextDayTextStates = dayTextStateSnapshotFromDays(state.days || [], yjsModule);
-  if (sameSerialized(readDayMetasFromDoc(), nextDayMetas) && sameSerialized(readDayTextStatesFromDoc(), nextDayTextStates)) return true;
+  const textStateChanged = Object.entries(nextDayTextStates)
+    .some(([dayId, textState]) => touchedDayIds.has(dayId) && collabDayTextStatesMap?.get(dayId) !== textState);
+  if (sameSerialized(readDayMetasFromDoc(), nextDayMetas) && !textStateChanged) return true;
   collabPlanDoc.transact(() => {
     syncYArrayById(collabDayMetasArray, nextDayMetas, (day) => normalizeDayMetas([day])[0]);
     if (collabDayTextStatesMap) {
       Array.from(collabDayTextStatesMap.keys()).forEach((dayId) => {
-        if (!Object.prototype.hasOwnProperty.call(nextDayTextStates, dayId)) collabDayTextStatesMap.delete(dayId);
+        const shouldDelete = replace
+          ? !nextDayIds.has(dayId)
+          : deletedDayIds.has(dayId);
+        if (shouldDelete) collabDayTextStatesMap.delete(dayId);
       });
       Object.entries(nextDayTextStates).forEach(([dayId, textState]) => {
+        if (!touchedDayIds.has(dayId)) return;
         if (collabDayTextStatesMap.get(dayId) !== textState) collabDayTextStatesMap.set(dayId, textState);
       });
     }
@@ -4838,17 +6631,18 @@ async function reorderDayMetasInDoc(orderedDays = state.days || [], origin = "lo
 }
 
 async function patchDayMetaInDoc(dayId, patch = {}, origin = "local-day-meta-patch") {
-  if (!canEdit() || isReadonlyMode || !dayId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !dayId) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabDayMetasArray || isApplyingCollabPlanRemote) return false;
   const localDay = state.days.find((day) => day.id === dayId);
   const sourceDay = localDay ? normalizeDayMetas([localDay])[0] : null;
   const allowedFields = new Set(["date", "title", "route", "weather", "transport", "comments", "amapRoute"]);
   const patchFields = Object.keys(patch).filter((field) => allowedFields.has(field));
+  if (!canEdit() && patchFields.some((field) => field !== "comments")) return false;
   if (!sourceDay || !patchFields.length) return false;
   const currentItems = collabDayMetasArray.toArray();
   const index = currentItems.findIndex((day) => day?.id === dayId);
-  if (index < 0) return syncDayMetasToDoc(origin);
+  if (index < 0) return syncDayMetasToDoc(origin, { patchDayIds: [dayId], patchFields });
   const current = normalizeDayMetas([currentItems[index]])[0];
   const next = normalizeDayMetas([{
     ...current,
@@ -4886,18 +6680,29 @@ async function syncStopTextStateToPlanDoc(stopId, textState, origin = "local-sto
   return true;
 }
 
-async function syncStopSnapshotToPlanDoc(stopId, origin = "local-stop-snapshot") {
-  if (!canEdit() || isReadonlyMode || !stopId) return false;
+async function syncStopSnapshotToPlanDoc(stopId, origin = "local-stop-snapshot", options = {}) {
+  if (!canWriteCollaborativeData() || isReadonlyMode || !stopId) return false;
   await bindCollabPlanDoc();
   const location = findStopLocation(stopId);
   if (!location?.day?.id || !location.stop || !collabPlanDoc || !collabStopListsMap || isApplyingCollabPlanRemote) return false;
   const normalized = normalizeCollaborativeStop(location.stop);
+  const { patchFields = null } = options || {};
+  const hasPatchFieldConstraint = Array.isArray(patchFields);
+  const constrainedPatchFields = hasPatchFieldConstraint ? patchFields.filter(Boolean) : [];
+  if (!canEdit() && (!hasPatchFieldConstraint || constrainedPatchFields.some((field) => field !== "comments"))) return false;
   const textState = normalized.textYjs || normalized.noteYjs || "";
   let stopArray = collabStopListsMap.get(location.day.id);
   const existingStops = stopArray && typeof stopArray.toArray === "function" ? stopArray.toArray() : [];
   const existingIndex = existingStops.findIndex((stop) => stop?.id === stopId);
   const existingStop = existingIndex >= 0 ? normalizeCollaborativeStop(existingStops[existingIndex]) : null;
-  const stopChanged = !existingStop || !sameSerialized(existingStop, normalized);
+  const snapshotStop = existingStop && hasPatchFieldConstraint
+    ? normalizeCollaborativeStop({
+      ...existingStop,
+      ...Object.fromEntries(constrainedPatchFields.map((field) => [field, normalized[field]])),
+      id: stopId,
+    })
+    : normalized;
+  const stopChanged = !existingStop || !sameSerialized(existingStop, snapshotStop);
   const textChanged = Boolean(textState && collabStopTextStatesMap?.get(stopId) !== textState);
   if (!stopChanged && !textChanged) return true;
   collabPlanDoc.transact(() => {
@@ -4908,9 +6713,16 @@ async function syncStopSnapshotToPlanDoc(stopId, origin = "local-stop-snapshot")
     const freshStops = stopArray.toArray();
     const freshIndex = freshStops.findIndex((stop) => stop?.id === stopId);
     const freshStop = freshIndex >= 0 ? normalizeCollaborativeStop(freshStops[freshIndex]) : null;
-    if (!freshStop || !sameSerialized(freshStop, normalized)) {
+    const freshNext = freshStop && hasPatchFieldConstraint
+      ? normalizeCollaborativeStop({
+        ...freshStop,
+        ...Object.fromEntries(constrainedPatchFields.map((field) => [field, normalized[field]])),
+        id: stopId,
+      })
+      : normalized;
+    if (!freshStop || !sameSerialized(freshStop, freshNext)) {
       if (freshIndex >= 0) stopArray.delete(freshIndex, 1);
-      stopArray.insert(freshIndex >= 0 ? freshIndex : stopArray.length, [normalized]);
+      stopArray.insert(freshIndex >= 0 ? freshIndex : stopArray.length, [freshNext]);
     }
     if (textState && collabStopTextStatesMap?.get(stopId) !== textState) {
       collabStopTextStatesMap.set(stopId, textState);
@@ -4919,21 +6731,211 @@ async function syncStopSnapshotToPlanDoc(stopId, origin = "local-stop-snapshot")
   return true;
 }
 
-async function syncStopListToDoc(dayId, origin = "local-stop-list") {
+function patchedStopTextState(stopId, fallbackStop = {}, patch = {}, Y = yjsModule) {
+  if (!Y || !stopId) return "";
+  const textFields = new Set(COLLAB_TEXT_FIELDS.map((field) => field.field));
+  const structMetas = COLLAB_STRUCT_FIELDS.filter((meta) => Object.prototype.hasOwnProperty.call(patch, meta.field));
+  const patchedTextFields = Object.keys(patch || {}).filter((field) => textFields.has(field));
+  if (!patchedTextFields.length && !structMetas.length) return collabStopTextStatesMap?.get(stopId) || fallbackStop.textYjs || fallbackStop.noteYjs || "";
+  const tempDoc = new Y.Doc();
+  const baseState = collabStopTextStatesMap?.get(stopId) || fallbackStop.textYjs || fallbackStop.noteYjs || "";
+  try {
+    if (baseState) {
+      Y.applyUpdate(tempDoc, base64ToBytes(baseState), "patch");
+    } else {
+      Y.applyUpdate(tempDoc, buildInitialTextUpdate(Y, fallbackStop), "patch");
+    }
+    tempDoc.transact(() => {
+      patchedTextFields.forEach((field) => {
+        applyTextDiff(tempDoc.getText(field), String(patch[field] || ""));
+      });
+      const structMap = tempDoc.getMap("struct");
+      const patchedStop = { ...fallbackStop, ...patch, id: stopId };
+      COLLAB_STRUCT_FIELDS.forEach((meta) => {
+        if (Object.prototype.hasOwnProperty.call(patch, meta.field) || !structMap.has(meta.field)) {
+          structMap.set(meta.field, stopStructValue(patchedStop, meta));
+        }
+      });
+    }, "patch");
+    return bytesToBase64(Y.encodeStateAsUpdate(tempDoc));
+  } catch (error) {
+    console.warn("Patched stop text state could not be encoded", error);
+    return "";
+  } finally {
+    tempDoc.destroy();
+  }
+}
+
+function patchActiveStopTextDoc(stopId, patch = {}, origin = "local-stop-patch-active-text") {
+  if (!collabTextDoc || collabTextStopId !== stopId || isApplyingCollabTextRemote) return false;
+  const textFields = new Set(COLLAB_TEXT_FIELDS.map((field) => field.field));
+  const structMetas = COLLAB_STRUCT_FIELDS.filter((meta) => Object.prototype.hasOwnProperty.call(patch, meta.field));
+  const patchedTextFields = Object.keys(patch || {}).filter((field) => textFields.has(field));
+  if (!patchedTextFields.length && !structMetas.length) return false;
+  const location = findStopLocation(stopId);
+  const patchedStop = { ...(location?.stop || {}), ...patch, id: stopId };
+  collabTextDoc.transact(() => {
+    patchedTextFields.forEach((field) => {
+      const yText = collabTextFields[field] || collabTextDoc.getText(field);
+      collabTextFields[field] = yText;
+      applyTextDiff(yText, String(patch[field] || ""));
+    });
+    if (collabStructMap) {
+      structMetas.forEach((meta) => {
+        collabStructMap.set(meta.field, stopStructValue(patchedStop, meta));
+      });
+    }
+  }, origin);
+  return true;
+}
+
+async function patchStopInDoc(stopId, patch = {}, origin = "local-stop-patch") {
+  if (!canEdit() || isReadonlyMode || !stopId) return false;
+  const patchFields = Object.keys(patch || {});
+  if (!patchFields.length) return false;
+  await bindCollabPlanDoc();
+  let Y = yjsModule;
+  if (!Y) {
+    try {
+      Y = await ensureYjs();
+    } catch {
+      Y = null;
+    }
+  }
+  const location = findStopLocation(stopId);
+  if (!location?.day?.id || !location.stop || !collabPlanDoc || !collabStopListsMap || isApplyingCollabPlanRemote) return false;
+  const sourceStop = normalizeCollaborativeStop(location.stop);
+  let stopArray = collabStopListsMap.get(location.day.id);
+  const existingStops = stopArray && typeof stopArray.toArray === "function" ? stopArray.toArray() : [];
+  const existingIndex = existingStops.findIndex((stop) => stop?.id === stopId);
+  const current = existingIndex >= 0 ? normalizeCollaborativeStop(existingStops[existingIndex]) : sourceStop;
+  const next = normalizeCollaborativeStop({ ...current, ...patch, id: stopId });
+  const nextTextState = Y ? patchedStopTextState(stopId, next, patch, Y) : "";
+  const textChanged = Boolean(nextTextState && collabStopTextStatesMap?.get(stopId) !== nextTextState);
+  const stopChanged = !sameSerialized(current, next);
+  if (!stopChanged && !textChanged) {
+    patchActiveStopTextDoc(stopId, patch, `${origin}-active-text`);
+    return true;
+  }
+  collabPlanDoc.transact(() => {
+    if (!stopArray) {
+      stopArray = new yjsModule.Array();
+      collabStopListsMap.set(location.day.id, stopArray);
+    }
+    const freshStops = stopArray.toArray();
+    const freshIndex = freshStops.findIndex((stop) => stop?.id === stopId);
+    const freshCurrent = freshIndex >= 0 ? normalizeCollaborativeStop(freshStops[freshIndex]) : sourceStop;
+    const freshNext = normalizeCollaborativeStop({ ...freshCurrent, ...patch, id: stopId });
+    if (!sameSerialized(freshCurrent, freshNext)) {
+      if (freshIndex >= 0) stopArray.delete(freshIndex, 1);
+      stopArray.insert(freshIndex >= 0 ? freshIndex : stopArray.length, [freshNext]);
+    }
+    if (Y && collabStopTextStatesMap) {
+      const textState = patchedStopTextState(stopId, freshNext, patch, Y);
+      if (textState && collabStopTextStatesMap.get(stopId) !== textState) collabStopTextStatesMap.set(stopId, textState);
+    }
+  }, origin);
+  patchActiveStopTextDoc(stopId, patch, `${origin}-active-text`);
+  return true;
+}
+
+async function syncStopListToDoc(dayId, origin = "local-stop-list", options = {}) {
   if (!canEdit() || isReadonlyMode || !dayId) return false;
   await bindCollabPlanDoc();
-  if (!collabPlanDoc || !collabStopListsMap || isApplyingCollabPlanRemote) return false;
+  if (!collabPlanDoc || !collabStopListsMap || !collabStopTextStatesMap || isApplyingCollabPlanRemote) return false;
   const day = state.days.find((item) => item.id === dayId);
   if (!day) return false;
+  const {
+    replace = false,
+    deleteStopIds = [],
+    patchStopIds = null,
+    insertStopIds = [],
+    patchFields = [],
+    preserveRemoteOrder = true,
+    orderOnly = false,
+  } = options || {};
   let stopArray = collabStopListsMap.get(dayId);
+  const localStops = normalizeStopListsFromDays([day])[dayId] || [];
+  const latestStops = normalizeCollaborativeStopList(stopArray?.toArray?.() || []);
+  const localStopIds = new Set(localStops.map((stop) => stop.id));
+  const deletedIds = new Set((deleteStopIds || []).map((id) => String(id || "")).filter(Boolean));
+  const insertedIds = new Set((insertStopIds || []).map((id) => String(id || "")).filter(Boolean));
+  const latestById = new Map(latestStops.map((stop) => [stop.id, stop]));
+  const hasPatchStopConstraint = Array.isArray(patchStopIds);
+  const constrainedPatchStopIds = new Set((patchStopIds || []).map((id) => String(id || "")).filter(Boolean));
+  const hasPatchFieldConstraint = Array.isArray(patchFields);
+  const constrainedPatchFields = hasPatchFieldConstraint ? patchFields.filter(Boolean) : [];
+  const hasNewConstrainedLocalStop = localStops.some((stop) => constrainedPatchStopIds.has(stop.id) && !latestById.has(stop.id));
+  const patchOnly = preserveRemoteOrder && hasPatchFieldConstraint && hasPatchStopConstraint && !deletedIds.size && !hasNewConstrainedLocalStop;
+  const insertOnly = !replace && insertedIds.size > 0 && !deletedIds.size && !orderOnly && (!hasPatchFieldConstraint || !constrainedPatchFields.length);
+  const deleteOnly = !replace && deletedIds.size > 0 && !insertedIds.size && !orderOnly && hasPatchFieldConstraint && !constrainedPatchFields.length;
+  const mergeLocalStop = (stop) => {
+    const latest = latestById.get(stop.id);
+    if (!latest || replace) return normalizeCollaborativeStop({ ...(latest || {}), ...stop, id: stop.id });
+    if (orderOnly) return latest;
+    if (!hasPatchFieldConstraint) return latest;
+    if (hasPatchStopConstraint && !constrainedPatchStopIds.has(stop.id)) return latest;
+    const patch = {};
+    constrainedPatchFields.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(stop, field)) patch[field] = stop[field];
+    });
+    return normalizeCollaborativeStop({ ...latest, ...patch, id: stop.id });
+  };
+  const mergedLocalStops = localStops.map(mergeLocalStop);
+  const nextStops = replace
+    ? localStops
+    : orderOnly
+      ? normalizeCollaborativeStopList([
+        ...mergedLocalStops.filter((stop) => latestById.has(stop.id)),
+        ...latestStops.filter((stop) => !localStopIds.has(stop.id) && !deletedIds.has(stop.id)),
+      ])
+      : deleteOnly
+        ? normalizeCollaborativeStopList(latestStops.filter((stop) => !deletedIds.has(stop.id)))
+      : insertOnly
+        ? mergeInsertedStopsIntoLatest(latestStops, mergedLocalStops, insertedIds)
+    : patchOnly
+      ? normalizeCollaborativeStopList([
+        ...latestStops.map((stop) => mergedLocalStops.find((item) => item.id === stop.id) || stop),
+        ...mergedLocalStops.filter((stop) => !latestById.has(stop.id)),
+      ])
+      : normalizeCollaborativeStopList([
+        ...mergedLocalStops,
+        ...latestStops.filter((stop) => !localStopIds.has(stop.id) && !deletedIds.has(stop.id)),
+      ]);
+  const touchedStopIds = replace
+    ? new Set(nextStops.map((stop) => stop.id))
+    : insertedIds.size
+      ? insertedIds
+    : hasPatchStopConstraint
+      ? constrainedPatchStopIds
+      : localStopIds;
+  const nextStopIds = new Set(nextStops.map((stop) => stop.id));
+  const textStateUpdates = [];
+  nextStops.forEach((stop) => {
+    if (orderOnly) return;
+    if (deleteOnly) return;
+    if (!touchedStopIds.has(stop.id)) return;
+    const textState = stop.textYjs || stop.noteYjs || "";
+    if (textState && collabStopTextStatesMap.get(stop.id) !== textState) {
+      textStateUpdates.push([stop.id, textState]);
+    }
+  });
+  if (sameSerialized(latestStops, nextStops) && !textStateUpdates.length) return true;
   collabPlanDoc.transact(() => {
     if (!stopArray) {
       stopArray = new yjsModule.Array();
       collabStopListsMap.set(dayId, stopArray);
     }
-    const nextStops = normalizeStopListsFromDays([day])[dayId] || [];
-    if (sameSerialized(stopArray.toArray(), nextStops)) return;
     syncYArrayById(stopArray, nextStops, normalizeCollaborativeStop);
+    Array.from(collabStopTextStatesMap.keys()).forEach((stopId) => {
+      const shouldDelete = replace
+        ? !nextStopIds.has(stopId)
+        : deletedIds.has(stopId);
+      if (shouldDelete) collabStopTextStatesMap.delete(stopId);
+    });
+    textStateUpdates.forEach(([stopId, textState]) => {
+      collabStopTextStatesMap.set(stopId, textState);
+    });
   }, origin);
   return true;
 }
@@ -4948,6 +6950,7 @@ async function reorderStopListInDoc(dayId, orderedStops = [], origin = "local-st
   const latestStops = normalizeCollaborativeStopList(stopArray.toArray());
   const latestById = new Map(latestStops.map((stop) => [stop.id, stop]));
   const desiredIds = new Set(desiredStops.map((stop) => stop.id));
+  const patchByStopId = new Map();
   const orderedMerged = desiredStops.map((stop) => {
     const latest = latestById.get(stop.id);
     if (!latest) return stop;
@@ -4956,14 +6959,41 @@ async function reorderStopListInDoc(dayId, orderedStops = [], origin = "local-st
     patchFields.forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(stop, field)) patch[field] = stop[field];
     });
+    if (Object.keys(patch).length) patchByStopId.set(latest.id, patch);
     return normalizeCollaborativeStop({ ...latest, ...patch, id: latest.id });
   });
   const preservedExtras = latestStops.filter((stop) => !desiredIds.has(stop.id));
   const nextStops = [...orderedMerged, ...preservedExtras];
-  if (sameSerialized(latestStops, nextStops)) return true;
+  const textStateUpdates = [];
+  let Y = yjsModule;
+  if (patchByStopId.size && collabStopTextStatesMap && !Y) {
+    try {
+      Y = await ensureYjs();
+    } catch {
+      Y = null;
+    }
+  }
+  if (patchByStopId.size && collabStopTextStatesMap && Y) {
+    nextStops.forEach((stop) => {
+      const patch = patchByStopId.get(stop.id);
+      if (!patch) return;
+      const textState = patchedStopTextState(stop.id, stop, patch, Y);
+      if (textState && collabStopTextStatesMap.get(stop.id) !== textState) {
+        textStateUpdates.push([stop.id, textState]);
+      }
+    });
+  }
+  if (sameSerialized(latestStops, nextStops) && !textStateUpdates.length) {
+    patchByStopId.forEach((patch, stopId) => patchActiveStopTextDoc(stopId, patch, `${origin}-active-text`));
+    return true;
+  }
   collabPlanDoc.transact(() => {
     syncYArrayById(stopArray, nextStops, normalizeCollaborativeStop);
+    textStateUpdates.forEach(([stopId, textState]) => {
+      collabStopTextStatesMap?.set(stopId, textState);
+    });
   }, origin);
+  patchByStopId.forEach((patch, stopId) => patchActiveStopTextDoc(stopId, patch, `${origin}-active-text`));
   return true;
 }
 
@@ -4991,6 +7021,18 @@ async function addStopToDoc(dayId, stop, origin = "local-stop-insert") {
     const textState = normalized.textYjs || normalized.noteYjs || "";
     if (textState) collabStopTextStatesMap?.set(normalized.id, textState);
   }, origin);
+  return true;
+}
+
+async function applyStopCreateFromDoc(dayId, stopId, label = "计划结构协作内容已实时同步") {
+  persistCurrentPlanFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
+  const nextDayIndex = state.days.findIndex((day) => day.id === dayId);
+  if (nextDayIndex < 0) return false;
+  activeDay = nextDayIndex;
+  const nextStopIndex = (state.days[nextDayIndex].stops || []).findIndex((stop) => stop.id === stopId);
+  activeStop = nextStopIndex >= 0 ? nextStopIndex : Math.max(0, (state.days[nextDayIndex].stops || []).length - 1);
+  clearCurrentAmapRoute();
+  await patchDayMetaInDoc(dayId, { amapRoute: null }, "local-stop-create-route-clear");
   return true;
 }
 
@@ -5044,7 +7086,7 @@ async function ensureDayBlockArray(dayId) {
   return blockArray;
 }
 
-async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day-block-text-crdt") {
+async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day-block-text-crdt", options = {}) {
   if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || isApplyingCollabPlanRemote) return false;
@@ -5058,8 +7100,10 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
     return false;
   }
   const nextText = String(text || "").trim();
+  const localBaseText = Object.prototype.hasOwnProperty.call(options, "baseText") ? String(options.baseText || "").trim() : null;
   let changed = false;
   let nextState = "";
+  let appliedText = nextText;
   collabPlanDoc.transact(() => {
     const key = dayBlockTextKey(dayId, blockId);
     let yText = collabDayBlockTextsMap.get(key);
@@ -5069,12 +7113,15 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
       if (initialText) yText.insert(0, initialText);
       collabDayBlockTextsMap.set(key, yText);
     }
-    changed = applyTextDiff(yText, nextText);
+    changed = localBaseText !== null
+      ? applyTextDiffFromBase(yText, localBaseText, nextText)
+      : applyTextDiff(yText, nextText);
     const yTextValue = yText.toString();
-    nextState = bytesToBase64(buildInitialDayBlockTextUpdate(Y, { ...block, id: blockId, text: yTextValue }, dayId));
+    appliedText = yTextValue;
+    nextState = bytesToBase64(buildInitialDayBlockTextUpdate(Y, { ...block, id: blockId, text: appliedText }, dayId));
     collabDayBlockTextStatesMap.set(key, nextState);
   }, origin);
-  if (!changed && block.text === nextText && block.textYjs === nextState) return true;
+  if (!changed && block.text === appliedText && block.textYjs === nextState) return true;
   collabPlanDoc.transact(() => {
     const latestItems = blockArray.toArray();
     const latestIndex = latestItems.findIndex((item) => item?.id === blockId);
@@ -5083,7 +7130,7 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
     const next = normalizeDayBlock({
       ...latest,
       id: blockId,
-      text: nextText,
+      text: appliedText,
       textYjs: nextState,
       updatedBy: getCollabName(),
       updatedAt: new Date().toISOString(),
@@ -5092,7 +7139,7 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
     blockArray.delete(latestIndex, 1);
     blockArray.insert(latestIndex, [next]);
   }, origin);
-  return { text: nextText, textYjs: nextState };
+  return { text: appliedText, textYjs: nextState };
 }
 
 async function addDayBlockToDoc(dayId, block, origin = "local-day-block-add", insertIndex = null) {
@@ -5216,7 +7263,7 @@ async function deleteDayBlockFromDoc(dayId, blockId, origin = "local-day-block-d
 }
 
 async function updateDayBlockCommentsInDoc(dayId, blockId, comments = [], origin = "local-day-block-comments") {
-  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !dayId || !blockId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
   const items = blockArray.toArray();
@@ -5248,7 +7295,7 @@ async function updateDayBlockCommentsInDoc(dayId, blockId, comments = [], origin
 }
 
 async function addDayBlockCommentToDoc(dayId, blockId, text, parentId = "", origin = "local-day-block-comment", anchor = null) {
-  if (!canEdit() || isReadonlyMode || !dayId || !blockId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !dayId || !blockId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
   const items = blockArray.toArray();
@@ -5292,7 +7339,7 @@ async function addDayBlockCommentToDoc(dayId, blockId, text, parentId = "", orig
 }
 
 async function updateDayBlockCommentInDoc(dayId, blockId, commentId, patch = {}, origin = "local-day-block-comment-update") {
-  if (!canEdit() || isReadonlyMode || !dayId || !blockId || !commentId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !dayId || !blockId || !commentId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || isApplyingCollabPlanRemote) return false;
   let didUpdate = false;
@@ -5394,27 +7441,140 @@ async function reorderDayBlockInDoc(dayId, blockId, targetIndex = 0, origin = "l
   return true;
 }
 
-async function syncDayBlocksToDoc(dayId, origin = "local-day-blocks") {
-  if (!canEdit() || isReadonlyMode || !dayId) return false;
+function mergeInsertedDayBlocksIntoLatest(latestBlocks = [], localBlocks = [], insertedIds = new Set()) {
+  const next = normalizeDayBlocks(latestBlocks);
+  const nextIds = new Set(next.map((block) => block.id));
+  const normalizedLocal = normalizeDayBlocks(localBlocks);
+  normalizedLocal.forEach((block, localIndex) => {
+    if (!insertedIds.has(block.id) || nextIds.has(block.id)) return;
+    let insertIndex = next.length;
+    for (let index = localIndex - 1; index >= 0; index -= 1) {
+      const previousId = normalizedLocal[index]?.id || "";
+      const previousIndex = next.findIndex((item) => item.id === previousId);
+      if (previousIndex >= 0) {
+        insertIndex = previousIndex + 1;
+        break;
+      }
+    }
+    if (insertIndex === next.length) {
+      for (let index = localIndex + 1; index < normalizedLocal.length; index += 1) {
+        const nextId = normalizedLocal[index]?.id || "";
+        const nextIndex = next.findIndex((item) => item.id === nextId);
+        if (nextIndex >= 0) {
+          insertIndex = nextIndex;
+          break;
+        }
+      }
+    }
+    next.splice(insertIndex, 0, block);
+    nextIds.add(block.id);
+  });
+  return normalizeDayBlocks(next);
+}
+
+async function syncDayBlocksToDoc(dayId, origin = "local-day-blocks", options = {}) {
+  if (!canWriteCollaborativeData() || isReadonlyMode || !dayId) return false;
   const blockArray = await ensureDayBlockArray(dayId);
   if (!collabPlanDoc || !blockArray || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || isApplyingCollabPlanRemote) return false;
   const day = state.days.find((item) => item.id === dayId);
   if (!day) return false;
-  const nextBlocks = normalizeDayBlocks(day.blocks || []);
+  const { replace = false, deleteBlockIds = [], patchBlockIds = null, insertBlockIds = [], patchFields = null, preserveRemoteOrder = true, orderOnly = false } = options || {};
+  if (!canEdit() && (
+    replace ||
+    (deleteBlockIds || []).length ||
+    (insertBlockIds || []).length ||
+    orderOnly ||
+    !Array.isArray(patchFields) ||
+    patchFields.some((field) => field !== "comments")
+  )) return false;
+  const localBlocks = normalizeDayBlocks(day.blocks || []);
+  const latestBlocks = normalizeDayBlocks(blockArray.toArray());
+  const localBlockIds = new Set(localBlocks.map((block) => block.id));
+  const deletedIds = new Set((deleteBlockIds || []).map((id) => String(id || "")).filter(Boolean));
+  const insertedIds = new Set((insertBlockIds || []).map((id) => String(id || "")).filter(Boolean));
+  const latestById = new Map(latestBlocks.map((block) => [block.id, block]));
+  const hasPatchBlockConstraint = Array.isArray(patchBlockIds);
+  const constrainedPatchBlockIds = new Set((patchBlockIds || []).map((id) => String(id || "")).filter(Boolean));
+  const hasPatchFieldConstraint = Array.isArray(patchFields);
+  const constrainedPatchFields = hasPatchFieldConstraint ? patchFields.filter(Boolean) : [];
+  const hasNewConstrainedLocalBlock = localBlocks.some((block) => constrainedPatchBlockIds.has(block.id) && !latestById.has(block.id));
+  const patchOnly = preserveRemoteOrder && hasPatchFieldConstraint && hasPatchBlockConstraint && !deletedIds.size && !hasNewConstrainedLocalBlock;
+  const textPatchRequested = !hasPatchFieldConstraint || constrainedPatchFields.includes("text") || constrainedPatchFields.includes("textYjs");
+  const insertOnly = !replace && insertedIds.size > 0 && !deletedIds.size && !orderOnly && (!hasPatchFieldConstraint || !constrainedPatchFields.length);
+  const deleteOnly = !replace && deletedIds.size > 0 && !insertedIds.size && !orderOnly && hasPatchFieldConstraint && !constrainedPatchFields.length;
+  const mergeLocalBlock = (block) => {
+    const latest = latestById.get(block.id);
+    if (!latest || replace) return normalizeDayBlock({ ...(latest || {}), ...block, id: block.id });
+    if (orderOnly) return latest;
+    if (!hasPatchFieldConstraint) return normalizeDayBlock({ ...latest, ...block, id: block.id });
+    if (hasPatchBlockConstraint && !constrainedPatchBlockIds.has(block.id)) return latest;
+    const patch = {};
+    constrainedPatchFields.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(block, field)) patch[field] = block[field];
+    });
+    return normalizeDayBlock({ ...latest, ...patch, id: block.id });
+  };
+  const mergedLocalBlocks = localBlocks.map(mergeLocalBlock);
+  const nextBlocks = replace
+    ? localBlocks
+    : orderOnly
+      ? normalizeDayBlocks([
+        ...mergedLocalBlocks.filter((block) => latestById.has(block.id)),
+        ...latestBlocks.filter((block) => !localBlockIds.has(block.id) && !deletedIds.has(block.id)),
+      ])
+      : deleteOnly
+        ? normalizeDayBlocks(latestBlocks.filter((block) => !deletedIds.has(block.id)))
+      : insertOnly
+        ? mergeInsertedDayBlocksIntoLatest(latestBlocks, mergedLocalBlocks, insertedIds)
+        : patchOnly
+          ? normalizeDayBlocks([
+            ...latestBlocks.map((block) => mergedLocalBlocks.find((item) => item.id === block.id) || block),
+            ...mergedLocalBlocks.filter((block) => !latestById.has(block.id)),
+          ])
+          : normalizeDayBlocks([
+            ...mergedLocalBlocks,
+            ...latestBlocks.filter((block) => !localBlockIds.has(block.id) && !deletedIds.has(block.id)),
+          ]);
+  const touchedBlockIds = replace
+    ? new Set(nextBlocks.map((block) => block.id))
+    : insertedIds.size
+      ? insertedIds
+    : hasPatchBlockConstraint
+      ? constrainedPatchBlockIds
+      : localBlockIds;
+  const textTouchedBlockIds = new Set(
+    nextBlocks
+      .filter((block) => {
+        if (orderOnly) return false;
+        if (deletedIds.size && hasPatchFieldConstraint && !constrainedPatchFields.length && !insertedIds.size) return false;
+        if (!touchedBlockIds.has(block.id)) return false;
+        if (replace) return true;
+        if (!latestById.has(block.id)) return true;
+        return textPatchRequested;
+      })
+      .map((block) => block.id),
+  );
   const nextBlockKeys = new Set(nextBlocks.map((block) => dayBlockTextKey(dayId, block.id)));
   if (
-    sameSerialized(normalizeDayBlocks(blockArray.toArray()), nextBlocks) &&
-    nextBlocks.every((block) => collabDayBlockTextsMap.get(dayBlockTextKey(dayId, block.id))?.toString?.() === block.text)
+    sameSerialized(latestBlocks, nextBlocks) &&
+    nextBlocks
+      .filter((block) => textTouchedBlockIds.has(block.id))
+      .every((block) => collabDayBlockTextsMap.get(dayBlockTextKey(dayId, block.id))?.toString?.() === block.text)
   ) return true;
   collabPlanDoc.transact(() => {
     syncYArrayById(blockArray, nextBlocks, normalizeDayBlock);
     Array.from(collabDayBlockTextsMap.keys()).forEach((blockKey) => {
-      if (blockKey.startsWith(`${dayId}:`) && !nextBlockKeys.has(blockKey)) {
+      const blockId = blockKey.slice(String(dayId).length + 1);
+      const shouldDelete = replace
+        ? blockKey.startsWith(`${dayId}:`) && !nextBlockKeys.has(blockKey)
+        : blockKey.startsWith(`${dayId}:`) && deletedIds.has(blockId);
+      if (shouldDelete) {
         collabDayBlockTextsMap.delete(blockKey);
         collabDayBlockTextStatesMap.delete(blockKey);
       }
     });
     nextBlocks.forEach((block) => {
+      if (!textTouchedBlockIds.has(block.id)) return;
       const key = dayBlockTextKey(dayId, block.id);
       let yText = collabDayBlockTextsMap.get(key);
       if (!yText) {
@@ -5429,18 +7589,45 @@ async function syncDayBlocksToDoc(dayId, origin = "local-day-blocks") {
   return true;
 }
 
-async function syncStopListsToDoc(origin = "local-stop-lists") {
+async function syncStopListsToDoc(origin = "local-stop-lists", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabStopListsMap || !collabStopTextStatesMap || isApplyingCollabPlanRemote) return false;
+  const { replace = false, deleteDayIds = [] } = options || {};
+  const deletedDayIds = new Set((deleteDayIds || []).map((id) => String(id || "")).filter(Boolean));
+  if (!replace && !deletedDayIds.size) return false;
   const nextLists = normalizeStopListsFromDays(state.days || []);
-  if (sameSerialized(readStopListsFromDoc(), nextLists)) return true;
+  const currentLists = readStopListsFromDoc();
+  const dayIds = replace
+    ? Object.keys(nextLists)
+    : Array.from(new Set([...Object.keys(nextLists), ...Object.keys(currentLists).filter((dayId) => !deletedDayIds.has(dayId))]));
+  const mergedLists = {};
+  dayIds.forEach((dayId) => {
+    if (deletedDayIds.has(dayId)) return;
+    if (Object.prototype.hasOwnProperty.call(nextLists, dayId)) {
+      const fakeDay = { id: dayId, stops: nextLists[dayId] };
+      const current = currentLists[dayId] || [];
+      const currentById = new Map(current.map((stop) => [stop.id, stop]));
+      const localStops = nextLists[dayId] || [];
+      const localIds = new Set(localStops.map((stop) => stop.id));
+      mergedLists[dayId] = replace
+        ? localStops
+        : normalizeCollaborativeStopList([
+          ...localStops.map((stop) => normalizeCollaborativeStop({ ...(currentById.get(stop.id) || {}), ...stop, id: stop.id })),
+          ...current.filter((stop) => !localIds.has(stop.id)),
+        ]);
+      if (!mergedLists[dayId].length && !fakeDay.stops?.length) delete mergedLists[dayId];
+    } else if (!replace) {
+      mergedLists[dayId] = currentLists[dayId] || [];
+    }
+  });
+  if (sameSerialized(currentLists, mergedLists)) return true;
   collabPlanDoc.transact(() => {
     const existingKeys = Array.from(collabStopListsMap.keys());
     existingKeys.forEach((key) => {
-      if (!Object.prototype.hasOwnProperty.call(nextLists, key)) collabStopListsMap.delete(key);
+      if (replace ? !Object.prototype.hasOwnProperty.call(mergedLists, key) : deletedDayIds.has(key)) collabStopListsMap.delete(key);
     });
-    Object.entries(nextLists).forEach(([dayId, stops]) => {
+    Object.entries(mergedLists).forEach(([dayId, stops]) => {
       let stopArray = collabStopListsMap.get(dayId);
       if (!stopArray) {
         stopArray = new yjsModule.Array();
@@ -5451,17 +7638,24 @@ async function syncStopListsToDoc(origin = "local-stop-lists") {
     });
     const nextTextStates = stopTextStateSnapshotFromDays(state.days || [], yjsModule);
     Array.from(collabStopTextStatesMap?.keys?.() || []).forEach((stopId) => {
-      if (!Object.prototype.hasOwnProperty.call(nextTextStates, stopId)) collabStopTextStatesMap.delete(stopId);
+      const shouldDelete = replace
+        ? !Object.prototype.hasOwnProperty.call(nextTextStates, stopId)
+        : deletedDayIds.size && !Object.values(mergedLists).some((stops) => stops.some((stop) => stop.id === stopId));
+      if (shouldDelete) collabStopTextStatesMap.delete(stopId);
     });
-    Object.entries(nextTextStates).forEach(([stopId, textState]) => {
-      if (collabStopTextStatesMap.get(stopId) !== textState) collabStopTextStatesMap.set(stopId, textState);
-    });
+    if (replace) {
+      Object.entries(nextTextStates).forEach(([stopId, textState]) => {
+        if (collabStopTextStatesMap.get(stopId) !== textState) collabStopTextStatesMap.set(stopId, textState);
+      });
+    }
   }, origin);
   return true;
 }
 
-async function syncAllDayBlocksToDoc(origin = "local-day-blocks-all") {
+async function syncAllDayBlocksToDoc(origin = "local-day-blocks-all", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
+  const { replace = false } = options || {};
+  if (!replace) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabDayBlocksMap || !collabDayBlockTextStatesMap || !collabDayBlockTextsMap || isApplyingCollabPlanRemote) return false;
   const nextLists = normalizeDayBlocksFromDays(state.days || []);
@@ -5507,11 +7701,17 @@ async function syncAllDayBlocksToDoc(origin = "local-day-blocks-all") {
   return true;
 }
 
-async function syncTransportQuotesToDoc(origin = "local-transport-quotes") {
+async function syncTransportQuotesToDoc(origin = "local-transport-quotes", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabTransportQuotesArray || isApplyingCollabPlanRemote) return false;
-  const nextQuotes = normalizeTransportQuotes(state.transportQuotes || []);
+  if (!hasExplicitYArrayFallbackIntent(options)) return false;
+  const nextQuotes = mergedYArrayItemsForFallback(
+    collabTransportQuotesArray,
+    normalizeTransportQuotes(state.transportQuotes || []),
+    (quote) => normalizeTransportQuotes([quote])[0],
+    options,
+  );
   if (sameSerialized(readTransportQuotesFromDoc(), nextQuotes)) return true;
   collabPlanDoc.transact(() => {
     syncYArrayById(collabTransportQuotesArray, nextQuotes, (quote) => normalizeTransportQuotes([quote])[0]);
@@ -5519,11 +7719,17 @@ async function syncTransportQuotesToDoc(origin = "local-transport-quotes") {
   return true;
 }
 
-async function syncCandidatesToDoc(origin = "local-candidates") {
+async function syncCandidatesToDoc(origin = "local-candidates", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabCandidatesArray || isApplyingCollabPlanRemote) return false;
-  const nextCandidates = normalizeCandidateStops(state.candidates || []);
+  if (!hasExplicitYArrayFallbackIntent(options)) return false;
+  const nextCandidates = mergedYArrayItemsForFallback(
+    collabCandidatesArray,
+    normalizeCandidateStops(state.candidates || []),
+    (candidate) => normalizeCandidateStops([candidate])[0],
+    options,
+  );
   if (sameSerialized(readCandidatesFromDoc(), nextCandidates)) return true;
   collabPlanDoc.transact(() => {
     syncYArrayById(collabCandidatesArray, nextCandidates, (candidate) => normalizeCandidateStops([candidate])[0]);
@@ -5531,11 +7737,17 @@ async function syncCandidatesToDoc(origin = "local-candidates") {
   return true;
 }
 
-async function syncActivitiesToDoc(origin = "local-activities") {
+async function syncActivitiesToDoc(origin = "local-activities", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
   await bindCollabPlanDoc();
   if (!collabPlanDoc || !collabActivitiesArray || isApplyingCollabPlanRemote) return false;
-  const nextActivities = normalizeActivities(state.activities || []);
+  if (!hasExplicitYArrayFallbackIntent(options)) return false;
+  const nextActivities = mergedYArrayItemsForFallback(
+    collabActivitiesArray,
+    normalizeActivities(state.activities || []),
+    (activity) => normalizeActivities([activity])[0],
+    { ...options, limit: 20 },
+  );
   if (sameSerialized(readActivitiesFromDoc(), nextActivities)) return true;
   collabPlanDoc.transact(() => {
     syncYArrayById(collabActivitiesArray, nextActivities, (activity) => normalizeActivities([activity])[0]);
@@ -5543,19 +7755,34 @@ async function syncActivitiesToDoc(origin = "local-activities") {
   return true;
 }
 
-async function replacePlanCollabDoc(origin = "local-plan-replace") {
+const PLAN_REPLACE_REASONS = new Set([
+  "recommended-plan",
+  "blank-plan",
+  "json-import",
+  "reset-plan",
+  "version-restore",
+  "conflict-merge",
+  "conflict-keep",
+]);
+
+async function replacePlanCollabDoc(origin = "local-plan-replace", options = {}) {
   if (!canEdit() || isReadonlyMode) return false;
+  const { allowReplace = false, reason = "" } = options || {};
+  if (!allowReplace || !PLAN_REPLACE_REASONS.has(reason)) {
+    console.warn("Blocked full plan collaboration replacement without explicit reason", { origin, reason });
+    return false;
+  }
   clearPlanYjsState();
   destroyCollabDayTextDoc();
   destroyCollabPlanDoc();
   await bindCollabPlanDoc();
-  await syncDayMetasToDoc(`${origin}-days`);
-  await syncStopListsToDoc(`${origin}-stops`);
-  await syncAllDayBlocksToDoc(`${origin}-blocks`);
-  await syncTransportQuotesToDoc(`${origin}-quotes`);
-  await syncCandidatesToDoc(`${origin}-candidates`);
-  await syncActivitiesToDoc(`${origin}-activities`);
-  await syncPlanMetaToDoc(`${origin}-meta`);
+  await syncDayMetasToDoc(`${origin}-days`, { replace: true });
+  await syncStopListsToDoc(`${origin}-stops`, { replace: true });
+  await syncAllDayBlocksToDoc(`${origin}-blocks`, { replace: true });
+  await syncTransportQuotesToDoc(`${origin}-quotes`, { replace: true });
+  await syncCandidatesToDoc(`${origin}-candidates`, { replace: true });
+  await syncActivitiesToDoc(`${origin}-activities`, { replace: true });
+  await syncPlanMetaToDoc(`${origin}-meta`, { replace: true });
   return true;
 }
 
@@ -5632,7 +7859,7 @@ async function bindCollabTextDoc() {
   }
   collabTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentTextFromDoc("收到协作者地点协作更新").catch((error) => console.warn("Persist remote text update failed", error));
+      persistCurrentTextFromDoc("收到协作者地点协作更新", { scheduleSave: false }).catch((error) => console.warn("Persist remote text update failed", error));
       return;
     }
     broadcastTextUpdate(update);
@@ -5699,7 +7926,7 @@ async function bindCollabDayTextDoc() {
   }
   collabDayTextDoc.on("update", (update, origin) => {
     if (origin === "remote") {
-      persistCurrentDayTextFromDoc("收到协作者当天文本更新").catch((error) => console.warn("Persist remote day text update failed", error));
+      persistCurrentDayTextFromDoc("收到协作者当天文本更新", { scheduleSave: false }).catch((error) => console.warn("Persist remote day text update failed", error));
       return;
     }
     broadcastDayTextUpdate(update);
@@ -5797,7 +8024,7 @@ async function mergePlanYjsStateIntoLiveDoc(planYjs, label = "已合并计划结
   if (!planYjs) return false;
   const { scheduleSave = true } = options;
   if (!collabPlanDoc || collabPlanTripId !== tripId) await bindCollabPlanDoc();
-  if (!collabPlanDoc || isReadonlyMode) return applyPlanYjsStateToCurrentPlan(planYjs, label);
+  if (!collabPlanDoc || isReadonlyMode) return applyPlanYjsStateToCurrentPlan(planYjs, label, { scheduleSave });
   let Y;
   try {
     Y = await ensureYjs();
@@ -5832,7 +8059,7 @@ async function mergeConflictPlanYjsSnapshot(remotePlan = {}, label = "已通过�
 
 async function applyRemoteStructureSnapshot(payload = {}, label = "收到协作者结构快照") {
   if (!payload.planYjs || payload.tripId !== tripId) return false;
-  const applied = await mergePlanYjsStateIntoLiveDoc(payload.planYjs, label);
+  const applied = await mergePlanYjsStateIntoLiveDoc(payload.planYjs, label, { scheduleSave: false });
   if (applied) {
     syncGuideStateFromPlan();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -5840,8 +8067,50 @@ async function applyRemoteStructureSnapshot(payload = {}, label = "收到协作�
   return applied;
 }
 
+async function applyRemoteStructureSnapshotOrFetch(payload = {}, label = "收到协作者结构快照", verifier = null) {
+  if (!payload || payload.tripId !== tripId) return false;
+  const matches = () => (typeof verifier === "function" ? Boolean(verifier()) : true);
+  if (payload.planYjs) {
+    const applied = await applyRemoteStructureSnapshot(payload, label);
+    if (applied && matches()) return true;
+  }
+  if (!supabaseClient || !tripId) return false;
+  const remote = await fetchRemotePlan();
+  const remotePlanYjs = remote?.data?.planYjs || "";
+  if (remote?.error || !remotePlanYjs) return false;
+  const merged = await mergePlanYjsStateIntoLiveDoc(remotePlanYjs, `${label}，已补拉云端快照`, { scheduleSave: false });
+  if (!merged) return false;
+  syncGuideStateFromPlan();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  return matches();
+}
+
+function shouldSkipLegacyStructureFallback(payload = {}, label = "结构协作更新") {
+  if (!payload?.planYjs) return false;
+  dom.collabStatus.textContent = `${label}未通过协作快照校验，已跳过旧结构兜底，等待云端同步。`;
+  return true;
+}
+
 function stopExistsInPlan(stopId) {
   return Boolean(stopId && state.days.some((day) => (day.stops || []).some((stop) => stop.id === stopId)));
+}
+
+function dayMetaMatches(dayPatch = {}) {
+  if (!dayPatch?.id) return false;
+  const day = state.days.find((item) => item.id === dayPatch.id);
+  if (!day) return false;
+  const currentMeta = normalizeDayMetas([day])[0] || {};
+  const expectedMeta = normalizeDayMetas([{ ...day, ...clone(dayPatch) }])[0] || {};
+  return ["label", "date", "title", "route", "weather", "transport"].every((field) => sameSerialized(currentMeta[field], expectedMeta[field]));
+}
+
+function remoteDayUpdatePatch(dayPatch = {}) {
+  const allowedFields = ["label", "date", "title", "route", "weather", "transport"];
+  return Object.fromEntries(
+    allowedFields
+      .filter((field) => Object.prototype.hasOwnProperty.call(dayPatch || {}, field))
+      .map((field) => [field, clone(dayPatch[field])]),
+  );
 }
 
 function stopOrderMatches(dayId, stopOrder = []) {
@@ -5860,14 +8129,13 @@ function dayOrderMatches(dayOrder = []) {
 async function applyRemoteStopCreated(payload = {}) {
   if (!payload.stop?.id || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: stopActivityTarget(payload.dayId || "", payload.stop.id || "", { action: "remote-create" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 新增地点协作快照`)) {
-    if (stopExistsInPlan(payload.stop.id)) {
-      logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了「${payload.stop.title || "地点"}」`;
-      render();
-      return;
-    }
+  if (await applyRemoteStructureSnapshotOrFetch(payload, `${payload.name || "协作者"} 新增地点协作快照`, () => stopExistsInPlan(payload.stop.id))) {
+    logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, activityOptions);
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了「${payload.stop.title || "地点"}」`;
+    render();
+    return;
   }
+  if (shouldSkipLegacyStructureFallback(payload, `${payload.name || "协作者"} 新增地点`)) return;
   if (state.days.some((day) => (day.stops || []).some((stop) => stop.id === payload.stop.id))) return;
   const day =
     state.days.find((item) => item.id === payload.dayId) ||
@@ -5884,15 +8152,14 @@ async function applyRemoteStopCreated(payload = {}) {
 async function applyRemoteStopDeleted(payload = {}) {
   if (!payload.stopId || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: stopActivityTarget(payload.dayId || "", payload.stopId || "", { deleted: true, action: "remote-delete" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 删除地点协作快照`)) {
-    if (!stopExistsInPlan(payload.stopId)) {
-      destroyCollabTextDoc();
-      logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了「${payload.title || "地点"}」`;
-      render();
-      return;
-    }
+  if (await applyRemoteStructureSnapshotOrFetch(payload, `${payload.name || "协作者"} 删除地点协作快照`, () => !stopExistsInPlan(payload.stopId))) {
+    destroyCollabTextDoc();
+    logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, activityOptions);
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了「${payload.title || "地点"}」`;
+    render();
+    return;
   }
+  if (shouldSkipLegacyStructureFallback(payload, `${payload.name || "协作者"} 删除地点`)) return;
   const dayIndex = state.days.findIndex((day) => day.id === payload.dayId || (day.stops || []).some((stop) => stop.id === payload.stopId));
   if (dayIndex < 0) return;
   const day = state.days[dayIndex];
@@ -5915,14 +8182,13 @@ async function applyRemoteStopDeleted(payload = {}) {
 async function applyRemoteStopsReordered(payload = {}) {
   if (!payload.dayId || !Array.isArray(payload.stopOrder) || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(payload.dayId || "", { action: "remote-stop-reorder" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 调整地点顺序协作快照`)) {
-    if (stopOrderMatches(payload.dayId, payload.stopOrder)) {
-      logActivity(`${payload.name || "协作者"} 调整地点顺序`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了地点顺序`;
-      render();
-      return;
-    }
+  if (await applyRemoteStructureSnapshotOrFetch(payload, `${payload.name || "协作者"} 调整地点顺序协作快照`, () => stopOrderMatches(payload.dayId, payload.stopOrder))) {
+    logActivity(`${payload.name || "协作者"} 调整地点顺序`, activityOptions);
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了地点顺序`;
+    render();
+    return;
   }
+  if (shouldSkipLegacyStructureFallback(payload, `${payload.name || "协作者"} 调整地点顺序`)) return;
   const dayIndex = state.days.findIndex((day) => day.id === payload.dayId);
   if (dayIndex < 0) return;
   const day = state.days[dayIndex];
@@ -5945,23 +8211,25 @@ async function applyRemoteStopsReordered(payload = {}) {
 async function applyRemoteDayUpdated(payload = {}) {
   if (!payload.day?.id || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(payload.day.id || payload.dayId || "", { action: "remote-settings" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 更新当天设置协作快照`)) {
+  if (await applyRemoteStructureSnapshotOrFetch(payload, `${payload.name || "协作者"} 更新当天设置协作快照`, () => dayMetaMatches(payload.day))) {
     const day = state.days.find((item) => item.id === payload.day.id);
-    if (day) {
-      logActivity(`${payload.name || "协作者"} 更新当天设置`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照更新了 ${day.label}`;
-      render();
-      return;
-    }
+    logActivity(`${payload.name || "协作者"} 更新当天设置`, activityOptions);
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照更新了 ${day?.label || "当天"}`;
+    render();
+    return;
   }
+  if (shouldSkipLegacyStructureFallback(payload, `${payload.name || "协作者"} 更新当天设置`)) return;
   const index = state.days.findIndex((day) => day.id === payload.day.id);
   if (index < 0) return;
   const current = state.days[index];
+  const dayPatch = remoteDayUpdatePatch(payload.day);
   state.days[index] = {
     ...current,
-    ...clone(payload.day),
+    ...dayPatch,
     stops: current.stops || [],
-    amapRoute: payload.day.amapRoute || current.amapRoute || null,
+    blocks: current.blocks || [],
+    comments: current.comments || [],
+    amapRoute: current.amapRoute || null,
   };
   applyPlanMeta(payload.planMeta || {});
   resequencePlanDays();
@@ -5978,14 +8246,13 @@ async function applyRemoteDayUpdated(payload = {}) {
 async function applyRemoteDayCreated(payload = {}) {
   if (!payload.day?.id || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(payload.day.id || "", { action: "remote-create" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 新增一天协作快照`)) {
-    if (state.days.some((day) => day.id === payload.day.id)) {
-      logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了 ${payload.day.title || "一天"}`;
-      render();
-      return;
-    }
+  if (await applyRemoteStructureSnapshotOrFetch(payload, `${payload.name || "协作者"} 新增一天协作快照`, () => state.days.some((day) => day.id === payload.day.id))) {
+    logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, activityOptions);
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照新增了 ${payload.day.title || "一天"}`;
+    render();
+    return;
   }
+  if (shouldSkipLegacyStructureFallback(payload, `${payload.name || "协作者"} 新增一天`)) return;
   if (state.days.some((day) => day.id === payload.day.id)) return;
   const activeDayId = currentDay()?.id || "";
   const nextIndex = Math.min(Math.max(Number(payload.index ?? state.days.length), 0), state.days.length);
@@ -6003,15 +8270,14 @@ async function applyRemoteDayCreated(payload = {}) {
 async function applyRemoteDayDeleted(payload = {}) {
   if (!payload.dayId || payload.tripId !== tripId || state.days.length <= 1) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(payload.dayId || "", { deleted: true, action: "remote-delete", fallbackIndex: Number(payload.index ?? activeDay) }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 删除一天协作快照`)) {
-    if (!state.days.some((day) => day.id === payload.dayId)) {
-      destroyCollabTextDoc();
-      logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了 ${payload.title || "一天"}`;
-      render();
-      return;
-    }
+  if (await applyRemoteStructureSnapshotOrFetch(payload, `${payload.name || "协作者"} 删除一天协作快照`, () => !state.days.some((day) => day.id === payload.dayId))) {
+    destroyCollabTextDoc();
+    logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, activityOptions);
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照删除了 ${payload.title || "一天"}`;
+    render();
+    return;
   }
+  if (shouldSkipLegacyStructureFallback(payload, `${payload.name || "协作者"} 删除一天`)) return;
   const index = state.days.findIndex((day) => day.id === payload.dayId);
   if (index < 0) return;
   const activeDayId = currentDay()?.id || "";
@@ -6034,14 +8300,13 @@ async function applyRemoteDayDeleted(payload = {}) {
 async function applyRemoteDaysReordered(payload = {}) {
   if (!Array.isArray(payload.dayOrder) || payload.tripId !== tripId) return;
   const activityOptions = { broadcast: false, target: dayActivityTarget(currentDay()?.id || payload.dayOrder[0] || "", { action: "remote-day-reorder" }) };
-  if (await applyRemoteStructureSnapshot(payload, `${payload.name || "协作者"} 调整日期顺序协作快照`)) {
-    if (dayOrderMatches(payload.dayOrder)) {
-      logActivity(`${payload.name || "协作者"} 调整日期顺序`, activityOptions);
-      dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了日期顺序`;
-      render();
-      return;
-    }
+  if (await applyRemoteStructureSnapshotOrFetch(payload, `${payload.name || "协作者"} 调整日期顺序协作快照`, () => dayOrderMatches(payload.dayOrder))) {
+    logActivity(`${payload.name || "协作者"} 调整日期顺序`, activityOptions);
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 通过协作快照调整了日期顺序`;
+    render();
+    return;
   }
+  if (shouldSkipLegacyStructureFallback(payload, `${payload.name || "协作者"} 调整日期顺序`)) return;
   const byId = new Map(state.days.map((day) => [day.id, day]).filter(([id]) => id));
   const ordered = payload.dayOrder.map((id) => byId.get(id)).filter(Boolean);
   const leftovers = state.days.filter((day) => !payload.dayOrder.includes(day.id));
@@ -6059,6 +8324,10 @@ async function applyRemoteDaysReordered(payload = {}) {
 
 async function applyRemotePlanReplaced(payload = {}) {
   if (payload.tripId !== tripId || (!payload.planYjs && !payload.state?.days?.length)) return;
+  if (!PLAN_REPLACE_REASONS.has(payload.replacementType || "")) {
+    dom.collabStatus.textContent = `${payload.name || "协作者"} 的整份计划更新缺少可信替换类型，已跳过。`;
+    return;
+  }
   const activeDayId = currentDay()?.id || "";
   const activeStopId = currentStop()?.id || "";
   let appliedYjs = false;
@@ -6120,6 +8389,125 @@ function applyTextDiff(yText, nextValue) {
   return true;
 }
 
+function textDiffParts(baseValue = "", nextValue = "") {
+  const baseText = String(baseValue || "");
+  const nextText = String(nextValue || "");
+  if (baseText === nextText) {
+    return { index: 0, deleteLength: 0, insertText: "", changed: false };
+  }
+  let prefixLength = 0;
+  const maxPrefix = Math.min(baseText.length, nextText.length);
+  while (prefixLength < maxPrefix && baseText[prefixLength] === nextText[prefixLength]) {
+    prefixLength += 1;
+  }
+  let suffixLength = 0;
+  const maxSuffix = Math.min(baseText.length - prefixLength, nextText.length - prefixLength);
+  while (
+    suffixLength < maxSuffix &&
+    baseText[baseText.length - 1 - suffixLength] === nextText[nextText.length - 1 - suffixLength]
+  ) {
+    suffixLength += 1;
+  }
+  return {
+    index: prefixLength,
+    deleteLength: baseText.length - prefixLength - suffixLength,
+    insertText: nextText.slice(prefixLength, nextText.length - suffixLength),
+    changed: true,
+  };
+}
+
+function transformTextPosition(baseValue = "", nextValue = "", position = 0) {
+  const baseText = String(baseValue || "");
+  const nextText = String(nextValue || "");
+  const boundedPosition = Math.max(0, Math.min(Number(position) || 0, baseText.length));
+  if (baseText === nextText) return boundedPosition;
+  const diff = textDiffParts(baseText, nextText);
+  if (!diff.changed) return Math.max(0, Math.min(boundedPosition, nextText.length));
+  const changeStart = diff.index;
+  const changeEnd = diff.index + diff.deleteLength;
+  const insertedLength = diff.insertText.length;
+  if (boundedPosition < changeStart) return boundedPosition;
+  if (boundedPosition > changeEnd) return Math.max(0, Math.min(boundedPosition + insertedLength - diff.deleteLength, nextText.length));
+  return Math.max(0, Math.min(changeStart + insertedLength, nextText.length));
+}
+
+function anchoredTextPatchPosition(currentValue = "", baseValue = "", diff = {}) {
+  const currentText = String(currentValue || "");
+  const baseText = String(baseValue || "");
+  const index = Math.max(0, Math.min(Number(diff.index) || 0, currentText.length));
+  const deletedText = baseText.slice(diff.index, diff.index + diff.deleteLength);
+  const prefixText = baseText.slice(0, diff.index);
+  const suffixText = baseText.slice(diff.index + diff.deleteLength);
+  if (diff.deleteLength > 0 && deletedText) {
+    let deleteIndex = currentText.indexOf(deletedText, index);
+    if (deleteIndex < 0 && prefixText) {
+      const prefixIndex = currentText.indexOf(prefixText);
+      if (prefixIndex >= 0) deleteIndex = currentText.indexOf(deletedText, prefixIndex + prefixText.length);
+    }
+    if (deleteIndex < 0) deleteIndex = currentText.indexOf(deletedText);
+    if (deleteIndex >= 0) {
+      return {
+        index: deleteIndex,
+        deleteLength: Math.min(diff.deleteLength, currentText.length - deleteIndex),
+      };
+    }
+  }
+  if (diff.deleteLength === 0 && suffixText) {
+    const suffixIndex = currentText.indexOf(suffixText, index);
+    if (suffixIndex >= 0) return { index: suffixIndex, deleteLength: 0 };
+    const anySuffixIndex = currentText.indexOf(suffixText);
+    if (anySuffixIndex >= 0) return { index: anySuffixIndex, deleteLength: 0 };
+  }
+  if (prefixText) {
+    const prefixIndex = currentText.lastIndexOf(prefixText, index);
+    const anyPrefixIndex = prefixIndex >= 0 ? prefixIndex : currentText.lastIndexOf(prefixText);
+    if (anyPrefixIndex >= 0) {
+      const nextIndex = Math.min(currentText.length, anyPrefixIndex + prefixText.length);
+      return {
+        index: nextIndex,
+        deleteLength: Math.min(diff.deleteLength, currentText.length - nextIndex),
+      };
+    }
+  }
+  const remoteDiff = textDiffParts(baseText, currentText);
+  if (remoteDiff.changed) {
+    const remoteStart = remoteDiff.index;
+    const remoteEnd = remoteStart + remoteDiff.deleteLength;
+    const remoteDelta = remoteDiff.insertText.length - remoteDiff.deleteLength;
+    let transformedIndex = index;
+    if (index > remoteEnd) {
+      transformedIndex = index + remoteDelta;
+    } else if (index === remoteStart || index === remoteEnd || (index > remoteStart && index < remoteEnd)) {
+      transformedIndex = remoteStart + remoteDiff.insertText.length;
+    }
+    transformedIndex = Math.max(0, Math.min(transformedIndex, currentText.length));
+    return {
+      index: transformedIndex,
+      deleteLength: Math.min(diff.deleteLength || 0, currentText.length - transformedIndex),
+    };
+  }
+  return {
+    index,
+    deleteLength: Math.min(diff.deleteLength || 0, currentText.length - index),
+  };
+}
+
+function applyTextDiffFromBase(yText, baseValue = "", nextValue = "") {
+  const currentValue = yText.toString();
+  const baseText = String(baseValue || "");
+  const nextText = String(nextValue || "");
+  if (currentValue === nextText) return false;
+  if (currentValue === baseText) return applyTextDiff(yText, nextText);
+  const diff = textDiffParts(baseText, nextText);
+  if (!diff.changed) return false;
+  const patch = anchoredTextPatchPosition(currentValue, baseText, diff);
+  const index = Math.max(0, Math.min(patch.index, yText.length));
+  const deleteLength = Math.max(0, Math.min(patch.deleteLength, yText.length - index));
+  if (deleteLength > 0) yText.delete(index, deleteLength);
+  if (diff.insertText) yText.insert(index, diff.insertText);
+  return true;
+}
+
 async function syncCollabTextFieldToDoc(field, value) {
   if (!canEdit() || isReadonlyMode) return;
   await bindCollabTextDoc();
@@ -6168,7 +8556,7 @@ async function syncCollabStructValuesToDoc(values = {}, origin = "local-struct-a
 }
 
 async function addCollaborativeComment(text, anchor = null) {
-  if (!canEdit() || isReadonlyMode) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode) return false;
   await bindCollabTextDoc();
   if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
   const normalizedAnchor = normalizeCommentAnchor(anchor);
@@ -6187,7 +8575,7 @@ async function addCollaborativeComment(text, anchor = null) {
 }
 
 async function addCollaborativeDayComment(text, anchor = null) {
-  if (!canEdit() || isReadonlyMode) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode) return false;
   await bindCollabDayTextDoc();
   if (!collabDayTextDoc || !collabDayCommentsArray || isApplyingCollabDayTextRemote) return false;
   const normalizedAnchor = normalizeCommentAnchor(anchor);
@@ -6206,7 +8594,7 @@ async function addCollaborativeDayComment(text, anchor = null) {
 }
 
 async function addCollaborativeCommentReply(parentId, text) {
-  if (!canEdit() || isReadonlyMode || !parentId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !parentId) return false;
   await bindCollabTextDoc();
   if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
   const comments = normalizeComments(collabCommentsArray.toArray());
@@ -6227,7 +8615,7 @@ async function addCollaborativeCommentReply(parentId, text) {
 }
 
 async function addCollaborativeDayCommentReply(parentId, text) {
-  if (!canEdit() || isReadonlyMode || !parentId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !parentId) return false;
   await bindCollabDayTextDoc();
   if (!collabDayTextDoc || !collabDayCommentsArray || isApplyingCollabDayTextRemote) return false;
   const comments = normalizeComments(collabDayCommentsArray.toArray());
@@ -6248,7 +8636,7 @@ async function addCollaborativeDayCommentReply(parentId, text) {
 }
 
 async function updateCollaborativeComment(commentId, patch = {}) {
-  if (!canEdit() || isReadonlyMode || !commentId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !commentId) return false;
   await bindCollabTextDoc();
   if (!collabTextDoc || !collabCommentsArray || isApplyingCollabTextRemote) return false;
   const comments = collabCommentsArray.toArray();
@@ -6264,7 +8652,7 @@ async function updateCollaborativeComment(commentId, patch = {}) {
 }
 
 async function updateCollaborativeDayComment(commentId, patch = {}) {
-  if (!canEdit() || isReadonlyMode || !commentId) return false;
+  if (!canWriteCollaborativeData() || isReadonlyMode || !commentId) return false;
   await bindCollabDayTextDoc();
   if (!collabDayTextDoc || !collabDayCommentsArray || isApplyingCollabDayTextRemote) return false;
   const comments = collabDayCommentsArray.toArray();
@@ -6404,7 +8792,10 @@ async function resolveConflict(mode) {
     hideConflictPanel();
     await logActivity(mergedWithYjsSnapshot ? "通过协作快照合并冲突" : mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
     if (!mergedWithYjsSnapshot) {
-      await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep");
+      await replacePlanCollabDoc(mode === "merge" ? "local-conflict-merge" : "local-conflict-keep", {
+        allowReplace: true,
+        reason: mode === "merge" ? "conflict-merge" : "conflict-keep",
+      });
     }
     await pushRemoteState(mergedWithYjsSnapshot ? "已通过协作快照合并冲突" : mode === "merge" ? "已合并协作冲突" : "已保留我的版本");
     render();
@@ -6418,8 +8809,8 @@ async function resolveConflict(mode) {
 }
 
 async function handleRemotePlanUpdate(next) {
-  if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt) return;
-  persistCurrentPlanFromDoc("收到云端更新前已同步当前协作结构");
+  if (!next?.data?.days?.length || next.updated_at === lastRemoteUpdatedAt || isStaleRemoteUpdate(next.updated_at)) return;
+  persistCurrentPlanFromDoc("收到云端更新前已同步当前协作结构", { scheduleSave: false });
   const remotePlan = ensurePlanDates(clone(next.data));
   if (pendingLocalRemoteUpdatedAt && next.updated_at === pendingLocalRemoteUpdatedAt && samePlanContent(state, remotePlan)) {
     lastRemoteUpdatedAt = next.updated_at || lastRemoteUpdatedAt;
@@ -6431,7 +8822,7 @@ async function handleRemotePlanUpdate(next) {
   if (remotePlan.planYjs) {
     const localHadChanges = hasLocalChanges();
     if (!localHadChanges) saveVersionSnapshot("协作者更新前版本");
-    const appliedYjs = await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, `${next.updated_by || "协作者"} 的云端协作快照已合并`);
+    const appliedYjs = await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, `${next.updated_by || "协作者"} 的云端协作快照已合并`, { scheduleSave: false });
     if (appliedYjs) {
       lastRemoteUpdatedAt = next.updated_at || lastRemoteUpdatedAt;
       if (!localHadChanges) lastSyncedState = clone(state);
@@ -6489,6 +8880,7 @@ const dom = {
   createSharedTripBtn: document.querySelector("#createSharedTripBtn"),
   copySharedLinkBtn: document.querySelector("#copySharedLinkBtn"),
   copyInviteLinkBtn: document.querySelector("#copyInviteLinkBtn"),
+  copyCommentLinkBtn: document.querySelector("#copyCommentLinkBtn"),
   copyReadonlyLinkBtn: document.querySelector("#copyReadonlyLinkBtn"),
   editAccessForm: document.querySelector("#editAccessForm"),
   editAccessInput: document.querySelector("#editAccessInput"),
@@ -6504,9 +8896,12 @@ const dom = {
   budgetTotal: document.querySelector("#budgetTotal"),
   budgetMeter: document.querySelector("#budgetMeter"),
   budgetGrid: document.querySelector("#budgetGrid"),
+  budgetAdoptEstimatesBtn: document.querySelector("#budgetAdoptEstimatesBtn"),
+  budgetEnrichPlacesBtn: document.querySelector("#budgetEnrichPlacesBtn"),
   partySizeInput: document.querySelector("#partySizeInput"),
   budgetLimitInput: document.querySelector("#budgetLimitInput"),
   budgetSettlement: document.querySelector("#budgetSettlement"),
+  budgetCombo: document.querySelector("#budgetCombo"),
   versionCount: document.querySelector("#versionCount"),
   versionPreview: document.querySelector("#versionPreview"),
   versionList: document.querySelector("#versionList"),
@@ -6576,6 +8971,7 @@ const dom = {
   fieldTags: document.querySelector("#fieldTags"),
   fieldNote: document.querySelector("#fieldNote"),
   noteCollabStatus: document.querySelector("#noteCollabStatus"),
+  officialImageSearchLink: document.querySelector("#officialImageSearchLink"),
   editorPanel: document.querySelector(".editor-panel"),
   editorLockState: document.querySelector("#editorLockState"),
   editLockBanner: document.querySelector("#editLockBanner"),
@@ -6583,10 +8979,14 @@ const dom = {
   addStopBtn: document.querySelector("#addStopBtn"),
   quickAddForm: document.querySelector("#quickAddForm"),
   quickPlaceName: document.querySelector("#quickPlaceName"),
+  quickType: document.querySelector("#quickType"),
   quickAmapKeyword: document.querySelector("#quickAmapKeyword"),
   quickTime: document.querySelector("#quickTime"),
   quickBudget: document.querySelector("#quickBudget"),
+  quickPaid: document.querySelector("#quickPaid"),
+  quickPayer: document.querySelector("#quickPayer"),
   quickAddress: document.querySelector("#quickAddress"),
+  quickSelected: document.querySelector("#quickSelected"),
   openAmapBtn: document.querySelector("#openAmapBtn"),
   addCandidateBtn: document.querySelector("#addCandidateBtn"),
   cancelCandidateEditBtn: document.querySelector("#cancelCandidateEditBtn"),
@@ -6726,6 +9126,7 @@ let realtimeChannel = null;
 const urlParams = new URLSearchParams(window.location.search);
 let tripId = urlParams.get("trip") || localStorage.getItem("tripboard-current-trip-id") || "";
 const forcedReadonlyMode = urlParams.get("mode") === "readonly";
+const requestedAccessRole = normalizeAccessRole(urlParams.get(ACCESS_ROLE_PARAM));
 let editAccessGranted = false;
 let editAccessRequired = false;
 let isReadonlyMode = forcedReadonlyMode;
@@ -6770,13 +9171,21 @@ let collabPlanSaveTimer = null;
 let isApplyingCollabPlanRemote = false;
 let collabPlanBindRequestId = 0;
 let planMetaInputSyncTimers = {};
+let pendingPlanMetaInputSyncs = {};
 let dayFieldSyncTimer = null;
+let pendingDayEditorSync = false;
 let dayBlockEditTimer = null;
 let blockReplyingCommentId = "";
 let blockCommentFilters = {};
+let dayBlockTextBaselines = {};
+let dayBlockTextSyncChains = {};
 let activeBlockPresenceId = "";
 let draggingDayBlockId = "";
+let selectedDayBlockIds = new Set();
+let lastSelectedDayBlockId = "";
+let activeDayBlockCommand = { blockId: "", index: 0, query: "" };
 let collapsedDayBlockIds = loadCollapsedDayBlocks();
+let previewDayBlockIds = new Set();
 let presenceTrackTimer = null;
 let lastCommentAnchor = null;
 let replyingCommentId = "";
@@ -6861,10 +9270,16 @@ function setLocalEditAccess(hash = "") {
 
 async function refreshEditAccessFromUrl() {
   const hash = state.editKeyHash || "";
-  if (!hash || forcedReadonlyMode) {
-    editAccessRequired = Boolean(hash) && forcedReadonlyMode;
-    editAccessGranted = !forcedReadonlyMode && !hash;
-    isReadonlyMode = forcedReadonlyMode;
+  if (requestedAccessRole === ACCESS_ROLE_COMMENTER) {
+    editAccessRequired = false;
+    editAccessGranted = false;
+    isReadonlyMode = false;
+    return;
+  }
+  if (!hash || forcedReadonlyMode || requestedAccessRole === ACCESS_ROLE_VIEWER) {
+    editAccessRequired = Boolean(hash) && (forcedReadonlyMode || requestedAccessRole === ACCESS_ROLE_VIEWER);
+    editAccessGranted = linkAllowsEditing() && !hash;
+    isReadonlyMode = forcedReadonlyMode || requestedAccessRole === ACCESS_ROLE_VIEWER;
     return;
   }
   editAccessRequired = true;
@@ -7008,7 +9423,7 @@ async function restoreVersion(versionId) {
   const restoredFromYjs = restoredPlanYjs
     ? await replaceLivePlanDocWithYjsState(restoredPlanYjs, "已从历史版本恢复协作快照")
     : false;
-  if (!restoredFromYjs) await replacePlanCollabDoc("local-version-restore");
+  if (!restoredFromYjs) await replacePlanCollabDoc("local-version-restore", { allowReplace: true, reason: "version-restore" });
   const versionLabel = restoredVersionLabel(entry.reason || "历史版本", entry.at || "");
   await logActivity(`恢复历史版本：${versionLabel}`);
   await saveCollaborativePlanChange("已恢复历史版本");
@@ -7033,6 +9448,25 @@ async function saveState(label = "已保存到本地") {
   }
 }
 
+async function saveCollaborativeCommentChange(label = "批注协作内容已同步") {
+  clearTimeout(collabTextSaveTimer);
+  collabTextSaveTimer = null;
+  clearTimeout(collabDayTextSaveTimer);
+  collabDayTextSaveTimer = null;
+  clearTimeout(collabPlanSaveTimer);
+  collabPlanSaveTimer = null;
+  if (!canWriteCollaborativeData()) {
+    dom.saveState.textContent = "当前链接不能评论";
+    return false;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  dom.saveState.textContent = label;
+  if (!isApplyingRemote && !isResolvingConflict && supabaseClient && tripId) {
+    return pushRemoteState(label, { commentOnly: !canEdit() });
+  }
+  return true;
+}
+
 function logActivity(text, options = {}) {
   const localActivity = normalizeActivities([{
     id: uid(),
@@ -7045,10 +9479,10 @@ function logActivity(text, options = {}) {
   }])[0];
   if (!localActivity) return Promise.resolve(false);
   state.activities = normalizeActivities([localActivity, ...(state.activities || [])]).slice(0, 6);
-  if (options.broadcast !== false && tripId && canEdit() && !isReadonlyMode) {
+  if (options.broadcast !== false && tripId && canWriteCollaborativeData() && !isReadonlyMode) {
     return addCollaborativeActivity(localActivity).catch((error) => {
       console.warn("Collaborative activity failed", error);
-      return false;
+      return syncActivitiesToDoc("local-activity-fallback", { insertIds: [localActivity.id], patchFields: [] });
     });
   }
   return Promise.resolve(false);
@@ -7110,6 +9544,7 @@ function presencePayload() {
   const textSelection = textSelectionPayload(focusedTextField);
   const blockContext = currentFocusedBlockContext();
   const blockEditing = blockEditingLabel(blockContext);
+  const dayBlockSelection = dayBlockSelectionForPresence(day);
   return {
     memberId: profile?.id || sessionId,
     name: profile?.name || "匿名成员",
@@ -7120,6 +9555,8 @@ function presencePayload() {
     activeBlockId: blockContext?.blockId || "",
     activeBlockText: blockContext?.blockText || "",
     blockSelection: blockContext?.blockSelection || null,
+    selectedDayBlockIds: dayBlockSelection.ids,
+    selectedDayBlockCount: dayBlockSelection.count,
     blockEditing,
     editing: blockEditing ? blockContext.blockText : stop?.title || "行程",
     textSelection,
@@ -7177,12 +9614,13 @@ function renderMembers() {
         (member, index) => {
           const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
           const blockEditing = member.blockEditing ? `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}` : "";
-          const activity = textEditing || blockEditing || `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}`;
+          const selectedBlocks = Number(member.selectedDayBlockCount || 0) > 0 ? `已选中 ${member.selectedDayBlockCount} 个协作块` : "";
+          const activity = textEditing || blockEditing || selectedBlocks || `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}`;
           return `
-          <div class="member-item ${textEditing || blockEditing ? "is-text-editing" : ""}">
+          <div class="member-item ${textEditing || blockEditing || selectedBlocks ? "is-text-editing" : ""}">
             <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
             <p><strong>${escapeHtml(member.name || "匿名成员")}</strong><small>${escapeHtml(member.role || "同行成员")} · ${escapeHtml(member.activeDay || "在线")} · ${escapeHtml(activity)}</small></p>
-            ${textEditing || blockEditing ? `<em>${escapeHtml(member.editing || member.activeBlockText || "当前内容")}</em>` : ""}
+            ${textEditing || blockEditing || selectedBlocks ? `<em>${escapeHtml(member.editing || member.activeBlockText || selectedBlocks || "当前内容")}</em>` : ""}
           </div>
         `;
         },
@@ -7197,6 +9635,9 @@ function renderEditAccessState() {
   if (!tripId) {
     dom.editAccessStatus.textContent = "创建共享计划后可设置编辑口令。";
     dom.editAccessBtn.innerHTML = `${icon("key-round")}设置口令`;
+  } else if (canComment() && !canEdit()) {
+    dom.editAccessStatus.textContent = "当前是评论链接：可以添加、回复和解决批注，不能修改行程内容。";
+    dom.editAccessBtn.innerHTML = `${icon("unlock-keyhole")}切换编辑`;
   } else if (state.editKeyHash && canEdit()) {
     dom.editAccessStatus.textContent = "已启用编辑口令；口令编辑链接需要输入口令，直入邀请会带密钥，请只发给可信成员。";
     dom.editAccessBtn.innerHTML = `${icon("key-round")}更新口令`;
@@ -7211,7 +9652,10 @@ function renderEditAccessState() {
 }
 
 function applyReadonlyUi() {
-  document.body.classList.toggle("readonly-mode", isReadonlyMode);
+  const editable = canEdit();
+  const commentable = canComment();
+  document.body.classList.toggle("readonly-mode", !editable);
+  document.body.classList.toggle("commenter-mode", commentable && !editable);
   const writeControls = [
     dom.createSharedTripBtn,
     dom.partySizeInput,
@@ -7238,7 +9682,7 @@ function applyReadonlyUi() {
     dom.syncWeatherBtn,
   ];
   writeControls.forEach((control) => {
-    if (control) control.disabled = isReadonlyMode;
+    if (control) control.disabled = !editable;
   });
   [
     dom.stopForm,
@@ -7248,51 +9692,53 @@ function applyReadonlyUi() {
     dom.manualQuoteForm,
   ].forEach((form) => {
     form?.querySelectorAll("input, textarea, select, button").forEach((control) => {
-      control.disabled = isReadonlyMode;
+      control.disabled = !editable;
     });
   });
   dom.commentForm?.querySelectorAll("input, button").forEach((control) => {
-    control.disabled = isReadonlyMode;
+    control.disabled = !commentable;
   });
   dom.dayCommentForm?.querySelectorAll("input, button").forEach((control) => {
-    control.disabled = isReadonlyMode;
+    control.disabled = !commentable;
   });
   dom.dayBlockForm?.querySelectorAll("input, select, button").forEach((control) => {
-    control.disabled = isReadonlyMode;
+    control.disabled = !editable;
   });
-  dom.dayBlockList?.querySelectorAll("input, button").forEach((control) => {
-    control.disabled = isReadonlyMode;
+  dom.dayBlockList?.querySelectorAll("input, textarea, select, button").forEach((control) => {
+    const isCommentControl = Boolean(control.closest?.(".day-block-comment-panel"));
+    control.disabled = isCommentControl ? !commentable : !editable;
   });
   document.querySelectorAll(".guide-controls input, .guide-controls button, .choice-card").forEach((control) => {
-    control.disabled = isReadonlyMode;
+    control.disabled = !editable;
   });
   document.querySelectorAll(".connector-grid input, .connector-grid button").forEach((control) => {
-    control.disabled = isReadonlyMode;
+    control.disabled = !editable;
   });
   dom.candidateGrid.querySelectorAll("button").forEach((button) => {
-    button.disabled = isReadonlyMode;
+    button.disabled = !editable;
   });
   document.querySelectorAll(".sync-card").forEach((button) => {
-    button.disabled = isReadonlyMode;
+    button.disabled = !editable;
   });
   if (dom.editAccessInput) dom.editAccessInput.disabled = forcedReadonlyMode || !tripId;
   if (dom.editAccessBtn) dom.editAccessBtn.disabled = forcedReadonlyMode || !tripId;
-  if (dom.copySharedLinkBtn) dom.copySharedLinkBtn.textContent = isReadonlyMode ? "复制当前只读链接" : state.editKeyHash ? "复制口令编辑链接" : "复制编辑链接";
+  if (dom.copySharedLinkBtn) dom.copySharedLinkBtn.textContent = !editable ? "复制口令编辑链接" : state.editKeyHash ? "复制口令编辑链接" : "复制编辑链接";
   if (dom.copyInviteLinkBtn) {
-    dom.copyInviteLinkBtn.hidden = !tripId || !state.editKeyHash || isReadonlyMode;
-    dom.copyInviteLinkBtn.disabled = isReadonlyMode;
+    dom.copyInviteLinkBtn.hidden = !tripId || !state.editKeyHash || !editable;
+    dom.copyInviteLinkBtn.disabled = !editable;
   }
+  if (dom.copyCommentLinkBtn) dom.copyCommentLinkBtn.disabled = !tripId;
   renderEditAccessState();
   if (pendingConflict) {
     dom.collabMode.textContent = "待处理冲突";
     dom.saveState.textContent = "发现协作冲突";
     return;
   }
-  if (isReadonlyMode) {
-    dom.collabMode.textContent = editAccessRequired ? "需口令编辑" : "只读查看";
-    dom.saveState.textContent = editAccessRequired ? "需要编辑口令" : "只读模式";
-    dom.presenceText.textContent = "你正在查看计划";
-    dom.guideProgress.textContent = "只读";
+  if (!editable) {
+    dom.collabMode.textContent = accessModeLabel();
+    dom.saveState.textContent = commentable ? "评论模式" : editAccessRequired ? "需要编辑口令" : "只读模式";
+    dom.presenceText.textContent = commentable ? "你可以评论计划" : "你正在查看计划";
+    dom.guideProgress.textContent = commentable ? "可评论" : "只读";
   } else {
     dom.presenceText.textContent = "你正在编辑计划";
     dom.guideProgress.textContent = "可保存";
@@ -7345,17 +9791,37 @@ function renderCommentIndex() {
           <strong>${escapeHtml(item.targetLabel)}</strong>
           <p>${escapeHtml(item.text)}</p>
           <small>${escapeHtml(meta)}</small>
-          ${canEdit() ? `<span class="comment-index-actions"><span class="comment-index-author">${escapeHtml(item.author || "我")}${item.at ? ` · ${escapeHtml(formatCommentTime(item.at))}` : ""}</span><button type="button" class="comment-action" data-comment-index-resolve="${escapeHtml(item.id)}">${item.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}解决`}</button></span>` : ""}
-          ${canEdit() ? `<form class="comment-index-reply-form" data-comment-index-reply="${escapeHtml(item.id)}"><input placeholder="回复这个批注" aria-label="回复批注" /><button type="submit" class="icon-btn subtle" aria-label="发送回复">${icon("send")}</button></form>` : ""}
+          ${canComment() ? `<span class="comment-index-actions"><span class="comment-index-author">${escapeHtml(item.author || "我")}${item.at ? ` · ${escapeHtml(formatCommentTime(item.at))}` : ""}</span><button type="button" class="comment-action" data-comment-index-resolve="${escapeHtml(item.id)}">${item.resolved ? `${icon("rotate-ccw")}重新打开` : `${icon("check")}解决`}</button></span>` : ""}
+          ${canComment() ? `<form class="comment-index-reply-form" data-comment-index-reply="${escapeHtml(item.id)}"><input placeholder="回复这个批注" aria-label="回复批注" /><button type="submit" class="icon-btn subtle" aria-label="发送回复">${icon("send")}</button></form>` : ""}
         </article>
       `;
     })
     .join("") || `<div class="member-empty">${commentIndexFilter === "open" ? "当前没有未解决批注。" : "还没有批注记录。"}</div>`;
 }
 
+function refreshCommentIndexMutationViews(item = null) {
+  renderCommentIndex();
+  if (!item || typeof item !== "object") {
+    refreshIcons();
+    return false;
+  }
+  let refreshed = false;
+  if (item.scope === "block" && item.dayId === currentDay()?.id && item.blockId) {
+    refreshed = refreshDayBlockCommentsDom(currentDay(), item.blockId);
+  } else if (item.scope === "day" && item.dayId === currentDay()?.id) {
+    renderDayComments(currentDay());
+    refreshed = true;
+  } else if (item.scope === "stop" && item.stopId === currentStop()?.id) {
+    renderStopComments(currentStop());
+    refreshed = true;
+  }
+  refreshIcons();
+  return refreshed;
+}
+
 async function toggleCommentIndexResolved(commentId = "") {
   const item = commentIndexItems().find((entry) => entry.id === commentId);
-  if (!item || !requireEdit(item.resolved ? "重新打开批注" : "解决批注")) return false;
+  if (!item || !requireComment(item.resolved ? "重新打开批注" : "解决批注")) return false;
   const patch = resolvedCommentPatch(item.resolved);
   const actionText = item.resolved ? "重新打开" : "解决";
   const day = state.days[item.dayIndex] || state.days.find((entry) => entry.id === item.dayId);
@@ -7368,9 +9834,8 @@ async function toggleCommentIndexResolved(commentId = "") {
     if (wasCurrentStop) updated = await updateCollaborativeComment(commentId, patch);
     stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, patch);
     await logActivity(`${actionText}批注「${stop.title || "地点"}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
-    await syncStopSnapshotToPlanDoc(stop.id, updated ? "comment-index-stop-resolve-snapshot" : "comment-index-stop-resolve-fallback-snapshot");
-    if (wasCurrentStop) await saveCollaborativeTextChange(`${actionText}批注「${stop.title || "地点"}」`);
-    else await saveCollaborativePlanChange(`${actionText}批注「${stop.title || "地点"}」`);
+    await syncStopSnapshotToPlanDoc(stop.id, updated ? "comment-index-stop-resolve-snapshot" : "comment-index-stop-resolve-fallback-snapshot", { patchFields: ["comments"] });
+    await saveCollaborativeCommentChange(`${actionText}批注「${stop.title || "地点"}」`);
   } else if (item.scope === "day") {
     const wasCurrentDay = currentDay()?.id === day.id;
     let updated = false;
@@ -7378,8 +9843,7 @@ async function toggleCommentIndexResolved(commentId = "") {
     day.comments = commentsWithUpdatedComment(day.comments || [], commentId, patch);
     await logActivity(`${actionText}当天批注「${day.title || day.label}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, updated ? "comment-index-day-resolve-snapshot" : "comment-index-day-resolve-fallback-snapshot");
-    if (wasCurrentDay) await saveCollaborativeTextChange(`${actionText}当天批注「${day.title || day.label}」`);
-    else await saveCollaborativePlanChange(`${actionText}当天批注「${day.title || day.label}」`);
+    await saveCollaborativeCommentChange(`${actionText}当天批注「${day.title || day.label}」`);
   } else if (item.scope === "block") {
     const blocks = normalizeDayBlocks(day.blocks || []);
     const block = blocks.find((entry) => entry.id === item.blockId);
@@ -7391,10 +9855,10 @@ async function toggleCommentIndexResolved(commentId = "") {
         : entry
     )));
     await logActivity(`${actionText}块级批注「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
-    if (!updated) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-resolve-fallback");
-    await saveCollaborativePlanChange(`${actionText}块级批注`);
+    if (!updated) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-resolve-fallback", { patchBlockIds: [block.id], patchFields: ["comments"] });
+    await saveCollaborativeCommentChange(`${actionText}块级批注`);
   }
-  render();
+  if (!refreshCommentIndexMutationViews(item)) render();
   dom.saveState.textContent = item.resolved ? "已重新打开批注" : "已标记批注解决";
   return true;
 }
@@ -7402,7 +9866,7 @@ async function toggleCommentIndexResolved(commentId = "") {
 async function replyFromCommentIndex(commentId = "", text = "") {
   const item = commentIndexItems().find((entry) => entry.id === commentId);
   const replyText = String(text || "").trim();
-  if (!item || !replyText || !requireEdit("回复批注")) return false;
+  if (!item || !replyText || !requireComment("回复批注")) return false;
   const day = state.days[item.dayIndex] || state.days.find((entry) => entry.id === item.dayId);
   if (!day) return false;
   if (item.scope === "stop") {
@@ -7414,9 +9878,8 @@ async function replyFromCommentIndex(commentId = "", text = "") {
     const nextReply = reply || createCommentReply(item.id, replyText);
     stop.comments = normalizeComments([...(stop.comments || []), nextReply]);
     await logActivity(`回复批注「${stop.title || "地点"}」`, { target: { type: "comment", commentId: item.id, scope: "stop", stopId: stop.id || "" } });
-    await syncStopSnapshotToPlanDoc(stop.id, reply ? "comment-index-stop-reply-snapshot" : "comment-index-stop-reply-fallback-snapshot");
-    if (wasCurrentStop) await saveCollaborativeTextChange(`回复批注「${stop.title || "地点"}」`);
-    else await saveCollaborativePlanChange(`回复批注「${stop.title || "地点"}」`);
+    await syncStopSnapshotToPlanDoc(stop.id, reply ? "comment-index-stop-reply-snapshot" : "comment-index-stop-reply-fallback-snapshot", { patchFields: ["comments"] });
+    await saveCollaborativeCommentChange(`回复批注「${stop.title || "地点"}」`);
   } else if (item.scope === "day") {
     const wasCurrentDay = currentDay()?.id === day.id;
     let reply = false;
@@ -7425,8 +9888,7 @@ async function replyFromCommentIndex(commentId = "", text = "") {
     day.comments = normalizeComments([...(day.comments || []), nextReply]);
     await logActivity(`回复当天批注「${day.title || day.label}」`, { target: { type: "comment", commentId: item.id, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, reply ? "comment-index-day-reply-snapshot" : "comment-index-day-reply-fallback-snapshot");
-    if (wasCurrentDay) await saveCollaborativeTextChange(`回复当天批注「${day.title || day.label}」`);
-    else await saveCollaborativePlanChange(`回复当天批注「${day.title || day.label}」`);
+    await saveCollaborativeCommentChange(`回复当天批注「${day.title || day.label}」`);
   } else if (item.scope === "block") {
     const blocks = normalizeDayBlocks(day.blocks || []);
     const block = blocks.find((entry) => entry.id === item.blockId);
@@ -7439,10 +9901,10 @@ async function replyFromCommentIndex(commentId = "", text = "") {
         : entry
     )));
     await logActivity(`回复块级批注「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: item.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
-    if (!reply) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-reply-fallback");
-    await saveCollaborativePlanChange("已回复块级批注");
+    if (!reply) await syncDayBlocksToDoc(day.id, "comment-index-block-comment-reply-fallback", { patchBlockIds: [block.id], patchFields: ["comments"] });
+    await saveCollaborativeCommentChange("已回复块级批注");
   }
-  render();
+  if (!refreshCommentIndexMutationViews(item)) render();
   dom.saveState.textContent = "已回复批注";
   return true;
 }
@@ -7451,6 +9913,52 @@ function focusCommentIndexItem(commentId = "") {
   const item = commentIndexItems().find((entry) => entry.id === commentId);
   if (!item) return false;
   const dayIndex = state.days.findIndex((day, index) => (item.dayId && day.id === item.dayId) || index === item.dayIndex);
+  if (item.scope === "stop" && dayIndex === activeDay) {
+    const day = currentDay();
+    const stopIndex = (day?.stops || []).findIndex((stop, index) => (item.stopId && stop.id === item.stopId) || index === item.stopIndex);
+    if (stopIndex >= 0 && stopIndex === activeStop) {
+      commentFilter = item.resolved ? "resolved" : "open";
+      renderStopComments(currentStop());
+      let focused = false;
+      if (item.anchor) focused = focusCommentAnchor(item.anchor);
+      focused = focusCommentThread(item.id) || focused;
+      renderCommentIndex();
+      refreshIcons();
+      dom.saveState.textContent = focused ? "已定位到批注" : "已切换到批注所在位置";
+      return true;
+    }
+  }
+  if (item.scope === "day" && dayIndex === activeDay) {
+    activeStop = 0;
+    dayCommentFilter = item.resolved ? "resolved" : "open";
+    renderDayComments(currentDay());
+    let focused = false;
+    if (item.anchor) focused = focusCommentAnchor(item.anchor);
+    focused = focusDayCommentThread(item.id) || focused;
+    renderCommentIndex();
+    refreshIcons();
+    dom.saveState.textContent = focused ? "已定位到批注" : "已切换到批注所在位置";
+    return true;
+  }
+  if (item.scope === "block" && dayIndex === activeDay && item.blockId) {
+    activeStop = 0;
+    blockCommentFilters[item.blockId] = item.resolved ? "resolved" : "open";
+    activeBlockPresenceId = item.blockId || activeBlockPresenceId;
+    if (!refreshDayBlockCommentsDom(currentDay(), item.blockId)) renderDayBlocks(currentDay());
+    let focused = false;
+    if (item.anchor) focused = focusCommentAnchor(item.anchor);
+    const thread = Array.from(dom.dayBlockList?.querySelectorAll(`[data-block-comments="${CSS.escape(item.blockId || "")}"] [data-comment]`) || []).find((element) => element.dataset.comment === item.id);
+    if (thread) {
+      thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      thread.classList.add("is-focused");
+      setTimeout(() => thread.classList.remove("is-focused"), 1300);
+      focused = true;
+    }
+    renderCommentIndex();
+    refreshIcons();
+    dom.saveState.textContent = focused ? "已定位到批注" : "已切换到批注所在位置";
+    return true;
+  }
   if (dayIndex >= 0) activeDay = dayIndex;
   if (item.scope === "stop") {
     const day = currentDay();
@@ -7486,6 +9994,7 @@ function focusCommentIndexItem(commentId = "") {
 function renderEditorLockState() {
   const owner = lockOwnerForStop();
   const locked = Boolean(owner);
+  const editable = canEdit();
   dom.editorPanel?.classList.toggle("is-locked", locked);
   if (dom.editLockBanner) dom.editLockBanner.hidden = !locked;
   if (dom.editLockText) dom.editLockText.textContent = locked ? `${owner.name || "其他成员"} 正在编辑「${currentStop()?.title || "当前地点"}」，此处已临时锁定。` : "";
@@ -7494,17 +10003,17 @@ function renderEditorLockState() {
     dom.stopForm,
   ].forEach((form) => {
     form?.querySelectorAll("input, textarea, select, button").forEach((control) => {
-      control.disabled = isReadonlyMode || locked;
+      control.disabled = !editable || locked;
     });
   });
   COLLAB_TEXT_FIELDS.forEach(({ domKey }) => {
-    if (dom[domKey]) dom[domKey].disabled = isReadonlyMode;
+    if (dom[domKey]) dom[domKey].disabled = !editable;
   });
   COLLAB_STRUCT_FIELDS.forEach(({ domKey }) => {
     if (!domKey) return;
-    if (dom[domKey]) dom[domKey].disabled = isReadonlyMode;
+    if (dom[domKey]) dom[domKey].disabled = !editable;
   });
-  if (locked && dom.noteCollabStatus && !isReadonlyMode) {
+  if (locked && dom.noteCollabStatus && editable) {
     dom.noteCollabStatus.textContent = "移动、删除和回填操作已锁定，地点详情字段仍可多人实时协作";
   }
   [
@@ -7513,7 +10022,7 @@ function renderEditorLockState() {
     dom.moveDownBtn,
     dom.deleteStopBtn,
   ].forEach((button) => {
-    if (button) button.disabled = isReadonlyMode || locked;
+    if (button) button.disabled = !editable || locked;
   });
 }
 
@@ -7540,10 +10049,12 @@ function schedulePresenceTrack(delay = 120) {
 
 function getShareUrl(options = {}) {
   if (!tripId) return "";
-  const { includeEditKey = false } = options;
+  const { includeEditKey = false, accessRole = ACCESS_ROLE_EDITOR } = options;
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
   url.searchParams.delete("mode");
+  if (accessRole && accessRole !== ACCESS_ROLE_EDITOR) url.searchParams.set(ACCESS_ROLE_PARAM, accessRole);
+  else url.searchParams.delete(ACCESS_ROLE_PARAM);
   const editKey = currentEditKeyValue();
   if (includeEditKey && state.editKeyHash && editKey) url.searchParams.set("editKey", editKey);
   else url.searchParams.delete("editKey");
@@ -7554,25 +10065,73 @@ function getInviteShareUrl() {
   return getShareUrl({ includeEditKey: true });
 }
 
+function getCommentShareUrl() {
+  return getShareUrl({ accessRole: ACCESS_ROLE_COMMENTER });
+}
+
 function getReadonlyShareUrl() {
   if (!tripId) return "";
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
   url.searchParams.set("mode", "readonly");
+  url.searchParams.set(ACCESS_ROLE_PARAM, ACCESS_ROLE_VIEWER);
   url.searchParams.delete("editKey");
   return url.toString();
 }
 
+function normalizeAccessRole(value = "") {
+  const role = String(value || "").trim().toLowerCase();
+  if (["comment", "commenter", "review", "reviewer"].includes(role)) return ACCESS_ROLE_COMMENTER;
+  if (["view", "viewer", "readonly", "read-only", "read"].includes(role)) return ACCESS_ROLE_VIEWER;
+  return ACCESS_ROLE_EDITOR;
+}
+
+function linkAllowsEditing() {
+  return !forcedReadonlyMode && requestedAccessRole === ACCESS_ROLE_EDITOR;
+}
+
+function linkAllowsCommenting() {
+  return !forcedReadonlyMode && requestedAccessRole === ACCESS_ROLE_COMMENTER;
+}
+
 function canEdit() {
-  return !forcedReadonlyMode && !isReadonlyMode;
+  return linkAllowsEditing() && !isReadonlyMode;
+}
+
+function canComment() {
+  return canEdit() || linkAllowsCommenting();
+}
+
+function canWriteCollaborativeData() {
+  return canEdit() || canComment();
+}
+
+function accessModeLabel() {
+  if (canEdit()) return tripId ? "云端协作" : "可创建共享";
+  if (canComment()) return "评论协作";
+  return editAccessRequired ? "需口令编辑" : "只读查看";
 }
 
 function requireEdit(actionLabel = "编辑") {
   if (canEdit()) return true;
+  if (canComment()) {
+    dom.saveState.textContent = `评论者不能${actionLabel}`;
+    dom.collabStatus.textContent = "当前是评论链接，可以回复和解决批注，但不能修改行程结构、预算、交通或地点内容。";
+    return false;
+  }
   dom.saveState.textContent = editAccessRequired ? "需要编辑口令" : `只读模式不能${actionLabel}`;
   dom.collabStatus.textContent = editAccessRequired
     ? "当前计划已启用编辑口令。请输入口令解锁后才能修改行程。"
     : "当前是只读链接，可以查看计划和显示在线成员，但不能修改行程。";
+  return false;
+}
+
+function requireComment(actionLabel = "评论") {
+  if (canComment()) return true;
+  dom.saveState.textContent = editAccessRequired ? "需要编辑口令" : `只读模式不能${actionLabel}`;
+  dom.collabStatus.textContent = editAccessRequired
+    ? "当前链接没有评论权限。请使用评论邀请链接，或输入编辑口令后再操作。"
+    : "当前是只读链接，可以查看计划和在线成员，但不能评论或修改。";
   return false;
 }
 
@@ -7590,16 +10149,24 @@ function initSupabaseClient() {
 
 async function pushRemoteState(label = "已同步云端", options = {}) {
   if (!supabaseClient || !tripId) return false;
-  if (!canEdit()) {
-    dom.collabStatus.textContent = editAccessRequired ? "需要编辑口令，不能向云端写入计划。" : "当前是只读链接，不能向云端写入计划。";
+  const allowCommentOnly = options.commentOnly && canComment();
+  if (!canEdit() && !allowCommentOnly) {
+    dom.collabStatus.textContent = editAccessRequired ? "需要编辑口令，不能向云端写入计划。" : "当前链接不能向云端写入计划。";
     return false;
   }
   if (pendingConflict) {
     showConflictPanel(pendingConflict);
     return false;
   }
-  if (!options.skipPendingFlush) await flushPendingPlanUpdates("保存前重放离线协作更新");
-  await refreshLiveCollabStateBeforeRemoteSave("保存云端前已刷新协作快照");
+  if (!options.skipPendingFlush && pendingPlanUpdates().length) {
+    const flushed = await flushPendingPlanUpdates("保存前重放离线协作更新");
+    if (flushed && !pendingPlanUpdates().length) return true;
+    if (pendingConflict) {
+      showConflictPanel(pendingConflict);
+      return false;
+    }
+  }
+  await refreshLiveCollabStateBeforeRemoteSave("保存云端前已刷新协作快照", { commentOnly: allowCommentOnly });
   const savingPendingIds = pendingPlanUpdateIds();
   const payload = {
     id: tripId,
@@ -7632,6 +10199,30 @@ async function pushRemoteState(label = "已同步云端", options = {}) {
           dom.collabStatus.textContent = `${label}，共享链接可复制给其他成员。`;
           clearPendingPlanUpdatesById(savingPendingIds);
           return true;
+        }
+        if (remotePlan.planYjs && await mergePlanYjsStateIntoLiveDoc(remotePlan.planYjs, "保存前已合并云端协作快照", { scheduleSave: false })) {
+          await refreshLiveCollabStateBeforeRemoteSave("重试保存前已刷新协作快照");
+          payload.data = state;
+          payload.updated_at = new Date().toISOString();
+          pendingLocalRemoteUpdatedAt = payload.updated_at;
+          const retryResult = await supabaseClient
+            .from("trip_plans")
+            .update(payload)
+            .eq("id", tripId)
+            .eq("updated_at", remote.updated_at || "")
+            .select("data, updated_at, updated_by")
+            .maybeSingle();
+          error = retryResult.error;
+          data = retryResult.data;
+          if (!error && data) {
+            lastRemoteUpdatedAt = data.updated_at || payload.updated_at;
+            lastSyncedState = clone(state);
+            clearPendingPlanUpdatesById(savingPendingIds);
+            hideConflictPanel();
+            dom.collabMode.textContent = isReadonlyMode ? "只读查看" : "云端协作";
+            dom.collabStatus.textContent = `${label}，已合并云端协作快照后同步。`;
+            return true;
+          }
         }
         showConflictPanel({
           remote: remotePlan,
@@ -7751,9 +10342,7 @@ function subscribeRemoteState() {
       if (!payload || payload.memberId === (memberProfile?.id || sessionId)) return;
       if (payload.roomId !== currentTextRoomId(payload.stopId)) return;
       upsertOnlineMember(payload);
-      renderMembers();
-      renderDayBlocks(currentDay());
-      renderEditorLockState();
+      refreshTextSelectionPresenceViews();
     })
     .on("broadcast", { event: "stop-created" }, ({ payload }) => {
       if (payload?.memberId === (memberProfile?.id || sessionId)) return;
@@ -7805,21 +10394,15 @@ function subscribeRemoteState() {
     })
     .on("presence", { event: "sync" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
-      renderMembers();
-      renderDayBlocks(currentDay());
-      renderEditorLockState();
+      refreshPresenceViews();
     })
     .on("presence", { event: "join" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
-      renderMembers();
-      renderDayBlocks(currentDay());
-      renderEditorLockState();
+      refreshPresenceViews();
     })
     .on("presence", { event: "leave" }, () => {
       onlineMembers = uniqueMembersFromPresence(realtimeChannel.presenceState());
-      renderMembers();
-      renderDayBlocks(currentDay());
-      renderEditorLockState();
+      refreshPresenceViews();
     })
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
@@ -7986,6 +10569,8 @@ function averagePrice(options, type) {
 }
 
 function saveServiceConfig() {
+  const previousAmapJsKey = serviceConfig.amapJsKey || "";
+  const previousAmapSecurityCode = serviceConfig.amapSecurityCode || "";
   serviceConfig = {
     aiEndpoint: dom.aiRouteEndpointInput.value.trim(),
     aiToken: dom.aiRouteTokenInput.value.trim(),
@@ -7996,10 +10581,15 @@ function saveServiceConfig() {
     weatherEndpoint: dom.weatherEndpointInput.value.trim(),
   };
   localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
-  if (!serviceConfig.amapJsKey && amapMap) {
+  const amapSdkConfigChanged =
+    previousAmapJsKey !== serviceConfig.amapJsKey ||
+    previousAmapSecurityCode !== serviceConfig.amapSecurityCode;
+  if (amapSdkConfigChanged && amapMap) {
     clearAmapOverlay();
     amapMap.destroy();
     amapMap = null;
+  }
+  if (amapSdkConfigChanged) {
     amapLoadedKey = "";
     amapLoaderPromise = null;
   }
@@ -8076,15 +10666,22 @@ async function requestWeatherForecast() {
     endDate: state.endDate,
     days: state.days.map((day) => ({ id: day.id, date: day.date, title: day.title })),
   };
+  let proxyError = "";
   if (serviceConfig.weatherEndpoint) {
-    const response = await fetch(serviceConfig.weatherEndpoint, {
-      method: "POST",
-      headers: serviceHeaders("", serviceConfig.weatherEndpoint),
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
-    return { source: data.source || "weather-proxy", days: Array.isArray(data.days) ? data.days : [] };
+    try {
+      const response = await fetch(serviceConfig.weatherEndpoint, {
+        method: "POST",
+        headers: serviceHeaders("", serviceConfig.weatherEndpoint),
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+      const days = Array.isArray(data.days) ? data.days : [];
+      if (days.length) return { source: data.source || "weather-proxy", days };
+      proxyError = data.message || "天气代理没有返回可用日期";
+    } catch (error) {
+      proxyError = error.message;
+    }
   }
 
   const place = await geocodeDestination();
@@ -8097,7 +10694,8 @@ async function requestWeatherForecast() {
     date,
     text: `${Math.round(data.daily.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily.temperature_2m_max?.[index] ?? 0)}°C ${weatherLabel(data.daily.weather_code?.[index])} · 降水${Math.round(data.daily.precipitation_probability_max?.[index] ?? 0)}%`,
   }));
-  return { source: `Open-Meteo · ${place.name}`, days };
+  const proxyHint = proxyError ? `（天气代理兜底：${proxyError}）` : "";
+  return { source: `Open-Meteo · ${place.name}${proxyHint}`, days };
 }
 
 function weatherForDay(forecastDays, day, index) {
@@ -8126,7 +10724,7 @@ async function syncWeather() {
     logActivity(`同步天气 ${applied} 天`);
     if (applied) {
       await Promise.all(weatherPatches.map((patch) => patchDayMetaInDoc(patch.id, { weather: patch.weather }, "local-weather-sync-patch")));
-      await syncPlanMetaToDoc("local-weather-sync-meta");
+      await syncPlanMetaToDoc("local-weather-sync-meta", { fields: ["destination", "startDate", "endDate", "dateRange"] });
     }
     await saveCollaborativePlanChange("已同步天气");
     dom.serviceStatusText.textContent = `已同步 ${applied} 天天气，来源：${forecast.source || "天气接口"}。`;
@@ -8155,6 +10753,7 @@ function normalizeTransportItem(item, index, fallbackRoute) {
     source: item.source || "外部接口",
     carrier: item.carrier || item.airline || "",
     stops: Number.isFinite(stops) ? Math.max(0, stops) : 0,
+    selected: Boolean(item.selected),
   };
 }
 
@@ -8276,16 +10875,21 @@ function setCandidateEditing(candidate = null) {
   editingCandidateId = candidate?.id || "";
   if (candidate) {
     dom.quickPlaceName.value = candidate.title || "";
+    if (dom.quickType) dom.quickType.value = quickTypeValue(candidate.type);
     dom.quickAmapKeyword.value = candidate.amapKeyword || `${state.destination || ""} ${candidate.title || ""}`.trim();
     dom.quickTime.value = candidate.time || "";
     dom.quickBudget.value = candidate.budget || "";
+    if (dom.quickPaid) dom.quickPaid.value = candidate.paid || "";
+    if (dom.quickPayer) dom.quickPayer.value = candidate.payer || "";
     dom.quickAddress.value = candidate.address || "";
+    if (dom.quickSelected) dom.quickSelected.checked = Boolean(candidate.selected);
     quickAmapPlace = candidate.lng || candidate.lat ? {
       keyword: candidate.amapKeyword || "",
       title: candidate.title || "",
       address: candidate.address || "",
       lng: candidate.lng || "",
       lat: candidate.lat || "",
+      image: candidate.image || "",
     } : null;
   }
   if (dom.addCandidateBtn) {
@@ -8358,12 +10962,13 @@ async function applyFieldAmapPlace(place, keyword = "") {
   if (place.address) dom.fieldAddress.value = place.address;
   if (place.lng) dom.fieldLng.value = place.lng;
   if (place.lat) dom.fieldLat.value = place.lat;
+  if (place.image && !dom.fieldImage.value.trim()) dom.fieldImage.value = place.image;
   if (keyword && !dom.fieldAmapKeyword.value.trim()) dom.fieldAmapKeyword.value = keyword;
   await Promise.all([
     syncCollabTextFieldToDoc("title", dom.fieldTitle.value),
     syncCollabTextFieldToDoc("address", dom.fieldAddress.value),
     syncCollabTextFieldToDoc("amapKeyword", dom.fieldAmapKeyword.value),
-    syncCollabStructValuesToDoc({ lng: dom.fieldLng.value, lat: dom.fieldLat.value }, "local-amap-place-select"),
+    syncCollabStructValuesToDoc({ lng: dom.fieldLng.value, lat: dom.fieldLat.value, image: dom.fieldImage.value.trim() }, "local-amap-place-select"),
   ]);
   dom.saveState.textContent = place.lng && place.lat ? `已选择高德候选：${place.title || keyword}` : `已选择高德候选，但坐标待确认：${place.title || keyword}`;
 }
@@ -8371,10 +10976,14 @@ async function applyFieldAmapPlace(place, keyword = "") {
 function clearQuickPlaceForm({ keepCandidateEditing = false } = {}) {
   if (!keepCandidateEditing) editingCandidateId = "";
   dom.quickPlaceName.value = "";
+  if (dom.quickType) dom.quickType.value = "Scenic";
   dom.quickAmapKeyword.value = "";
   dom.quickTime.value = "";
   dom.quickBudget.value = "";
+  if (dom.quickPaid) dom.quickPaid.value = "";
+  if (dom.quickPayer) dom.quickPayer.value = "";
   dom.quickAddress.value = "";
+  if (dom.quickSelected) dom.quickSelected.checked = false;
   quickAmapPlace = null;
   hideAmapCandidates("quick");
   if (!keepCandidateEditing) setCandidateEditing(null);
@@ -8396,8 +11005,75 @@ async function saveProviderTransportQuotes(items = [], day = currentDay(), sourc
     return additions.length;
   }
   state.transportQuotes = normalizeTransportQuotes([...additions, ...existing]).slice(0, 80);
-  await syncTransportQuotesToDoc("local-provider-transport-quotes-fallback");
+  await syncTransportQuotesToDoc("local-provider-transport-quotes-fallback", { insertIds: additions.map((quote) => quote.id), patchFields: [] });
   return additions.length;
+}
+
+async function toggleTransportQuoteSelection(quoteId) {
+  const day = currentDay();
+  const quote = (state.transportQuotes || []).find((item) => item.id === quoteId);
+  if (!requireEdit("选择交通方案")) return;
+  if (!quote) {
+    const route = defaultTransportRoute(day);
+    const option = [...transportProviderItems, ...buildTransportOptions(day, activeDay)].find((item) => item.id === quoteId);
+    const draft = normalizeTransportQuotes([{
+      ...(option || {}),
+      id: option?.id || quoteId || uid(),
+      dayId: day?.id || "",
+      date: day?.date || "",
+      from: option?.from || route.from,
+      to: option?.to || route.to,
+      selected: true,
+      source: option?.source || "本地参考",
+      createdBy: getCollabName(),
+      createdAt: new Date().toISOString(),
+    }])[0];
+    if (!draft) return;
+    if (await addCollaborativeTransportQuote(draft)) {
+      persistCurrentPlanFromDoc("交通方案选择已同步");
+      await logActivity(`选择交通 ${draft.code}`, { target: transportQuoteActivityTarget(draft.id, draft.dayId || "", { action: "select" }) });
+      await saveCollaborativePlanChange("更新交通预选");
+      refreshRealtimePlanViews();
+      return;
+    }
+    mutate(`选择交通 ${draft.code}`, () => {
+      state.transportQuotes = mergedTransportQuotesWithPatch("add", draft);
+    }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(draft.id, draft.dayId || "", { action: "select" }) });
+    await syncTransportQuotesToDoc("local-transport-selection-add-fallback", { insertIds: [draft.id], patchFields: [] });
+    await saveCollaborativePlanChange("更新交通预选");
+    return;
+  }
+  const selected = !quote.selected;
+  if (await updateTransportQuoteInDoc(quoteId, { selected })) {
+    persistCurrentPlanFromDoc("交通方案选择已同步");
+    await logActivity(`${selected ? "选择" : "取消"}交通 ${quote.code}`, { target: transportQuoteActivityTarget(quoteId, quote.dayId || "", { action: selected ? "select" : "unselect" }) });
+    await saveCollaborativePlanChange("更新交通预选");
+    refreshRealtimePlanViews();
+    return;
+  }
+  mutate(`${selected ? "选择" : "取消"}交通 ${quote.code}`, () => {
+    state.transportQuotes = mergedTransportQuotesWithPatch("update", { selected }, quoteId);
+  }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(quoteId, quote.dayId || "", { action: selected ? "select" : "unselect" }) });
+  await syncTransportQuotesToDoc("local-transport-selection-fallback", { patchIds: [quoteId], patchFields: ["selected"] });
+  await saveCollaborativePlanChange("更新交通预选");
+}
+
+async function toggleCandidateSelection(candidateId) {
+  const candidate = (state.candidates || []).find((item) => item.id === candidateId);
+  if (!candidate || !requireEdit("选择备选地点")) return;
+  const selected = !candidate.selected;
+  if (await updateCandidateInDoc(candidateId, { selected })) {
+    persistCurrentPlanFromDoc("备选预选已同步");
+    await logActivity(`${selected ? "预选" : "取消预选"}${candidate.title}`, { target: candidateActivityTarget(candidateId, { action: selected ? "select" : "unselect" }) });
+    await saveCollaborativePlanChange("更新备选预选");
+    refreshRealtimePlanViews();
+    return;
+  }
+  mutate(`${selected ? "预选" : "取消预选"}${candidate.title}`, () => {
+    state.candidates = mergedCandidatesWithPatch("update", { selected }, candidateId);
+  }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(candidateId, { action: selected ? "select" : "unselect" }) });
+  await syncCandidatesToDoc("local-candidate-selection-fallback", { patchIds: [candidateId], patchFields: ["selected"] });
+  await saveCollaborativePlanChange("更新备选预选");
 }
 
 function manualTransportQuotes() {
@@ -8406,6 +11082,25 @@ function manualTransportQuotes() {
 
 function currentManualQuotes(day) {
   return manualTransportQuotes().filter((item) => item.dayId === day?.id || item.date === day?.date);
+}
+
+function quickTypeValue(type = "") {
+  const text = String(type || "").trim();
+  if (/hotel|住宿|民宿|酒店|客栈|入住|房/i.test(text)) return "Hotel";
+  if (/food|餐饮|餐厅|咖啡|午餐|晚餐|早餐|美食|团购|Cafe|Dinner|Lunch|Market/i.test(text)) return "Food";
+  if (/transport|交通|航班|机票|动车|高铁|火车|Transit|车站|机场/i.test(text)) return "Transport";
+  if (/other|其他/i.test(text)) return "Other";
+  return "Scenic";
+}
+
+function quickTypeLabel(type = "") {
+  return {
+    Scenic: "景点/门票",
+    Hotel: "住宿",
+    Food: "餐饮",
+    Transport: "交通",
+    Other: "其他",
+  }[quickTypeValue(type)] || "景点/门票";
 }
 
 function normalizeImportCategory(value, provider = "") {
@@ -8671,7 +11366,8 @@ function renderTransport() {
   const manualQuotes = currentManualQuotes(day);
   const savedQuoteKeys = new Set(manualQuotes.map(transportOptionIdentity));
   const providerOptions = transportProviderItems.filter((item) => !savedQuoteKeys.has(transportOptionIdentity(item)));
-  const baseOptions = transportProviderItems.length ? providerOptions : buildTransportOptions(day, activeDay);
+  const generatedOptions = buildTransportOptions(day, activeDay).filter((item) => !savedQuoteKeys.has(transportOptionIdentity(item)));
+  const baseOptions = transportProviderItems.length ? providerOptions : generatedOptions;
   const options = [...manualQuotes, ...baseOptions];
   const filtered = options.filter(matchesTransportFilter);
   const visible = transportFilterApplied ? filtered : filtered.slice(0, 4);
@@ -8710,20 +11406,26 @@ function renderTransport() {
   dom.transportList.innerHTML =
     visible
       .map(
-        (item) => `
-          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}" data-quote="${escapeHtml(item.id || "")}">
+        (item) => {
+          const selected = Boolean(item.selected);
+          return `
+          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-quote="${escapeHtml(item.id || "")}">
             <span class="transport-icon">${icon(item.type === "flight" ? "plane" : "train-front")}</span>
             <div>
               <strong>${escapeHtml(item.code)} · ${escapeHtml(item.from)} → ${escapeHtml(item.to)}</strong>
               <span>${escapeHtml(item.depart)} - ${escapeHtml(item.arrive)} · 约${Math.floor(item.duration / 60)}小时${item.duration % 60}分 · ${escapeHtml(item.source)}</span>
             </div>
             <em>${money(item.price)}</em>
-            ${manualQuoteIds.has(item.id) ? `<span class="transport-actions">
+            <span class="transport-actions">
+              <button type="button" class="icon-btn subtle" data-toggle-quote-selected="${escapeHtml(item.id)}" aria-label="${selected ? "移出预算组合" : "纳入预算组合"}" title="${selected ? "移出预算组合" : "纳入预算组合"}">${icon(selected ? "check-circle-2" : "circle")}</button>
+              ${manualQuoteIds.has(item.id) ? `
               <button type="button" class="icon-btn subtle" data-edit-quote="${escapeHtml(item.id)}" aria-label="编辑报价">${icon("pencil")}</button>
               <button type="button" class="icon-btn subtle danger-icon" data-delete-quote="${escapeHtml(item.id)}" aria-label="删除报价">${icon("trash-2")}</button>
-            </span>` : ""}
+              ` : ""}
+            </span>
           </article>
-        `,
+        `;
+        },
       )
       .join("") || `<p class="empty-state">这个时间段暂时没有匹配班次，可以放宽时间或切换类型。</p>`;
 }
@@ -8930,6 +11632,14 @@ function totalPaid() {
   return state.days.reduce((sum, day) => sum + day.stops.reduce((daySum, stop) => daySum + numberValue(stop.paid), 0), 0);
 }
 
+function totalPlannedBudget() {
+  return Math.max(totalBudget(), budgetComboSummary().total);
+}
+
+function totalPlannedPaid() {
+  return Math.max(totalPaid(), budgetComboSummary().paid);
+}
+
 function partySize() {
   return Math.max(1, Number.parseInt(dom.partySizeInput.value || state.partySize || 1, 10) || 1);
 }
@@ -8944,11 +11654,18 @@ function payerBudget() {
       groups[payer] = (groups[payer] || 0) + paid;
     });
   });
+  (state.candidates || []).forEach((candidate) => {
+    if (!candidate.selected) return;
+    const paid = numberValue(candidate.paid);
+    if (!paid) return;
+    const payer = String(candidate.payer || "未指定").trim() || "未指定";
+    groups[payer] = (groups[payer] || 0) + paid;
+  });
   return groups;
 }
 
 function settlementSuggestions() {
-  const total = totalBudget();
+  const total = totalPlannedBudget();
   const people = partySize();
   const perPerson = people ? Math.round(total / people) : 0;
   const paidBy = payerBudget();
@@ -8990,6 +11707,373 @@ function settlementSuggestions() {
   };
 }
 
+function budgetTextForItem(item = {}) {
+  return `${item.title || ""} ${item.type || ""} ${(item.tags || []).join(" ")} ${item.note || ""}`;
+}
+
+function budgetCategoryForItem(item = {}) {
+  const normalizedType = quickTypeValue(item.type);
+  if (normalizedType === "Hotel") return "住宿";
+  if (normalizedType === "Transport") return "交通";
+  if (normalizedType === "Food") return "餐饮";
+  const text = budgetTextForItem(item);
+  if (/hotel|住宿|民宿|酒店|客栈|入住|房/.test(text)) return "住宿";
+  if (/flight|train|Transit|机票|航班|动车|高铁|火车|交通|打车|机场|车站/.test(text)) return "交通";
+  if (/餐|饭|Cafe|Dinner|Lunch|Market|美食|午餐|晚餐|早餐|咖啡/.test(text)) return "餐饮";
+  return "景点";
+}
+
+function inferTicketPrice(item = {}) {
+  if (numberValue(item.budget)) return 0;
+  const text = budgetTextForItem(item);
+  if (/免费|免票|开放式|街区|公园免费/.test(text)) return 0;
+  const rules = [
+    [/莫高窟|石窟|Grottoes/i, 238],
+    [/七彩丹霞|丹霞|雅丹|平山湖|Geopark|地质公园/i, 120],
+    [/嘉峪关|关城|悬壁长城|长城|阳关|玉门关|Heritage|Fortress/i, 110],
+    [/沙漠|鸣沙山|月牙泉|Desert/i, 110],
+    [/博物馆|黄河铁桥|中山桥|夜市|步行街|Museum|Walk/i, 0],
+    [/马蹄寺|寺|Temple|塔|宫|园|景区|门票|预约|Scenic/i, 80],
+  ];
+  const matched = rules.find(([pattern]) => pattern.test(text));
+  return matched ? matched[1] : 0;
+}
+
+function transportBudgetLabel(item = {}) {
+  const type = item.type === "train" ? "动车/高铁" : "机票";
+  return `${type} ${item.code || ""}`.trim();
+}
+
+function budgetComboItems() {
+  const confirmedStops = (state.days || []).flatMap((day) =>
+    (day.stops || []).map((stop) => {
+      const estimate = inferTicketPrice(stop);
+      return {
+        id: `stop-${day.id || day.label}-${stop.id || stop.title}`,
+        refType: "stop",
+        dayId: day.id || "",
+        itemId: stop.id || "",
+        label: stop.title || "地点",
+        category: budgetCategoryForItem(stop),
+        amount: numberValue(stop.budget) || estimate,
+        paid: numberValue(stop.paid),
+        source: "行程",
+        estimated: !numberValue(stop.budget) && estimate > 0,
+      };
+    }),
+  );
+  const selectedQuotes = (state.transportQuotes || [])
+    .filter((quote) => quote.selected)
+    .map((quote) => ({
+      id: `quote-${quote.id}`,
+      refType: "quote",
+      itemId: quote.id || "",
+      label: transportBudgetLabel(quote),
+      category: "交通",
+      amount: numberValue(quote.price),
+      paid: 0,
+      source: "已选交通",
+      estimated: false,
+    }));
+  const selectedCandidates = (state.candidates || [])
+    .filter((candidate) => candidate.selected)
+    .map((candidate) => {
+      const estimate = inferTicketPrice(candidate);
+      return {
+        id: `candidate-${candidate.id}`,
+        refType: "candidate",
+        itemId: candidate.id || "",
+        label: candidate.title || "备选地点",
+        category: budgetCategoryForItem(candidate),
+        amount: numberValue(candidate.budget) || estimate,
+        paid: numberValue(candidate.paid),
+        source: "预选",
+        estimated: !numberValue(candidate.budget) && estimate > 0,
+      };
+    });
+  return [...confirmedStops, ...selectedQuotes, ...selectedCandidates].filter((item) => item.amount || item.paid);
+}
+
+function budgetComboSummary() {
+  const items = budgetComboItems();
+  const total = items.reduce((sum, item) => sum + numberValue(item.amount), 0);
+  const paid = items.reduce((sum, item) => sum + numberValue(item.paid), 0);
+  const byCategory = items.reduce((groups, item) => {
+    groups[item.category] = (groups[item.category] || 0) + numberValue(item.amount);
+    return groups;
+  }, {});
+  const estimates = items.filter((item) => item.estimated);
+  return { items, total, paid, unpaid: Math.max(0, total - paid), byCategory, estimates };
+}
+
+function renderBudgetCombo() {
+  const summary = budgetComboSummary();
+  const people = partySize();
+  const selectedTransportCount = (state.transportQuotes || []).filter((quote) => quote.selected).length;
+  const selectedCandidateCount = (state.candidates || []).filter((candidate) => candidate.selected).length;
+  const categoryRows = Object.entries(summary.byCategory)
+    .map(([key, value]) => `<span>${escapeHtml(key)} ${money(value)}</span>`)
+    .join("");
+  const estimateRows = summary.estimates
+    .slice(0, 4)
+    .map((item) => `
+      <span>
+        <b>${escapeHtml(item.label)} 门票待确认 ${money(item.amount)}</b>
+        ${canEdit() ? `<button type="button" class="mini-action" data-apply-budget-estimate="${escapeHtml(item.refType)}:${escapeHtml(item.dayId || "")}:${escapeHtml(item.itemId || "")}">采用</button>` : ""}
+      </span>
+    `)
+    .join("");
+  const itemRows = summary.items
+    .slice(0, 8)
+    .map((item) => `<span>${escapeHtml(item.source)} · ${escapeHtml(item.category)} · ${escapeHtml(item.label)} ${money(item.amount)}${item.estimated ? " 估" : ""}</span>`)
+    .join("");
+  const extraCount = Math.max(0, summary.items.length - 8);
+  return `
+    <strong>预选组合</strong>
+    <span>组合总额 ${money(summary.total)} · 人均 ${money(Math.round(summary.total / people))}</span>
+    <span>已付 ${money(summary.paid)} · 待付 ${money(summary.unpaid)}</span>
+    <span>已选交通 ${selectedTransportCount} 项 · 预选备选 ${selectedCandidateCount} 项</span>
+    <div class="budget-combo-categories">${categoryRows || "<span>暂无可汇总项目</span>"}</div>
+    <div class="budget-combo-items">${itemRows || "<span>勾选交通或备选地点后显示组合明细</span>"}${extraCount ? `<span>还有 ${extraCount} 项已纳入组合</span>` : ""}</div>
+    ${estimateRows ? `<div class="budget-ticket-hints">${estimateRows}</div>` : "<div class=\"budget-ticket-hints\"><span><b>当前没有待采用的门票估算</b></span></div>"}
+  `;
+}
+
+function budgetEstimateEntries() {
+  return budgetComboSummary().estimates.filter((item) => item.refType === "stop" || item.refType === "candidate");
+}
+
+async function applyBudgetEstimateFromToken(token = "") {
+  const [refType, dayId, itemId] = String(token || "").split(":");
+  if (!requireEdit("采用预算估算")) return;
+  if (refType === "stop") {
+    const day = state.days.find((item) => item.id === dayId);
+    const stop = day?.stops?.find((item) => item.id === itemId);
+    const estimate = inferTicketPrice(stop);
+    if (!day || !stop || !estimate) {
+      dom.saveState.textContent = "没有找到可采用的门票估算。";
+      return;
+    }
+    stop.budget = estimate;
+    stop.tags = Array.from(new Set([...(stop.tags || []), "门票估算待确认"]));
+    if (!(await syncStopSnapshotToPlanDoc(stop.id, "local-budget-estimate-stop", { patchFields: ["budget", "tags"] }))) {
+      await syncStopListToDoc(day.id, "local-budget-estimate-stop-fallback", { patchStopIds: [stop.id], patchFields: ["budget", "tags"] });
+    }
+    await logActivity(`采用门票估算「${stop.title}」${money(estimate)}`, { target: stopActivityTarget(day.id, stop.id, { action: "budget-estimate" }) });
+    await saveCollaborativePlanChange(`采用门票估算「${stop.title}」`);
+    render();
+    dom.saveState.textContent = `已把「${stop.title}」预算设为 ${money(estimate)}，请出行前确认官方票价。`;
+    return;
+  }
+  if (refType === "candidate") {
+    const candidate = (state.candidates || []).find((item) => item.id === itemId);
+    const estimate = inferTicketPrice(candidate);
+    if (!candidate || !estimate) {
+      dom.saveState.textContent = "没有找到可采用的备选估算。";
+      return;
+    }
+    const patch = {
+      budget: estimate,
+      tags: Array.from(new Set([...(candidate.tags || []), "门票估算待确认"])),
+    };
+    if (await updateCandidateInDoc(candidate.id, patch)) {
+      persistCurrentPlanFromDoc("备选预算估算已实时同步");
+    } else {
+      state.candidates = mergedCandidatesWithPatch("update", patch, candidate.id);
+      await syncCandidatesToDoc("local-budget-estimate-candidate-fallback", { patchIds: [candidate.id], patchFields: ["budget", "tags"] });
+    }
+    await logActivity(`采用备选门票估算「${candidate.title}」${money(estimate)}`, { target: candidateActivityTarget(candidate.id, { action: "budget-estimate" }) });
+    await saveCollaborativePlanChange(`采用备选门票估算「${candidate.title}」`);
+    render();
+    dom.saveState.textContent = `已把备选「${candidate.title}」预算设为 ${money(estimate)}，请出行前确认官方票价。`;
+    return;
+  }
+  dom.saveState.textContent = "这条预算估算暂时不能自动采用。";
+}
+
+async function adoptAllBudgetEstimates() {
+  if (!requireEdit("批量采用门票估算")) return;
+  const entries = budgetEstimateEntries();
+  if (!entries.length) {
+    dom.saveState.textContent = "当前没有可采用的门票估算。";
+    return;
+  }
+  saveVersionSnapshot("批量采用门票估算前版本");
+  let stopCount = 0;
+  let candidateCount = 0;
+  const fallbackDayIds = new Set();
+  let candidateFallback = false;
+  for (const item of entries) {
+    if (item.refType === "stop") {
+      const day = state.days.find((entry) => entry.id === item.dayId);
+      const stop = day?.stops?.find((entry) => entry.id === item.itemId);
+      const estimate = inferTicketPrice(stop);
+      if (!day || !stop || !estimate || numberValue(stop.budget)) continue;
+      const patch = {
+        budget: estimate,
+        tags: Array.from(new Set([...(stop.tags || []), "门票估算待确认"])),
+      };
+      Object.assign(stop, patch);
+      if (!(await patchStopInDoc(stop.id, patch, "local-budget-estimate-stop-batch"))) {
+        fallbackDayIds.add(day.id);
+      }
+      stopCount += 1;
+    } else if (item.refType === "candidate") {
+      const candidate = (state.candidates || []).find((entry) => entry.id === item.itemId);
+      const estimate = inferTicketPrice(candidate);
+      if (!candidate || !estimate || numberValue(candidate.budget)) continue;
+      const patch = {
+        budget: estimate,
+        tags: Array.from(new Set([...(candidate.tags || []), "门票估算待确认"])),
+      };
+      Object.assign(candidate, patch);
+      if (!(await updateCandidateInDoc(candidate.id, patch))) {
+        state.candidates = mergedCandidatesWithPatch("update", patch, candidate.id);
+        candidateFallback = true;
+      }
+      candidateCount += 1;
+    }
+  }
+  if (!stopCount && !candidateCount) {
+    dom.saveState.textContent = "没有新的门票估算需要写入。";
+    return;
+  }
+  for (const dayId of fallbackDayIds) {
+    const stopIds = entries
+      .filter((item) => item.refType === "stop" && item.dayId === dayId)
+      .map((item) => item.itemId)
+      .filter(Boolean);
+    await syncStopListToDoc(dayId, "local-budget-estimates-batch-fallback", { patchStopIds: stopIds, patchFields: ["budget", "tags"] });
+  }
+  if (candidateFallback) {
+    const candidateIds = entries.filter((item) => item.refType === "candidate").map((item) => item.itemId).filter(Boolean);
+    await syncCandidatesToDoc("local-candidate-budget-estimates-batch-fallback", { patchIds: candidateIds, patchFields: ["budget", "tags"] });
+  }
+  persistCurrentPlanFromDoc("门票估算已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
+  await logActivity(`批量采用门票估算 ${stopCount + candidateCount} 项`, { target: budgetSettingActivityTarget("budgetLimit", { action: "batch-estimate" }) });
+  await saveCollaborativePlanChange("批量采用门票估算");
+  render();
+  dom.saveState.textContent = `已采用 ${stopCount + candidateCount} 项门票估算，请出行前核对官方票价。`;
+}
+
+function stopPlaceLookupKeyword(stop = {}) {
+  return [stop.amapKeyword, stop.address, stop.title]
+    .map((value) => String(value || "").trim())
+    .find(Boolean) || "";
+}
+
+function isDefaultTripboardImage(value = "") {
+  const url = String(value || "").trim();
+  if (!url) return true;
+  return Object.values(images).includes(url) || /images\.unsplash\.com/.test(url);
+}
+
+function applyPlaceToStop(stop, place) {
+  if (!stop || !place) return null;
+  const patch = {};
+  if (!stop.address && place.address) {
+    stop.address = place.address;
+    patch.address = place.address;
+  }
+  if (!stop.lng && place.lng) {
+    stop.lng = place.lng;
+    patch.lng = place.lng;
+  }
+  if (!stop.lat && place.lat) {
+    stop.lat = place.lat;
+    patch.lat = place.lat;
+  }
+  if (place.image && isDefaultTripboardImage(stop.image)) {
+    stop.image = place.image;
+    patch.image = place.image;
+  }
+  if (!stop.amapKeyword && (place.title || stop.title)) {
+    stop.amapKeyword = place.title || stop.title;
+    patch.amapKeyword = place.title || stop.title;
+  }
+  return Object.keys(patch).length ? patch : null;
+}
+
+async function enrichPlacesFromAmap() {
+  if (!requireEdit("补全地点图片")) return;
+  if (!serviceConfig.amapEndpoint) {
+    dom.saveState.textContent = "请先在服务配置里填写高德地点代理地址，才能自动补全地点图片和坐标。";
+    return;
+  }
+  const candidates = [];
+  state.days.forEach((day) => {
+    (day.stops || []).forEach((stop) => {
+      const needsPlace = !stop.lng || !stop.lat || !stop.address || isDefaultTripboardImage(stop.image);
+      const keyword = stopPlaceLookupKeyword(stop);
+      if (needsPlace && keyword) candidates.push({ type: "stop", day, stop, keyword });
+    });
+  });
+  (state.candidates || []).forEach((stop) => {
+    const needsPlace = !stop.lng || !stop.lat || !stop.address || isDefaultTripboardImage(stop.image);
+    const keyword = stopPlaceLookupKeyword(stop);
+    if (needsPlace && keyword) candidates.push({ type: "candidate", stop, keyword });
+  });
+  if (!candidates.length) {
+    dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
+    return;
+  }
+  saveVersionSnapshot("补全地点图片前版本");
+  dom.saveState.textContent = `正在通过高德补全 ${Math.min(candidates.length, 12)} 个地点...`;
+  const fallbackDayIds = new Set();
+  let candidateFallback = false;
+  let changedStops = 0;
+  let changedCandidates = 0;
+  let imageCount = 0;
+  let checked = 0;
+  for (const item of candidates.slice(0, 12)) {
+    checked += 1;
+    try {
+      const places = await lookupAmapPlaces(item.keyword, { limit: 3 });
+      const place = Array.isArray(places) ? places.find((entry) => entry.image) || places[0] : null;
+      if (!place) continue;
+      const hadRealImage = !isDefaultTripboardImage(item.stop.image);
+      const patch = applyPlaceToStop(item.stop, place);
+      if (patch) {
+        if (item.type === "stop") {
+          if (!(await patchStopInDoc(item.stop.id, patch, "local-amap-place-enrich-stop"))) {
+            fallbackDayIds.add(item.day.id);
+          }
+          changedStops += 1;
+        } else {
+          if (!(await updateCandidateInDoc(item.stop.id, patch))) {
+            state.candidates = mergedCandidatesWithPatch("update", patch, item.stop.id);
+            candidateFallback = true;
+          }
+          changedCandidates += 1;
+        }
+        if (!hadRealImage && item.stop.image && !isDefaultTripboardImage(item.stop.image)) imageCount += 1;
+      }
+    } catch (error) {
+      console.warn("Amap place enrichment failed", item.keyword, error);
+    }
+  }
+  for (const dayId of fallbackDayIds) {
+    const stopIds = candidates
+      .filter((item) => item.type === "stop" && item.day?.id === dayId)
+      .map((item) => item.stop?.id)
+      .filter(Boolean);
+    await syncStopListToDoc(dayId, "local-amap-place-enrich-fallback", { patchStopIds: stopIds, patchFields: ["address", "lng", "lat", "image", "amapKeyword"] });
+  }
+  if (candidateFallback) {
+    const candidateIds = candidates.filter((item) => item.type === "candidate").map((item) => item.stop?.id).filter(Boolean);
+    await syncCandidatesToDoc("local-amap-candidate-enrich-fallback", { patchIds: candidateIds, patchFields: ["address", "lng", "lat", "image", "amapKeyword"] });
+  }
+  if (!changedStops && !changedCandidates) {
+    dom.saveState.textContent = `已查询 ${checked} 个地点，高德没有返回可写入的新坐标或图片。`;
+    return;
+  }
+  persistCurrentPlanFromDoc("高德地点资料已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
+  await logActivity(`补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张`);
+  await saveCollaborativePlanChange("补全地点图片和坐标");
+  render();
+  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张；图片来自高德 POI 返回，请按需核对。`;
+}
+
 function categoryBudget() {
   const groups = { 交通: 0, 餐饮: 0, 门票: 0, 住宿: 0 };
   state.days.forEach((day) => {
@@ -9002,13 +12086,27 @@ function categoryBudget() {
       else groups.门票 += value;
     });
   });
+  (state.transportQuotes || []).forEach((quote) => {
+    if (quote.selected) groups.交通 += numberValue(quote.price);
+  });
+  (state.candidates || []).forEach((candidate) => {
+    if (!candidate.selected) return;
+    const value = numberValue(candidate.budget) || inferTicketPrice(candidate);
+    const category = budgetCategoryForItem(candidate);
+    if (category === "住宿") groups.住宿 += value;
+    else if (category === "餐饮") groups.餐饮 += value;
+    else if (category === "交通") groups.交通 += value;
+    else groups.门票 += value;
+  });
   return groups;
 }
 
 function renderShell() {
   ensurePlanOrigin(state);
-  const total = totalBudget();
-  const paid = totalPaid();
+  const total = totalPlannedBudget();
+  const confirmedTotal = totalBudget();
+  const paid = totalPlannedPaid();
+  const confirmedPaid = totalPaid();
   const people = partySize();
   const limit = Number(state.budgetLimit || 10000);
   const percent = Math.min(100, Math.round((total / limit) * 100));
@@ -9037,11 +12135,24 @@ function renderShell() {
     <span>已付 ${money(paid)}</span>
     <span>待付 ${money(Math.max(0, total - paid))}</span>
     <span>人均 ${money(Math.round(total / people))}</span>
+    ${total !== confirmedTotal ? `<span>行程已确定 ${money(confirmedTotal)} · 已选组合 ${money(total)}</span>` : ""}
+    ${paid !== confirmedPaid ? `<span>行程已付 ${money(confirmedPaid)} · 组合已付 ${money(paid)}</span>` : ""}
     ${payerRows || "<span>暂无付款记录</span>"}
     <strong>AA 结算建议</strong>
     ${transferRows || "<span>当前无需转账或付款人信息不足</span>"}
     ${settlement.missingPayer ? `<span>未指定付款人 ${money(settlement.missingPayer)}，建议先补充付款人</span>` : ""}
   `;
+  if (dom.budgetCombo) dom.budgetCombo.innerHTML = renderBudgetCombo();
+  if (dom.budgetAdoptEstimatesBtn) {
+    const estimateCount = budgetEstimateEntries().length;
+    dom.budgetAdoptEstimatesBtn.disabled = !canEdit() || !estimateCount;
+    dom.budgetAdoptEstimatesBtn.innerHTML = `${icon("ticket-check")}<span>${estimateCount ? `采用 ${estimateCount} 项估算` : "无待采用估算"}</span>`;
+  }
+  if (dom.budgetEnrichPlacesBtn) {
+    dom.budgetEnrichPlacesBtn.disabled = !canEdit();
+    dom.budgetEnrichPlacesBtn.innerHTML = `${icon("image-plus")}<span>补全地点图片</span>`;
+  }
+
 }
 
 function renderDays() {
@@ -9085,9 +12196,10 @@ function renderDayEditor() {
     dom.fieldDayTransport.value = day.transport || "";
   }
   dom.dayEditorStatus.textContent = isReadonlyMode ? "只读" : tripId ? "实时协作" : "本地保存";
-  dom.moveDayUpBtn.disabled = isReadonlyMode || activeDay === 0;
-  dom.moveDayDownBtn.disabled = isReadonlyMode || activeDay >= state.days.length - 1;
-  dom.deleteDayBtn.disabled = isReadonlyMode || state.days.length <= 1;
+  const editable = canEdit();
+  dom.moveDayUpBtn.disabled = !editable || activeDay === 0;
+  dom.moveDayDownBtn.disabled = !editable || activeDay >= state.days.length - 1;
+  dom.deleteDayBtn.disabled = !editable || state.days.length <= 1;
   renderDayFieldCommentMarks(day);
   if (dom.dayCommentTitle) dom.dayCommentTitle.textContent = day.title || day.label || "当前日期";
 }
@@ -9162,8 +12274,13 @@ function renderTimeline() {
 
 function renderMap() {
   const day = currentDay();
-  renderFallbackMap(day);
-  if (hasAmapJsConfig()) scheduleAmapRender(day);
+  if (!hasAmapJsConfig()) {
+    destroyAmapMap();
+    renderFallbackMap(day);
+    return;
+  }
+  if (!amapMap) renderFallbackMap(day);
+  scheduleAmapRender(day);
 }
 
 function renderDetail() {
@@ -9198,8 +12315,31 @@ function renderDetail() {
   const detailKeyword = dom.fieldAmapKeyword.value || stop.title;
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
   dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
+  if (dom.officialImageSearchLink) {
+    dom.officialImageSearchLink.href = officialImageSearchUrl({ ...stop, title: dom.fieldTitle.value || stop.title, address: dom.fieldAddress.value || stop.address, amapKeyword: detailKeyword });
+  }
 
   renderStopComments(stop);
+}
+
+function switchActiveStop(nextStopIndex, options = {}) {
+  const day = currentDay();
+  if (!day) return false;
+  const stopCount = (day.stops || []).length;
+  if (!stopCount) return false;
+  const index = Math.max(0, Math.min(Number(nextStopIndex) || 0, stopCount - 1));
+  const changed = activeStop !== index;
+  activeStop = index;
+  renderTimeline();
+  renderMap();
+  renderDetail();
+  renderEditorLockState();
+  bindCollabTextDoc();
+  renderTextPresence();
+  if (options.activities !== false) renderActivities();
+  refreshIcons();
+  if (options.track !== false) trackPresence();
+  return changed;
 }
 
 function renderCandidates() {
@@ -9209,17 +12349,28 @@ function renderCandidates() {
   }
   dom.candidateGrid.innerHTML = state.candidates
     .map(
-      (stop, index) => `
-        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
-          ${icon(stop.type === "Market" ? "shopping-bag" : stop.type === "Cafe" ? "coffee" : "landmark")}
+      (stop, index) => {
+        const selected = Boolean(stop.selected);
+        const estimatedTicket = inferTicketPrice(stop);
+        const category = budgetCategoryForItem(stop);
+        const paid = numberValue(stop.paid);
+        const payer = stop.payer ? ` · ${escapeHtml(stop.payer)}` : "";
+        const amountText = money(numberValue(stop.budget) || estimatedTicket);
+        const estimateText = !numberValue(stop.budget) && estimatedTicket ? " 估" : "";
+        return `
+        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
+          ${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}
           <span class="candidate-title">${escapeHtml(stop.title)}</span>
-          <span class="candidate-price">${money(stop.budget)}</span>
+          <span class="candidate-meta">${escapeHtml(category)}${selected ? " · 已预选" : ""}${paid ? ` · 已付 ${money(paid)}${payer}` : ""}</span>
+          <span class="candidate-price">${amountText}${estimateText}</span>
           ${editable ? `<span class="candidate-actions">
+            <button type="button" class="icon-btn subtle" data-toggle-candidate-selected="${escapeHtml(stop.id)}" aria-label="${selected ? "移出预选" : "加入预选"}" title="${selected ? "移出预选" : "加入预选"}">${icon(selected ? "check-circle-2" : "circle")}</button>
             <button type="button" class="icon-btn subtle" data-edit-candidate="${escapeHtml(stop.id)}" aria-label="编辑备选">${icon("pencil")}</button>
             <button type="button" class="icon-btn subtle danger-icon" data-delete-candidate="${escapeHtml(stop.id)}" aria-label="移除备选">${icon("trash-2")}</button>
           </span>` : ""}
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -9257,10 +12408,17 @@ function focusActivityTarget(targetSelector = "") {
     dom.saveState.textContent = "暂时无法定位这条记录";
     return false;
   }
+  pulseActivityTarget(target);
+  dom.saveState.textContent = "已定位到相关区域";
+  return true;
+}
+
+function pulseActivityTarget(target, options = {}) {
+  if (!target) return false;
   target.scrollIntoView({ block: "center", behavior: "smooth" });
   target.classList.add("activity-target-pulse");
   window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  dom.saveState.textContent = "已定位到相关区域";
+  if (options.focus && typeof target.focus === "function") target.focus({ preventScroll: true });
   return true;
 }
 
@@ -9348,14 +12506,20 @@ function focusDayActivityTarget(detail = null) {
     dayIndex = Math.max(0, Math.min(fallbackIndex, state.days.length - 1));
   }
   if (dayIndex < 0) return false;
+  if (dayIndex === activeDay) {
+    const target = document.querySelector(`[data-day="${CSS.escape(String(dayIndex))}"]`) || document.querySelector(".day-editor-panel") || dom.dayList;
+    if (!target) return false;
+    pulseActivityTarget(target);
+    renderActivities();
+    dom.saveState.textContent = detail.deleted ? "日期已删除，已定位到相邻日期" : "已定位到活动对应日期";
+    return true;
+  }
   activeDay = dayIndex;
   activeStop = 0;
   render();
   const target = document.querySelector(`[data-day="${CSS.escape(String(dayIndex))}"]`) || document.querySelector(".day-editor-panel") || dom.dayList;
   if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "smooth" });
-  target.classList.add("activity-target-pulse");
-  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  pulseActivityTarget(target);
   dom.saveState.textContent = detail.deleted ? "日期已删除，已定位到相邻日期" : "已定位到活动对应日期";
   return true;
 }
@@ -9367,18 +12531,35 @@ function focusStopActivityTarget(detail = null) {
     return detail.stopId && (day.stops || []).some((stop) => stop.id === detail.stopId);
   });
   if (dayIndex < 0) return false;
-  activeDay = dayIndex;
   const day = state.days[dayIndex];
   const stopIndex = (day.stops || []).findIndex((stop) => detail.stopId && stop.id === detail.stopId);
+  if (dayIndex === activeDay && (stopIndex < 0 || stopIndex === activeStop)) {
+    if (stopIndex >= 0) activeStop = stopIndex;
+    const target = stopIndex >= 0
+      ? dom.timeline?.querySelector(`[data-stop="${CSS.escape(String(stopIndex))}"]`) || document.querySelector(".editor-panel")
+      : dom.timeline || document.querySelector(".editor-panel");
+    if (!target) return false;
+    pulseActivityTarget(target);
+    renderActivities();
+    dom.saveState.textContent = stopIndex >= 0 ? "已定位到活动对应地点" : "地点已不存在，已定位到原日期时间线";
+    return true;
+  }
+  if (dayIndex === activeDay && stopIndex >= 0) {
+    switchActiveStop(stopIndex, { activities: true });
+    const target = dom.timeline?.querySelector(`[data-stop="${CSS.escape(String(stopIndex))}"]`) || document.querySelector(".editor-panel");
+    if (!target) return false;
+    pulseActivityTarget(target);
+    dom.saveState.textContent = "已定位到活动对应地点";
+    return true;
+  }
+  activeDay = dayIndex;
   activeStop = stopIndex >= 0 ? stopIndex : 0;
   render();
   const target = stopIndex >= 0
     ? dom.timeline?.querySelector(`[data-stop="${CSS.escape(String(stopIndex))}"]`) || document.querySelector(".editor-panel")
     : dom.timeline || document.querySelector(".editor-panel");
   if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "smooth" });
-  target.classList.add("activity-target-pulse");
-  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  pulseActivityTarget(target);
   dom.saveState.textContent = stopIndex >= 0 ? "已定位到活动对应地点" : "地点已不存在，已定位到原日期时间线";
   return true;
 }
@@ -9400,19 +12581,22 @@ function focusCandidateActivityTarget(detail = null) {
 function focusTransportQuoteActivityTarget(detail = null) {
   if (!detail || typeof detail !== "object") return false;
   const dayIndex = state.days.findIndex((day) => detail.dayId && day.id === detail.dayId);
-  if (dayIndex >= 0) {
+  if (dayIndex >= 0 && dayIndex !== activeDay) {
     activeDay = dayIndex;
     activeStop = 0;
+    transportFilterApplied = true;
+    render();
+  } else {
+    transportFilterApplied = true;
+    renderTransport();
+    renderActivities();
+    refreshIcons();
   }
-  transportFilterApplied = true;
-  render();
   const quoteId = String(detail.quoteId || "");
   const quote = quoteId ? dom.transportList?.querySelector(`[data-quote="${CSS.escape(quoteId)}"]`) : null;
   const target = quote || document.querySelector(".transport-panel");
   if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "smooth" });
-  target.classList.add("activity-target-pulse");
-  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  pulseActivityTarget(target);
   dom.saveState.textContent = quote ? "已定位到活动对应交通报价" : "报价已不存在，已定位到交通面板";
   return true;
 }
@@ -9458,6 +12642,34 @@ function focusDeletedCommentActivityTarget(detail = null) {
   }
   const dayIndex = state.days.findIndex((day) => (detail.dayId && day.id === detail.dayId) || (detail.stopId && (day.stops || []).some((stop) => stop.id === detail.stopId)));
   if (dayIndex < 0) return false;
+  if (dayIndex === activeDay) {
+    if (detail.scope === "day") {
+      renderDayComments(currentDay());
+      renderCommentIndex();
+      renderActivities();
+      refreshIcons();
+      const target = document.querySelector(".comment-index-panel") || document.querySelector(".day-comments-panel");
+      if (!target) return false;
+      pulseActivityTarget(target);
+      dom.saveState.textContent = "批注已删除，已定位到当天批注总览";
+      return true;
+    }
+    if (detail.scope === "stop") {
+      const day = state.days[dayIndex];
+      const stopIndex = (day.stops || []).findIndex((stop) => stop.id === detail.stopId);
+      if (stopIndex >= 0 && stopIndex === activeStop) {
+        renderStopComments(currentStop());
+        renderCommentIndex();
+        renderActivities();
+        refreshIcons();
+        const target = dom.commentList || document.querySelector(".comments-panel") || document.querySelector(".editor-panel");
+        if (!target) return false;
+        pulseActivityTarget(target);
+        dom.saveState.textContent = "评论已删除，已定位到原地点评论区";
+        return true;
+      }
+    }
+  }
   activeDay = dayIndex;
   if (detail.scope === "stop") {
     const day = state.days[dayIndex];
@@ -9485,6 +12697,20 @@ function dayBlockActivityTarget(dayId = "", blockId = "", extra = {}) {
   };
 }
 
+function focusDayBlockElement(blockId = "", options = {}) {
+  const block = blockId ? dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
+  const target = block || document.querySelector(".day-blocks-panel");
+  if (!target) return false;
+  target.scrollIntoView({ block: options.block || "center", behavior: options.behavior || "smooth" });
+  target.classList.add("activity-target-pulse");
+  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
+  if (options.focusInput !== false) {
+    const input = block?.querySelector("[data-edit-day-block]");
+    input?.focus();
+  }
+  return Boolean(block);
+}
+
 function focusDayBlockActivityTarget(detail = null) {
   if (!detail || typeof detail !== "object") return false;
   const blockId = detail.blockId || "";
@@ -9493,19 +12719,23 @@ function focusDayBlockActivityTarget(detail = null) {
     return blockId && normalizeDayBlocks(day.blocks || []).some((block) => block.id === blockId);
   });
   if (dayIndex < 0) return false;
+  if (dayIndex === activeDay) {
+    activeStop = 0;
+    activeBlockPresenceId = blockId || activeBlockPresenceId;
+    const focusedBlock = focusDayBlockElement(blockId);
+    if (focusedBlock || !blockId) {
+      refreshDayBlockPresenceDom(currentDay());
+      renderActivities();
+      dom.saveState.textContent = focusedBlock ? "已定位到活动对应协作块" : "协作块已不存在，已定位到当天协作块区域";
+      return true;
+    }
+  }
   activeDay = dayIndex;
   activeStop = 0;
   activeBlockPresenceId = blockId || activeBlockPresenceId;
   render();
-  const block = blockId ? dom.dayBlockList?.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`) : null;
-  const target = block || document.querySelector(".day-blocks-panel");
-  if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "smooth" });
-  target.classList.add("activity-target-pulse");
-  window.setTimeout(() => target.classList.remove("activity-target-pulse"), 1300);
-  const input = block?.querySelector("[data-edit-day-block]");
-  input?.focus();
-  dom.saveState.textContent = block ? "已定位到活动对应协作块" : "协作块已不存在，已定位到当天协作块区域";
+  const focusedBlock = focusDayBlockElement(blockId);
+  dom.saveState.textContent = focusedBlock ? "已定位到活动对应协作块" : "协作块已不存在，已定位到当天协作块区域";
   return true;
 }
 
@@ -9603,20 +12833,25 @@ function quickPlaceDraft(extra = {}) {
   if (!name) return null;
   const keyword = dom.quickAmapKeyword.value.trim() || `${state.destination || ""} ${name}`.trim();
   const locatedPlace = quickAmapPlace && (quickAmapPlace.keyword === keyword || quickAmapPlace.title === name) ? quickAmapPlace : null;
+  const type = extra.type || quickTypeValue(dom.quickType?.value || "Scenic");
+  const typeLabel = quickTypeLabel(type);
   return makeStop({
     time: dom.quickTime.value.trim() || "10:00",
     title: name,
-    type: extra.type || "Scenic",
+    type,
     address: dom.quickAddress.value.trim() || locatedPlace?.address || keyword,
-    note: extra.note || `从快速录入加入。高德关键词：${keyword}`,
-    tags: extra.tags || ["自定义", "待优化"],
+    note: extra.note || `从快速录入加入。类型：${typeLabel}。高德关键词：${keyword}`,
+    tags: extra.tags || ["自定义", typeLabel, "待优化"],
     budget: Number(dom.quickBudget.value || 0),
+    paid: Number(dom.quickPaid?.value || 0),
+    payer: dom.quickPayer?.value.trim() || "",
     amapKeyword: keyword,
     lng: locatedPlace?.lng || "",
     lat: locatedPlace?.lat || "",
     x: extra.x ?? 50,
     y: extra.y ?? 50,
-    image: state.cover || images.city,
+    image: locatedPlace?.image || state.cover || images.city,
+    selected: Boolean(extra.selected ?? dom.quickSelected?.checked),
   });
 }
 
@@ -9632,20 +12867,22 @@ dom.dayList.addEventListener("click", (event) => {
 dom.timeline.addEventListener("click", (event) => {
   const card = event.target.closest("[data-stop]");
   if (!card) return;
-  activeStop = Number(card.dataset.stop);
-  render();
-  trackPresence();
+  switchActiveStop(Number(card.dataset.stop));
 });
 
 dom.mapCanvas.addEventListener("click", (event) => {
   const pin = event.target.closest("[data-stop]");
   if (!pin) return;
-  activeStop = Number(pin.dataset.stop);
-  render();
-  trackPresence();
+  switchActiveStop(Number(pin.dataset.stop));
 });
 
 document.addEventListener("click", (event) => {
+  const budgetEstimateButton = event.target.closest("[data-apply-budget-estimate]");
+  if (budgetEstimateButton) {
+    applyBudgetEstimateFromToken(budgetEstimateButton.dataset.applyBudgetEstimate);
+    return;
+  }
+
   const option = event.target.closest("[data-amap-place-index]");
   if (!option) return;
   const target = option.dataset.amapTarget || "quick";
@@ -9672,11 +12909,11 @@ dom.dayForm.addEventListener("submit", async (event) => {
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(dayId, { action: "settings" }) });
   if (updatedDay) {
     if (Object.prototype.hasOwnProperty.call(dayPatch, "date")) {
-      await syncDayMetasToDoc("local-day-date-update");
+      await syncDayMetasToDoc("local-day-date-update", { patchDayIds: [dayId], patchFields: ["date", "label", "title"] });
     } else {
       await patchDayMetaInDoc(dayId, dayPatch, "local-day-update-patch");
     }
-    await syncPlanMetaToDoc("local-day-date-meta");
+    await syncPlanMetaToDoc("local-day-date-meta", { fields: ["startDate", "endDate", "dateRange"] });
     await saveCollaborativeTextChange("保存当天设置");
     broadcastDayUpdated(updatedDay);
     render();
@@ -9694,11 +12931,11 @@ async function syncDayEditorDraftChange({ silent = false } = {}) {
   if (!updatedDay) return;
   if (!silent) logActivity("同步当天设置", { target: dayActivityTarget(dayId, { action: "settings" }) });
   if (Object.prototype.hasOwnProperty.call(dayPatch, "date")) {
-    await syncDayMetasToDoc("local-day-date-field-change");
+    await syncDayMetasToDoc("local-day-date-field-change", { patchDayIds: [dayId], patchFields: ["date", "label", "title"] });
   } else {
     await patchDayMetaInDoc(dayId, dayPatch, "local-day-field-change-patch");
   }
-  await syncPlanMetaToDoc("local-day-field-change-meta");
+  await syncPlanMetaToDoc("local-day-field-change-meta", { fields: ["startDate", "endDate", "dateRange"] });
   await saveCollaborativeTextChange(silent ? "当天设置正在协作同步" : "已同步当天设置");
   broadcastDayUpdated(updatedDay);
   if (silent) {
@@ -9727,7 +12964,9 @@ COLLAB_DAY_TEXT_FIELDS.forEach(({ field, domKey }) => {
     if (meta) captureCommentAnchor(meta);
     schedulePresenceTrack();
     clearTimeout(dayFieldSyncTimer);
+    pendingDayEditorSync = true;
     dayFieldSyncTimer = setTimeout(() => {
+      pendingDayEditorSync = false;
       syncDayEditorDraftChange({ silent: true });
     }, 1200);
   });
@@ -9755,10 +12994,11 @@ dom.addDayBtn.addEventListener("click", async () => {
   }, { requireUnlocked: false, save: false, render: false, activityTarget: () => dayActivityTarget(createdDay?.id || "", { action: "create" }) })) return;
   if (createdDay) {
     if (!(await addDayMetaToDoc(createdDay, createdIndex, "local-day-create"))) {
-      await syncDayMetasToDoc("local-day-create-fallback");
+      await syncDayMetasToDoc("local-day-create-fallback", { insertDayIds: [createdDay.id], patchFields: [] });
     }
-    await syncStopListToDoc(createdDay.id, "local-day-create-stops");
-    await syncPlanMetaToDoc("local-day-create-meta");
+    await syncStopListToDoc(createdDay.id, "local-day-create-stops", { insertStopIds: (createdDay.stops || []).map((stop) => stop.id).filter(Boolean), patchFields: [] });
+    await syncDayBlocksToDoc(createdDay.id, "local-day-create-blocks", { insertBlockIds: (createdDay.blocks || []).map((block) => block.id).filter(Boolean), patchFields: [] });
+    await syncPlanMetaToDoc("local-day-create-meta", { fields: ["startDate", "endDate", "dateRange"] });
     await saveCollaborativePlanChange("新增一天");
     broadcastDayCreated(createdDay, createdIndex);
     render();
@@ -9781,10 +13021,10 @@ dom.deleteDayBtn.addEventListener("click", async () => {
     reflowPlanDates();
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(deletedDay.id || "", { deleted: true, fallbackIndex: deletedDayIndex }) })) return;
   if (!(await deleteDayFromDoc(deletedDay.id, "local-day-delete"))) {
-    await syncDayMetasToDoc("local-day-delete-fallback");
-    await syncStopListsToDoc("local-day-delete-stops-fallback");
+    await syncDayMetasToDoc("local-day-delete-fallback", { deleteDayIds: [deletedDay.id] });
+    await syncStopListsToDoc("local-day-delete-stops-fallback", { deleteDayIds: [deletedDay.id] });
   }
-  await syncPlanMetaToDoc("local-day-delete-meta");
+  await syncPlanMetaToDoc("local-day-delete-meta", { fields: ["startDate", "endDate", "dateRange"] });
   await saveCollaborativePlanChange(label);
   broadcastDayDeleted(deletedDay, deletedDayIndex);
   render();
@@ -9803,9 +13043,9 @@ dom.moveDayUpBtn.addEventListener("click", async () => {
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(movingDayId, { action: "move-up" }) })) return;
   if (changed) {
     if (!(await reorderDayMetasInDoc(state.days, "local-day-reorder"))) {
-      await syncDayMetasToDoc("local-day-reorder-fallback");
+      await syncDayMetasToDoc("local-day-reorder-fallback", { orderOnly: true, patchFields: [] });
     }
-    await syncPlanMetaToDoc("local-day-reorder-meta");
+    await syncPlanMetaToDoc("local-day-reorder-meta", { fields: ["startDate", "endDate", "dateRange"] });
     await saveCollaborativePlanChange("上移当天");
     broadcastDaysReordered();
     render();
@@ -9825,9 +13065,9 @@ dom.moveDayDownBtn.addEventListener("click", async () => {
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(movingDayId, { action: "move-down" }) })) return;
   if (changed) {
     if (!(await reorderDayMetasInDoc(state.days, "local-day-reorder"))) {
-      await syncDayMetasToDoc("local-day-reorder-fallback");
+      await syncDayMetasToDoc("local-day-reorder-fallback", { orderOnly: true, patchFields: [] });
     }
-    await syncPlanMetaToDoc("local-day-reorder-meta");
+    await syncPlanMetaToDoc("local-day-reorder-meta", { fields: ["startDate", "endDate", "dateRange"] });
     await saveCollaborativePlanChange("下移当天");
     broadcastDaysReordered();
     render();
@@ -9862,8 +13102,8 @@ dom.stopForm.addEventListener("submit", async (event) => {
     dayId = currentDay()?.id || dayId;
     clearCurrentAmapRoute();
   }, { save: false, render: false, activityTarget: () => stopActivityTarget(dayId, savedStopId || initialStopId, { action: "save" }) })) return;
-  if (!(await syncStopSnapshotToPlanDoc(savedStopId, "local-stop-detail-save"))) {
-    await syncStopListToDoc(dayId, "local-stop-detail-save-fallback");
+  if (!(await syncStopSnapshotToPlanDoc(savedStopId, "local-stop-detail-save", { patchFields: COLLAB_STOP_PATCH_FIELDS }))) {
+    await syncStopListToDoc(dayId, "local-stop-detail-save-fallback", { patchStopIds: [savedStopId], patchFields: COLLAB_STOP_PATCH_FIELDS });
   }
   await saveCollaborativeTextChange(label);
   render();
@@ -9921,30 +13161,38 @@ COLLAB_PLAN_TEXT_PRESENCE_FIELDS.forEach((meta) => {
 });
 
 dom.addStopBtn.addEventListener("click", async () => {
-  let createdStop = null;
-  let createdDayId = "";
-  if (!mutate("新增地点", () => {
-    const day = currentDay();
-    createdStop = makeStop({
-      time: "18:00",
-      title: "新地点",
-      note: "在右侧编辑名称、地址、预算和备注。",
-      tags: ["草稿"],
-      budget: 0,
-      x: 70,
-      y: 32,
-    });
-    createdDayId = day.id;
-    day.stops.push(createdStop);
-    activeStop = day.stops.length - 1;
-    clearCurrentAmapRoute();
-  }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, createdStop?.id || "", { action: "create" }) })) return;
-  if (createdStop) {
-    await addStopToDoc(createdDayId, createdStop, "local-stop-create");
-    await saveCollaborativePlanChange("新增地点");
+  const label = "新增地点";
+  if (!requireEdit(label)) return;
+  saveVersionSnapshot(label);
+  const day = currentDay();
+  const createdDayId = day?.id || "";
+  const createdStop = makeStop({
+    time: "18:00",
+    title: "新地点",
+    note: "在右侧编辑名称、地址、预算和备注。",
+    tags: ["草稿"],
+    budget: 0,
+    x: 70,
+    y: 32,
+  });
+  if (createdDayId && await addStopToDoc(createdDayId, createdStop, "local-stop-create-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(createdDayId, createdStop.id || "", { action: "create" }) });
+    await applyStopCreateFromDoc(createdDayId, createdStop.id, label);
+    await saveCollaborativePlanChange(label);
     broadcastStopCreated(createdDayId, createdStop);
     render();
+    return;
   }
+  const fallbackDay = currentDay();
+  if (!fallbackDay) return;
+  fallbackDay.stops.push(createdStop);
+  activeStop = fallbackDay.stops.length - 1;
+  clearCurrentAmapRoute();
+  await logActivity(label, { target: stopActivityTarget(createdDayId, createdStop.id || "", { action: "create", fallback: true }) });
+  await syncStopListToDoc(createdDayId, "local-stop-create-fallback", { insertStopIds: [createdStop.id], patchFields: [] });
+  await saveCollaborativePlanChange(label);
+  broadcastStopCreated(createdDayId, createdStop);
+  render();
 });
 
 dom.quickAddForm.addEventListener("submit", async (event) => {
@@ -9952,28 +13200,37 @@ dom.quickAddForm.addEventListener("submit", async (event) => {
   const draft = quickPlaceDraft();
   if (!draft) return;
   const name = draft.title;
-  let createdStop = null;
-  let createdDayId = "";
   const label = `加入景点「${name}」`;
-  if (!mutate(label, () => {
-    const day = currentDay();
-    createdStop = {
-      ...draft,
-      x: 30 + ((day.stops.length * 17) % 52),
-      y: 28 + ((day.stops.length * 13) % 42),
-    };
-    createdDayId = day.id;
-    day.stops.push(createdStop);
-    activeStop = day.stops.length - 1;
-    clearCurrentAmapRoute();
+  if (!requireEdit(label)) return;
+  saveVersionSnapshot(label);
+  const day = currentDay();
+  const createdDayId = day?.id || "";
+  const stopCount = day?.stops?.length || 0;
+  const createdStop = {
+    ...draft,
+    x: 30 + ((stopCount * 17) % 52),
+    y: 28 + ((stopCount * 13) % 42),
+  };
+  if (createdDayId && await addStopToDoc(createdDayId, createdStop, "local-quick-stop-create-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(createdDayId, createdStop.id || "", { action: "quick-add" }) });
+    await applyStopCreateFromDoc(createdDayId, createdStop.id, label);
     clearQuickPlaceForm();
-  }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, createdStop?.id || "", { action: "quick-add" }) })) return;
-  if (createdStop) {
-    await addStopToDoc(createdDayId, createdStop, "local-quick-stop-create");
     await saveCollaborativePlanChange(label);
     broadcastStopCreated(createdDayId, createdStop);
     render();
+    return;
   }
+  const fallbackDay = currentDay();
+  if (!fallbackDay) return;
+  fallbackDay.stops.push(createdStop);
+  activeStop = fallbackDay.stops.length - 1;
+  clearCurrentAmapRoute();
+  clearQuickPlaceForm();
+  await logActivity(label, { target: stopActivityTarget(createdDayId, createdStop.id || "", { action: "quick-add", fallback: true }) });
+  await syncStopListToDoc(createdDayId, "local-quick-stop-create-fallback", { insertStopIds: [createdStop.id], patchFields: [] });
+  await saveCollaborativePlanChange(label);
+  broadcastStopCreated(createdDayId, createdStop);
+  render();
 });
 
 dom.addCandidateBtn.addEventListener("click", async () => {
@@ -9996,6 +13253,9 @@ dom.addCandidateBtn.addEventListener("click", async () => {
       note: draft.note,
       tags: draft.tags,
       budget: draft.budget,
+      paid: draft.paid,
+      payer: draft.payer,
+      selected: draft.selected,
       time: draft.time,
       amapKeyword: draft.amapKeyword,
       lng: draft.lng,
@@ -10015,7 +13275,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
       state.candidates = mergedCandidatesWithPatch("update", patch, editingCandidateId);
       clearQuickPlaceForm();
     }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(editingCandidateId, { action: "update" }) });
-    await syncCandidatesToDoc("local-candidate-update-fallback");
+    await syncCandidatesToDoc("local-candidate-update-fallback", { patchIds: [editingCandidateId], patchFields: Object.keys(patch) });
     await saveCollaborativePlanChange(`更新备选「${draft.title}」`);
     return;
   }
@@ -10032,7 +13292,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
     state.candidates = mergedCandidatesWithPatch("add", draft);
     clearQuickPlaceForm();
   }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(draft.id, { action: "create" }) });
-  await syncCandidatesToDoc("local-candidate-fallback");
+  await syncCandidatesToDoc("local-candidate-fallback", { insertIds: [draft.id], patchFields: [] });
   await saveCollaborativePlanChange(`加入备选池「${draft.title}」`);
 });
 
@@ -10124,10 +13384,10 @@ async function planAmapRouteForCurrentDay({ retry = false } = {}) {
     };
     logActivity("高德规划当天路线");
     if (!(await patchDayMetaInDoc(day.id, { amapRoute: day.amapRoute }, "local-amap-route-day-patch"))) {
-      await syncDayMetasToDoc("local-amap-route-day-fallback");
+      await syncDayMetasToDoc("local-amap-route-day-fallback", { patchDayIds: [day.id], patchFields: ["amapRoute"] });
     }
     if (!(await reorderStopListInDoc(day.id, day.stops, "local-amap-route-stops", { patchFields: ["address", "lng", "lat", "amapKeyword"] }))) {
-      await syncStopListToDoc(day.id, "local-amap-route-stops-fallback");
+      await syncStopListToDoc(day.id, "local-amap-route-stops-fallback", { patchStopIds: resolvedStops.map((item) => day.stops[Number(item.index)]?.id).filter(Boolean), patchFields: ["address", "lng", "lat", "amapKeyword"] });
     }
     await saveCollaborativePlanChange("已用高德规划路线");
     render();
@@ -10191,7 +13451,7 @@ dom.moveUpBtn.addEventListener("click", async () => {
     clearCurrentAmapRoute();
   }, { save: false, render: false, activityTarget: stopActivityTarget(currentDay()?.id || "", movingStopId, { action: "move-up" }) })) return;
   if (!(await reorderStopListInDoc(dayId, nextStops, "local-stop-reorder"))) {
-    await syncStopListToDoc(dayId, "local-stop-reorder-fallback");
+    await syncStopListToDoc(dayId, "local-stop-reorder-fallback", { orderOnly: true, patchFields: [] });
   }
   await saveCollaborativePlanChange("上移地点");
   broadcastStopsReordered(dayId, nextStops);
@@ -10214,7 +13474,7 @@ dom.moveDownBtn.addEventListener("click", async () => {
     clearCurrentAmapRoute();
   }, { save: false, render: false, activityTarget: stopActivityTarget(currentDay()?.id || "", movingStopId, { action: "move-down" }) })) return;
   if (!(await reorderStopListInDoc(dayId, nextStops, "local-stop-reorder"))) {
-    await syncStopListToDoc(dayId, "local-stop-reorder-fallback");
+    await syncStopListToDoc(dayId, "local-stop-reorder-fallback", { orderOnly: true, patchFields: [] });
   }
   await saveCollaborativePlanChange("下移地点");
   broadcastStopsReordered(dayId, nextStops);
@@ -10459,7 +13719,7 @@ async function optimizeCurrentDayRoute() {
     logActivity(serviceConfig.aiEndpoint ? "AI 优化当天路径" : "本地优化当天路径");
     const reorderOrigin = serviceConfig.aiEndpoint ? "local-ai-route-reorder" : "local-fallback-route-reorder";
     if (!(await reorderStopListInDoc(day.id, day.stops, reorderOrigin, { patchFields: ["tags"] }))) {
-      await syncStopListToDoc(day.id, `${reorderOrigin}-fallback`);
+      await syncStopListToDoc(day.id, `${reorderOrigin}-fallback`, { patchStopIds: day.stops.map((stop) => stop.id).filter(Boolean), patchFields: ["tags"], preserveRemoteOrder: false });
     }
     await saveCollaborativePlanChange(serviceConfig.aiEndpoint ? "已用 AI 优化路径" : "已用本地距离优化路径");
     broadcastStopsReordered(day.id, day.stops);
@@ -10501,7 +13761,7 @@ dom.mustVote.addEventListener("click", async () => {
   const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
   const nextVoteValues = toggleVoteValues(currentValues, actorId);
   if (await syncCollabStructValuesToDoc(nextVoteValues, "local-vote-toggle")) {
-    await syncStopSnapshotToPlanDoc(stop.id, "local-vote-toggle-snapshot");
+    await syncStopSnapshotToPlanDoc(stop.id, "local-vote-toggle-snapshot", { patchFields: ["voters", "votes", "userVoted"] });
     await saveCollaborativeTextChange("更新必去投票");
     return;
   }
@@ -10512,9 +13772,9 @@ dom.mustVote.addEventListener("click", async () => {
     fallbackStop.userVoted = fallbackValues.userVoted;
     fallbackStop.votes = fallbackValues.votes;
   }, { save: false, render: false })) return;
-  await syncStopSnapshotToPlanDoc(currentStop().id, "local-vote-toggle-fallback");
+  await syncStopSnapshotToPlanDoc(currentStop().id, "local-vote-toggle-fallback", { patchFields: ["voters", "votes", "userVoted"] });
   await saveCollaborativeTextChange("更新必去投票");
-  render();
+  refreshStopInteractionViews(currentStop());
 });
 
 dom.favoriteBtn.addEventListener("click", async () => {
@@ -10522,16 +13782,16 @@ dom.favoriteBtn.addEventListener("click", async () => {
   const stop = currentStop();
   const currentValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : stop;
   if (await syncCollabStructValuesToDoc({ favorite: !Boolean(currentValues.favorite) }, "local-favorite-toggle")) {
-    await syncStopSnapshotToPlanDoc(stop.id, "local-favorite-toggle-snapshot");
+    await syncStopSnapshotToPlanDoc(stop.id, "local-favorite-toggle-snapshot", { patchFields: ["favorite"] });
     await saveCollaborativeTextChange("更新收藏");
     return;
   }
   if (!mutate("更新收藏", () => {
     currentStop().favorite = !currentStop().favorite;
   }, { save: false, render: false })) return;
-  await syncStopSnapshotToPlanDoc(currentStop().id, "local-favorite-toggle-fallback");
+  await syncStopSnapshotToPlanDoc(currentStop().id, "local-favorite-toggle-fallback", { patchFields: ["favorite"] });
   await saveCollaborativeTextChange("更新收藏");
-  render();
+  refreshStopInteractionViews(currentStop());
 });
 
 dom.commentForm.addEventListener("submit", async (event) => {
@@ -10547,11 +13807,10 @@ dom.commentForm.addEventListener("submit", async (event) => {
       replyingCommentId = "";
       dom.commentInput.value = "";
       dom.commentInput.placeholder = "添加同行意见或提醒";
-      renderStopComments(stop);
-      dom.commentCount.textContent = stop.comments.length;
+      refreshStopCommentMutationViews(stop);
       await logActivity(`回复评论「${stop.title}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: stop.id || "" } });
-      await syncStopSnapshotToPlanDoc(stop.id, "local-comment-reply-snapshot");
-      await saveCollaborativeTextChange(`回复评论「${stop.title}」`);
+      await syncStopSnapshotToPlanDoc(stop.id, "local-comment-reply-snapshot", { patchFields: ["comments"] });
+      await saveCollaborativeCommentChange(`回复评论「${stop.title}」`);
       dom.saveState.textContent = `已回复「${stop.title}」的评论`;
       return;
     }
@@ -10563,10 +13822,10 @@ dom.commentForm.addEventListener("submit", async (event) => {
       dom.commentInput.value = "";
       dom.commentInput.placeholder = "添加同行意见或提醒";
     }, { save: false, render: false })) return;
-    await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-reply-fallback-snapshot");
+    await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-reply-fallback-snapshot", { patchFields: ["comments"] });
     await logActivity(`回复评论「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "stop", stopId: currentStop().id || "" } });
-    await saveCollaborativeTextChange(`回复评论「${fallbackTitle}」`);
-    render();
+    await saveCollaborativeCommentChange(`回复评论「${fallbackTitle}」`);
+    refreshStopCommentMutationViews(currentStop());
     return;
   }
   const anchor = currentCommentAnchor("stop");
@@ -10575,11 +13834,10 @@ dom.commentForm.addEventListener("submit", async (event) => {
     const stop = currentStop();
     stop.comments = normalizeComments([...(stop.comments || []), collaborativeComment]);
     dom.commentInput.value = "";
-    renderStopComments(stop);
-    dom.commentCount.textContent = stop.comments.length;
+    refreshStopCommentMutationViews(stop);
     await logActivity(`评论「${stop.title}」`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "stop", stopId: stop.id || "" } });
-    await syncStopSnapshotToPlanDoc(stop.id, "local-comment-snapshot");
-    await saveCollaborativeTextChange(`评论「${stop.title}」`);
+    await syncStopSnapshotToPlanDoc(stop.id, "local-comment-snapshot", { patchFields: ["comments"] });
+    await saveCollaborativeCommentChange(`评论「${stop.title}」`);
     dom.saveState.textContent = `已评论「${stop.title}」`;
     return;
   }
@@ -10589,10 +13847,10 @@ dom.commentForm.addEventListener("submit", async (event) => {
     currentStop().comments = [...(currentStop().comments || []), fallbackComment];
     dom.commentInput.value = "";
   }, { save: false, render: false })) return;
-  await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-fallback-snapshot");
+  await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-fallback-snapshot", { patchFields: ["comments"] });
   await logActivity(`评论「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "stop", stopId: currentStop().id || "" } });
-  await saveCollaborativeTextChange(`评论「${fallbackTitle}」`);
-  render();
+  await saveCollaborativeCommentChange(`评论「${fallbackTitle}」`);
+  refreshStopCommentMutationViews(currentStop());
 });
 
 dom.commentList.addEventListener("click", async (event) => {
@@ -10616,7 +13874,7 @@ dom.commentList.addEventListener("click", async (event) => {
   if (replyButton) {
     event.preventDefault();
     const comment = normalizeComments(currentStop()?.comments || []).find((item) => item.id === replyButton.dataset.replyComment && !item.parentId);
-    if (!comment || !requireEdit("回复评论")) return;
+    if (!comment || !requireComment("回复评论")) return;
     replyingCommentId = comment.id;
     dom.commentInput.placeholder = `回复 ${comment.author || "协作者"}...`;
     dom.commentInput.focus();
@@ -10629,25 +13887,25 @@ dom.commentList.addEventListener("click", async (event) => {
     const commentId = resolveButton.dataset.toggleCommentResolved;
     const stop = currentStop();
     const comment = normalizeComments(stop.comments || []).find((item) => item.id === commentId && !item.parentId);
-    if (!comment || !requireEdit(comment.resolved ? "重新打开评论" : "标记评论已解决")) return;
+    if (!comment || !requireComment(comment.resolved ? "重新打开评论" : "标记评论已解决")) return;
     const nextPatch = resolvedCommentPatch(comment.resolved);
     const updated = await updateCollaborativeComment(commentId, nextPatch);
     if (updated) {
       stop.comments = commentsWithUpdatedComment(stop.comments || [], commentId, nextPatch);
-      renderStopComments(stop);
+      refreshStopCommentMutationViews(stop);
       await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "" } });
-      await syncStopSnapshotToPlanDoc(stop.id, "local-comment-resolve-snapshot");
-      await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
+      await syncStopSnapshotToPlanDoc(stop.id, "local-comment-resolve-snapshot", { patchFields: ["comments"] });
+      await saveCollaborativeCommentChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
       dom.saveState.textContent = comment.resolved ? "已重新打开评论" : "已标记评论解决";
       return;
     }
     if (!mutate(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, () => {
       currentStop().comments = commentsWithUpdatedComment(currentStop().comments || [], commentId, nextPatch);
     }, { save: false, render: false })) return;
-    await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-resolve-fallback-snapshot");
+    await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-resolve-fallback-snapshot", { patchFields: ["comments"] });
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "" } });
-    await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
-    render();
+    await saveCollaborativeCommentChange(`${comment.resolved ? "重新打开" : "解决"}评论「${stop.title}」`);
+    refreshStopCommentMutationViews(currentStop());
     return;
   }
   const deleteButton = event.target.closest("[data-delete-comment]");
@@ -10663,11 +13921,10 @@ dom.commentList.addEventListener("click", async (event) => {
       replyingCommentId = "";
       dom.commentInput.placeholder = "添加同行意见或提醒";
     }
-    renderStopComments(stop);
-    dom.commentCount.textContent = stop.comments.length;
+    refreshStopCommentMutationViews(stop);
     await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: stop.id || "", deleted: true } });
-    await syncStopSnapshotToPlanDoc(stop.id, "local-comment-delete-snapshot");
-    await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
+    await syncStopSnapshotToPlanDoc(stop.id, "local-comment-delete-snapshot", { patchFields: ["comments"] });
+    await saveCollaborativeCommentChange(`删除评论「${stop.title}」`);
     dom.saveState.textContent = `已删除「${stop.title}」的评论`;
     return;
   }
@@ -10678,10 +13935,10 @@ dom.commentList.addEventListener("click", async (event) => {
       dom.commentInput.placeholder = "添加同行意见或提醒";
     }
   }, { save: false, render: false })) return;
-  await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot");
+  await syncStopSnapshotToPlanDoc(currentStop().id, "local-comment-delete-fallback-snapshot", { patchFields: ["comments"] });
   await logActivity(`删除评论「${stop.title}」`, { target: { type: "comment", commentId, scope: "stop", stopId: currentStop().id || "", deleted: true } });
-  await saveCollaborativeTextChange(`删除评论「${stop.title}」`);
-  render();
+  await saveCollaborativeCommentChange(`删除评论「${stop.title}」`);
+  refreshStopCommentMutationViews(currentStop());
 });
 
 dom.dayCommentForm?.addEventListener("submit", async (event) => {
@@ -10697,10 +13954,10 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
       dayReplyingCommentId = "";
       dom.dayCommentInput.value = "";
       dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
-      renderDayComments(day);
+      refreshDayCommentMutationViews(day);
       await logActivity(`回复当天批注「${day.title}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: day.id || "" } });
       await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-reply-snapshot");
-      await saveCollaborativeTextChange(`回复当天批注「${day.title}」`);
+      await saveCollaborativeCommentChange(`回复当天批注「${day.title}」`);
       dom.saveState.textContent = `已回复「${day.title}」的当天批注`;
       return;
     }
@@ -10714,8 +13971,8 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-reply-fallback-snapshot");
     await logActivity(`回复当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: parentId, scope: "day", dayId: currentDay().id || "" } });
-    await saveCollaborativeTextChange(`回复当天批注「${fallbackTitle}」`);
-    render();
+    await saveCollaborativeCommentChange(`回复当天批注「${fallbackTitle}」`);
+    refreshDayCommentMutationViews(currentDay());
     return;
   }
   const anchor = currentCommentAnchor("day");
@@ -10724,10 +13981,10 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
     const day = currentDay();
     day.comments = normalizeComments([...(day.comments || []), collaborativeComment]);
     dom.dayCommentInput.value = "";
-    renderDayComments(day);
+    refreshDayCommentMutationViews(day);
     await logActivity(`当天批注「${day.title}」`, { target: { type: "comment", commentId: collaborativeComment.id, scope: "day", dayId: day.id || "" } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-snapshot");
-    await saveCollaborativeTextChange(`当天批注「${day.title}」`);
+    await saveCollaborativeCommentChange(`当天批注「${day.title}」`);
     dom.saveState.textContent = `已批注「${day.title}」`;
     return;
   }
@@ -10739,8 +13996,8 @@ dom.dayCommentForm?.addEventListener("submit", async (event) => {
   }, { requireUnlocked: false, save: false, render: false })) return;
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-fallback-snapshot");
   await logActivity(`当天批注「${fallbackTitle}」`, { target: { type: "comment", commentId: fallbackComment.id, scope: "day", dayId: currentDay().id || "" } });
-  await saveCollaborativeTextChange(`当天批注「${fallbackTitle}」`);
-  render();
+  await saveCollaborativeCommentChange(`当天批注「${fallbackTitle}」`);
+  refreshDayCommentMutationViews(currentDay());
 });
 
 dom.dayCommentList?.addEventListener("click", async (event) => {
@@ -10764,7 +14021,7 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
   if (replyButton) {
     event.preventDefault();
     const comment = normalizeComments(currentDay()?.comments || []).find((item) => item.id === replyButton.dataset.replyDayComment && !item.parentId);
-    if (!comment || !requireEdit("回复当天批注")) return;
+    if (!comment || !requireComment("回复当天批注")) return;
     dayReplyingCommentId = comment.id;
     dom.dayCommentInput.placeholder = `回复 ${comment.author || "协作者"}...`;
     dom.dayCommentInput.focus();
@@ -10777,15 +14034,15 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     const commentId = resolveButton.dataset.toggleDayCommentResolved;
     const day = currentDay();
     const comment = normalizeComments(day.comments || []).find((item) => item.id === commentId && !item.parentId);
-    if (!comment || !requireEdit(comment.resolved ? "重新打开当天批注" : "标记当天批注已解决")) return;
+    if (!comment || !requireComment(comment.resolved ? "重新打开当天批注" : "标记当天批注已解决")) return;
     const nextPatch = resolvedCommentPatch(comment.resolved);
     const updated = await updateCollaborativeDayComment(commentId, nextPatch);
     if (updated) {
       day.comments = commentsWithUpdatedComment(day.comments || [], commentId, nextPatch);
-      renderDayComments(day);
+      refreshDayCommentMutationViews(day);
       await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "" } });
       await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-resolve-snapshot");
-      await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
+      await saveCollaborativeCommentChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
       dom.saveState.textContent = comment.resolved ? "已重新打开当天批注" : "已标记当天批注解决";
       return;
     }
@@ -10794,8 +14051,8 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
     }, { requireUnlocked: false, save: false, render: false })) return;
     await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-resolve-fallback-snapshot");
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "" } });
-    await saveCollaborativeTextChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
-    render();
+    await saveCollaborativeCommentChange(`${comment.resolved ? "重新打开" : "解决"}当天批注「${day.title}」`);
+    refreshDayCommentMutationViews(currentDay());
     return;
   }
   const deleteButton = event.target.closest("[data-delete-day-comment]");
@@ -10811,10 +14068,10 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
       dayReplyingCommentId = "";
       dom.dayCommentInput.placeholder = "给当天标题、路线、天气或交通添加批注";
     }
-    renderDayComments(day);
+    refreshDayCommentMutationViews(day);
     await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: day.id || "", deleted: true } });
     await patchDayMetaInDoc(day.id, { comments: day.comments }, "local-day-comment-delete-snapshot");
-    await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
+    await saveCollaborativeCommentChange(`删除当天批注「${day.title}」`);
     dom.saveState.textContent = `已删除「${day.title}」的当天批注`;
     return;
   }
@@ -10827,8 +14084,8 @@ dom.dayCommentList?.addEventListener("click", async (event) => {
   }, { requireUnlocked: false, save: false, render: false })) return;
   await patchDayMetaInDoc(currentDay().id, { comments: currentDay().comments }, "local-day-comment-delete-fallback-snapshot");
   await logActivity(`删除当天批注「${day.title}」`, { target: { type: "comment", commentId, scope: "day", dayId: currentDay().id || "", deleted: true } });
-  await saveCollaborativeTextChange(`删除当天批注「${day.title}」`);
-  render();
+  await saveCollaborativeCommentChange(`删除当天批注「${day.title}」`);
+  refreshDayCommentMutationViews(currentDay());
 });
 
 dom.dayBlockForm?.addEventListener("submit", async (event) => {
@@ -10849,7 +14106,7 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
     const addedBlock = added === true ? block : added;
     day.blocks = normalizeDayBlocks([...(day.blocks || []), addedBlock]);
     dom.dayBlockInput.value = "";
-    renderDayBlocks(day);
+    if (!refreshDayBlockInsertDom(day, [addedBlock.id], addedBlock.id)) renderDayBlocks(day);
     await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(day.id, addedBlock.id) });
     await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
     dom.saveState.textContent = "已添加协作块";
@@ -10859,13 +14116,32 @@ dom.dayBlockForm?.addEventListener("submit", async (event) => {
     currentDay().blocks = normalizeDayBlocks([...(currentDay().blocks || []), block]);
     dom.dayBlockInput.value = "";
   }, { requireUnlocked: false, save: false, render: false })) return;
-  await syncDayBlocksToDoc(currentDay().id, "local-day-block-add-fallback");
+  await syncDayBlocksToDoc(currentDay().id, "local-day-block-add-fallback", { insertBlockIds: [block.id], patchFields: [] });
   await logActivity(`添加协作块「${day.title}」`, { target: dayBlockActivityTarget(currentDay().id, block.id) });
   await saveCollaborativePlanChange(`添加协作块「${day.title}」`);
-  render();
+  if (!refreshDayBlockInsertDom(currentDay(), [block.id], block.id)) renderDayBlocks(currentDay());
+  renderDaySummary();
+  refreshIcons();
 });
 
 dom.dayBlockList?.addEventListener("change", async (event) => {
+  const selectBlockInput = event.target.closest("[data-select-day-block]");
+  if (selectBlockInput) {
+    const blockId = selectBlockInput.dataset.selectDayBlock || "";
+    const blocks = normalizeDayBlocks(currentDay()?.blocks || []);
+    if (blockId && event.shiftKey && lastSelectedDayBlockId && setDayBlockRangeSelection(blocks, lastSelectedDayBlockId, blockId, selectBlockInput.checked)) {
+      // Range selection handled by helper.
+    } else if (blockId && selectBlockInput.checked) {
+      selectedDayBlockIds.add(blockId);
+    } else {
+      selectedDayBlockIds.delete(blockId);
+    }
+    if (blockId) lastSelectedDayBlockId = blockId;
+    if (!refreshDayBlockSelectionDom(currentDay())) renderDayBlocks(currentDay());
+    schedulePresenceTrack(0);
+    dom.saveState.textContent = selectedDayBlockIds.size ? `已选择 ${selectedDayBlockIds.size} 个协作块` : "已取消协作块选择";
+    return;
+  }
   const typeSelect = event.target.closest("[data-day-block-type]");
   if (!typeSelect || !canEdit() || isReadonlyMode) return;
   const day = currentDay();
@@ -10874,39 +14150,132 @@ dom.dayBlockList?.addEventListener("change", async (event) => {
   const nextType = DAY_BLOCK_TYPES.includes(typeSelect.value) ? typeSelect.value : "todo";
   if (!day || !block) return;
   if (nextType === block.type) return;
-  if (!requireEdit("切换协作块类型")) {
+  const changed = await applyDayBlockTypeChange(day, blockId, nextType, {
+    source: "local-day-block-type-change",
+    fallbackSource: "local-day-block-type-change-fallback",
+    presence: "切换类型",
+    action: "type-change",
+    requireLabel: "切换协作块类型",
+    status: "已切换协作块类型",
+  });
+  if (!changed) {
     typeSelect.value = block.type || "todo";
-    return;
   }
-  activeBlockPresenceId = blockId;
-  schedulePresenceTrack(0);
-  const patch = { type: nextType };
-  if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-type-change")) {
-    noteRemoteBlockEditors(blockId, "切换类型");
-    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-    renderDayBlocks(day);
-    await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
-    await saveCollaborativePlanChange("已切换协作块类型");
-    focusDayBlockInput(blockId);
-    return;
-  }
-  if (!mutate("切换协作块类型", () => {
-    currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
-  }, { requireUnlocked: false, save: false, render: false })) {
-    typeSelect.value = block.type || "todo";
-    return;
-  }
-  await syncDayBlocksToDoc(day.id, "local-day-block-type-change-fallback");
-  noteRemoteBlockEditors(blockId, "切换类型");
-  renderDayBlocks(currentDay());
-  await logActivity(`切换协作块为${dayBlockTypeLabel(nextType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "type-change", blockType: nextType }) });
-  await saveCollaborativePlanChange("已切换协作块类型");
-  focusDayBlockInput(blockId);
 });
 
 dom.dayBlockList?.addEventListener("click", async (event) => {
   const day = currentDay();
   if (!day) return;
+  const commandButton = event.target.closest("[data-day-block-command]");
+  if (commandButton) {
+    event.preventDefault();
+    const blockElement = commandButton.closest("[data-day-block]");
+    const input = blockElement?.querySelector("[data-edit-day-block]");
+    const index = Number(commandButton.dataset.commandIndex) || 0;
+    if (input) await applyDayBlockCommandSelection(input, index);
+    return;
+  }
+  const formatButton = event.target.closest("[data-format-day-block]");
+  if (formatButton) {
+    event.preventDefault();
+    const blockId = formatButton.dataset.formatDayBlock || "";
+    const blockElement = formatButton.closest("[data-day-block]");
+    const input = blockElement?.querySelector("[data-edit-day-block]");
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!input || !block) return;
+    await formatDayBlockInput(day, block, input, formatButton.dataset.format || "bold");
+    return;
+  }
+  const previewButton = event.target.closest("[data-toggle-day-block-preview]");
+  if (previewButton) {
+    event.preventDefault();
+    const blockId = previewButton.dataset.toggleDayBlockPreview || "";
+    if (!blockId) return;
+    if (previewDayBlockIds.has(blockId)) {
+      previewDayBlockIds.delete(blockId);
+      if (!refreshDayBlockPreviewDom(day, blockId)) renderDayBlocks(day);
+      focusDayBlockInput(blockId);
+    } else {
+      previewDayBlockIds.add(blockId);
+      if (!refreshDayBlockPreviewDom(day, blockId)) renderDayBlocks(day);
+    }
+    return;
+  }
+  const deleteChecklistButton = event.target.closest("[data-delete-checklist-item]");
+  if (deleteChecklistButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const blockElement = deleteChecklistButton.closest("[data-day-block]");
+    const blockId = blockElement?.dataset.dayBlock || "";
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || block.type !== "checklist") return;
+    const nextText = checklistTextWithoutItem(block.text || "", deleteChecklistButton.dataset.deleteChecklistItem);
+    await saveChecklistTextChange(day, block, nextText, "checklist-delete-item");
+    return;
+  }
+  const moveChecklistButton = event.target.closest("[data-move-checklist-item]");
+  if (moveChecklistButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const blockElement = moveChecklistButton.closest("[data-day-block]");
+    const blockId = blockElement?.dataset.dayBlock || "";
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || block.type !== "checklist") return;
+    const nextText = checklistTextWithMovedItem(block.text || "", moveChecklistButton.dataset.moveChecklistItem, moveChecklistButton.dataset.direction || "down");
+    await saveChecklistTextChange(day, block, nextText, "checklist-move-item");
+    return;
+  }
+  const checklistButton = event.target.closest("[data-toggle-checklist-item]");
+  if (checklistButton) {
+    event.preventDefault();
+    const blockElement = checklistButton.closest("[data-day-block]");
+    const blockId = blockElement?.dataset.dayBlock || "";
+    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
+    if (!block || block.type !== "checklist" || !requireEdit("更新检查清单")) return;
+    const nextText = checklistTextWithToggledItem(block.text || "", checklistButton.dataset.toggleChecklistItem);
+    await saveChecklistTextChange(day, block, nextText, "checklist-toggle");
+    return;
+  }
+  const bulkButton = event.target.closest("[data-day-block-bulk]");
+  if (bulkButton) {
+    event.preventDefault();
+    const action = bulkButton.dataset.dayBlockBulk || "";
+    if (action === "all") {
+      selectAllDayBlocks(normalizeDayBlocks(day.blocks || []));
+      if (!refreshDayBlockSelectionDom(day)) renderDayBlocks(day);
+      schedulePresenceTrack(0);
+      dom.saveState.textContent = `已全选 ${selectedDayBlockIds.size} 个协作块`;
+      return;
+    }
+    if (action === "clear") {
+      clearSelectedDayBlocks();
+      if (!refreshDayBlockSelectionDom(day)) renderDayBlocks(day);
+      schedulePresenceTrack(0);
+      dom.saveState.textContent = "已取消协作块选择";
+      return;
+    }
+    if (!selectedDayBlockIds.size) return;
+    if (action === "copy") {
+      await duplicateSelectedDayBlocks(day);
+      return;
+    }
+    if (action === "delete") {
+      await deleteSelectedDayBlocks(day);
+      return;
+    }
+    if (action === "done" || action === "open") {
+      await setSelectedDayBlockDone(day, action === "done");
+      return;
+    }
+    if (action === "indent" || action === "outdent") {
+      await indentSelectedDayBlocks(day, action === "indent" ? 1 : -1);
+      return;
+    }
+    if (DAY_BLOCK_TYPES.includes(action)) {
+      await setSelectedDayBlockType(day, action);
+      return;
+    }
+  }
   const filterBlockCommentButton = event.target.closest("[data-block-comment-filter]");
   if (filterBlockCommentButton) {
     event.preventDefault();
@@ -10916,7 +14285,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     blockCommentFilters[blockId] = filterBlockCommentButton.dataset.blockCommentFilter || "all";
-    renderDayBlocks(day);
+    if (!refreshDayBlockCommentsDom(day, blockId)) renderDayBlocks(day);
     return;
   }
   const blockAnchorButton = event.target.closest("[data-block-comment-anchor]");
@@ -10954,7 +14323,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
       dom.saveState.textContent = "已折叠协作块";
     }
     saveCollapsedDayBlocks();
-    renderDayBlocks(day);
+    if (!refreshDayBlockCollapseDom(day, blockId)) renderDayBlocks(day);
     if (!collapsedDayBlockIds.has(blockId)) focusDayBlockInput(blockId);
     return;
   }
@@ -10964,13 +14333,17 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const blockId = toggleButton.dataset.toggleDayBlock;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
     if (!block || !requireEdit("更新协作块")) return;
+    if (block.type === "divider") {
+      dom.saveState.textContent = "分隔线不需要完成状态";
+      return;
+    }
     activeBlockPresenceId = blockId;
     schedulePresenceTrack(0);
     const nextDone = !block.done;
     noteRemoteBlockEditors(blockId, nextDone ? "标记完成" : "重新打开");
     if (await updateDayBlockInDoc(day.id, blockId, { done: nextDone }, "local-day-block-toggle")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
+      if (!refreshDayBlockDoneDom(day, [blockId])) renderDayBlocks(day);
       await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "toggle" }) });
       await saveCollaborativePlanChange("已更新协作块");
       return;
@@ -10978,10 +14351,10 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!mutate("更新协作块", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, done: nextDone } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback");
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-toggle-fallback", { patchBlockIds: [blockId], patchFields: ["done"] });
     await logActivity(`${nextDone ? "完成" : "重新打开"}协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "toggle" }) });
     await saveCollaborativePlanChange("已更新协作块");
-    render();
+    if (!refreshDayBlockDoneDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     return;
   }
   const replyBlockCommentButton = event.target.closest("[data-reply-block-comment]");
@@ -10990,11 +14363,11 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const commentId = replyBlockCommentButton.dataset.replyBlockComment;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId && !comment.parentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId && !item.parentId);
-    if (!block || !comment || !requireEdit("回复块级评论")) return;
+    if (!block || !comment || !requireComment("回复块级评论")) return;
     activeBlockPresenceId = block.id;
     schedulePresenceTrack(0);
     blockReplyingCommentId = comment.id;
-    renderDayBlocks(day);
+    if (!refreshDayBlockCommentsDom(day, block.id)) renderDayBlocks(day);
     const input = dom.dayBlockList.querySelector(`[data-block-comment-input="${escapeHtml(block.id)}"]`);
     input?.focus();
     return;
@@ -11005,24 +14378,24 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     const commentId = resolveBlockCommentButton.dataset.toggleBlockCommentResolved;
     const block = normalizeDayBlocks(day.blocks || []).find((item) => normalizeComments(item.comments || []).some((comment) => comment.id === commentId && !comment.parentId));
     const comment = normalizeComments(block?.comments || []).find((item) => item.id === commentId && !item.parentId);
-    if (!block || !comment || !requireEdit("更新块级评论")) return;
+    if (!block || !comment || !requireComment("更新块级评论")) return;
     activeBlockPresenceId = block.id;
     schedulePresenceTrack(0);
     const patch = resolvedCommentPatch(comment.resolved);
     if (await updateDayBlockCommentInDoc(day.id, block.id, commentId, patch, "local-day-block-comment-resolve")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
+      if (!refreshDayBlockCommentsDom(day, block.id)) renderDayBlocks(day);
       await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
-      await saveCollaborativePlanChange("已更新块级评论");
+      await saveCollaborativeCommentChange("已更新块级评论");
       return;
     }
     if (!mutate("更新块级评论", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithUpdatedComment(item.comments || [], commentId, patch) } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-resolve-fallback");
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-resolve-fallback", { patchBlockIds: [block.id], patchFields: ["comments"] });
     await logActivity(`${comment.resolved ? "重新打开" : "解决"}块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
-    await saveCollaborativePlanChange("已更新块级评论");
-    render();
+    await saveCollaborativeCommentChange("已更新块级评论");
+    if (!refreshDayBlockCommentMutationViews(currentDay(), block.id)) renderDayBlocks(currentDay());
     return;
   }
   const deleteBlockCommentButton = event.target.closest("[data-delete-block-comment]");
@@ -11037,18 +14410,18 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (await deleteDayBlockCommentFromDoc(day.id, block.id, commentId, "local-day-block-comment-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId), updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
       if (blockReplyingCommentId === commentId || !normalizeComments(currentDay()?.blocks?.find((item) => item.id === block.id)?.comments || []).some((item) => item.id === blockReplyingCommentId)) blockReplyingCommentId = "";
-      renderDayBlocks(day);
+      if (!refreshDayBlockCommentsDom(day, block.id)) renderDayBlocks(day);
       await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: day.id || "", blockId: block.id || "", deleted: true } });
-      await saveCollaborativePlanChange("已删除块级评论");
+      await saveCollaborativeCommentChange("已删除块级评论");
       return;
     }
     if (!mutate("删除块级评论", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, comments: commentsWithoutThread(item.comments || [], commentId) } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-delete-fallback");
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-comment-delete-fallback", { patchBlockIds: [block.id], patchFields: ["comments"] });
     await logActivity(`删除块级评论「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId, scope: "block", dayId: currentDay().id || "", blockId: block.id || "", deleted: true } });
-    await saveCollaborativePlanChange("已删除块级评论");
-    render();
+    await saveCollaborativeCommentChange("已删除块级评论");
+    if (!refreshDayBlockCommentMutationViews(currentDay(), block.id)) renderDayBlocks(currentDay());
     return;
   }
   const moveButton = event.target.closest("[data-move-day-block]");
@@ -11056,28 +14429,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     event.preventDefault();
     const blockId = moveButton.dataset.moveDayBlock;
     const direction = moveButton.dataset.direction === "up" ? "up" : "down";
-    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
-    if (!block || !requireEdit("排序协作块")) return;
-    activeBlockPresenceId = blockId;
-    schedulePresenceTrack(0);
-    noteRemoteBlockEditors(blockId, "排序");
-    if (await moveDayBlockInDoc(day.id, blockId, direction, "local-day-block-reorder")) {
-      day.blocks = moveDayBlockList(day.blocks || [], blockId, direction, {
-        updatedBy: getCollabName(),
-        updatedAt: new Date().toISOString(),
-      });
-      renderDayBlocks(day);
-      await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "move", direction }) });
-      await saveCollaborativePlanChange("已排序协作块");
-      return;
-    }
-    if (!mutate("排序协作块", () => {
-      currentDay().blocks = moveDayBlockList(currentDay().blocks || [], blockId, direction);
-    }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(currentDay().id, "local-day-block-reorder-fallback");
-    await logActivity(`排序协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { action: "move", direction }) });
-    await saveCollaborativePlanChange("已排序协作块");
-    render();
+    await moveDayBlockByDirection(day, blockId, direction, "move");
     return;
   }
   const duplicateButton = event.target.closest("[data-duplicate-day-block]");
@@ -11109,7 +14461,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (added) {
       const addedBlock = added === true ? duplicateBlock : added;
       day.blocks = insertDayBlockList(day.blocks || [], addedBlock, insertIndex);
-      renderDayBlocks(day);
+      if (!refreshDayBlockInsertDom(day, [addedBlock.id], addedBlock.id)) renderDayBlocks(day);
       focusDayBlockInput(addedBlock.id);
       await logActivity(`复制协作块「${sourceBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: "duplicate", sourceBlockId }) });
       await saveCollaborativePlanChange("已复制协作块");
@@ -11119,8 +14471,8 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!mutate("复制协作块", () => {
       currentDay().blocks = insertDayBlockList(currentDay().blocks || [], duplicateBlock, insertIndex);
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(currentDay().id, "local-day-block-duplicate-fallback");
-    renderDayBlocks(currentDay());
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-duplicate-fallback", { insertBlockIds: [duplicateBlock.id], patchFields: [] });
+    if (!refreshDayBlockInsertDom(currentDay(), [duplicateBlock.id], duplicateBlock.id)) renderDayBlocks(currentDay());
     focusDayBlockInput(duplicateBlock.id);
     await logActivity(`复制协作块「${sourceBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, duplicateBlock.id, { action: "duplicate", sourceBlockId }) });
     await saveCollaborativePlanChange("已复制协作块");
@@ -11138,7 +14490,7 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     noteRemoteBlockEditors(blockId, "删除");
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-delete")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
-      renderDayBlocks(day);
+      if (!refreshDayBlockDeleteDom(day, [blockId])) renderDayBlocks(day);
       await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { deleted: true }) });
       await saveCollaborativePlanChange("已删除协作块");
       return;
@@ -11146,14 +14498,32 @@ dom.dayBlockList?.addEventListener("click", async (event) => {
     if (!mutate("删除协作块", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).filter((item) => item.id !== blockId));
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(currentDay().id, "local-day-block-delete-fallback");
+    await syncDayBlocksToDoc(currentDay().id, "local-day-block-delete-fallback", { deleteBlockIds: [blockId], patchFields: [] });
     await logActivity(`删除协作块「${block.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, blockId, { deleted: true }) });
     await saveCollaborativePlanChange("已删除协作块");
-    render();
+    if (!refreshDayBlockDeleteDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
   }
 });
 
 dom.dayBlockList?.addEventListener("submit", async (event) => {
+  const checklistForm = event.target.closest("[data-add-checklist-item]");
+  if (checklistForm) {
+    event.preventDefault();
+    const day = currentDay();
+    const blockId = checklistForm.dataset.addChecklistItem || "";
+    const input = checklistForm.querySelector("[data-add-checklist-input]");
+    const text = input?.value?.trim() || "";
+    const block = normalizeDayBlocks(day?.blocks || []).find((item) => item.id === blockId);
+    if (!text || !day || !block) return;
+    const saved = await saveChecklistTextChange(day, block, checklistTextWithAddedItem(block.text || "", text), "checklist-add-item");
+    if (saved && input) {
+      input.value = "";
+      requestAnimationFrame(() => {
+        dom.dayBlockList?.querySelector(`[data-add-checklist-input="${CSS.escape(blockId)}"]`)?.focus();
+      });
+    }
+    return;
+  }
   const form = event.target.closest("[data-block-comment-form]");
   if (!form) return;
   event.preventDefault();
@@ -11162,7 +14532,7 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
   const input = form.querySelector("[data-block-comment-input]");
   const text = input?.value?.trim() || "";
   const block = normalizeDayBlocks(day?.blocks || []).find((item) => item.id === blockId);
-  if (!day || !block || !text || !requireEdit(blockReplyingCommentId ? "回复块级评论" : "添加块级评论")) return;
+  if (!day || !block || !text || !requireComment(blockReplyingCommentId ? "回复块级评论" : "添加块级评论")) return;
   activeBlockPresenceId = block.id;
   schedulePresenceTrack(0);
   const parentId = blockReplyingCommentId && normalizeComments(block.comments || []).some((comment) => comment.id === blockReplyingCommentId && !comment.parentId)
@@ -11178,9 +14548,9 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     )));
     if (input) input.value = "";
     blockReplyingCommentId = "";
-    renderDayBlocks(day);
+    if (!refreshDayBlockCommentsDom(day, block.id)) renderDayBlocks(day);
     await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || collaborativeComment.id, scope: "block", dayId: day.id || "", blockId: block.id || "" } });
-    await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
+    await saveCollaborativeCommentChange(parentId ? "已回复块级评论" : "已添加块级评论");
     return;
   }
   const fallbackAnchor = parentId ? null : normalizeCommentAnchor(anchor);
@@ -11202,10 +14572,10 @@ dom.dayBlockList?.addEventListener("submit", async (event) => {
     if (input) input.value = "";
     blockReplyingCommentId = "";
   }, { requireUnlocked: false, save: false, render: false })) return;
-  await syncDayBlocksToDoc(currentDay().id, parentId ? "local-day-block-comment-reply-fallback" : "local-day-block-comment-add-fallback");
+  await syncDayBlocksToDoc(currentDay().id, parentId ? "local-day-block-comment-reply-fallback" : "local-day-block-comment-add-fallback", { patchBlockIds: [block.id], patchFields: ["comments"] });
   await logActivity(`${parentId ? "回复" : "评论"}协作块「${block.text.slice(0, 18)}」`, { target: { type: "comment", commentId: parentId || fallbackComment.id, scope: "block", dayId: currentDay().id || "", blockId: block.id || "" } });
-  await saveCollaborativePlanChange(parentId ? "已回复块级评论" : "已添加块级评论");
-  render();
+  await saveCollaborativeCommentChange(parentId ? "已回复块级评论" : "已添加块级评论");
+  if (!refreshDayBlockCommentMutationViews(currentDay(), block.id)) renderDayBlocks(currentDay());
 });
 
 dom.dayBlockList?.addEventListener("focusin", (event) => {
@@ -11219,6 +14589,7 @@ dom.dayBlockList?.addEventListener("focusout", (event) => {
   const blockElement = event.target.closest?.("[data-day-block]");
   if (!blockElement?.dataset.dayBlock) return;
   window.setTimeout(() => {
+    if (!dom.dayBlockList?.contains(document.activeElement)) clearDayBlockCommandMenu();
     if (dom.dayBlockList?.contains(document.activeElement)) {
       const nextBlock = document.activeElement.closest?.("[data-day-block]");
       activeBlockPresenceId = nextBlock?.dataset.dayBlock || "";
@@ -11293,7 +14664,7 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
       updatedAt: new Date().toISOString(),
     });
     clearDayBlockDragState();
-    renderDayBlocks(day);
+    if (!refreshDayBlockOrderDom(day, draggedId)) renderDayBlocks(day);
     await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, draggedId, { action: "drag", targetIndex }) });
     await saveCollaborativePlanChange("已拖拽排序协作块");
     return;
@@ -11304,11 +14675,11 @@ dom.dayBlockList?.addEventListener("drop", async (event) => {
     clearDayBlockDragState();
     return;
   }
-  await syncDayBlocksToDoc(currentDay().id, "local-day-block-drag-reorder-fallback");
+  await syncDayBlocksToDoc(currentDay().id, "local-day-block-drag-reorder-fallback", { orderOnly: true, patchFields: [] });
   clearDayBlockDragState();
   await logActivity(`拖拽排序协作块「${draggedBlock.text.slice(0, 18)}」`, { target: dayBlockActivityTarget(currentDay().id, draggedId, { action: "drag", targetIndex }) });
   await saveCollaborativePlanChange("已拖拽排序协作块");
-  render();
+  if (!refreshDayBlockOrderDom(currentDay(), draggedId)) renderDayBlocks(currentDay());
 });
 
 dom.dayBlockList?.addEventListener("dragend", () => {
@@ -11325,6 +14696,28 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   const blockIndex = blocks.findIndex((block) => block.id === blockId);
   const block = blockIndex >= 0 ? blocks[blockIndex] : null;
   if (!day || !block) return;
+  const shortcutKey = String(event.key || "").toLowerCase();
+  const formatShortcut = (event.ctrlKey || event.metaKey) && !event.altKey
+    ? shortcutKey === "b"
+      ? "bold"
+      : shortcutKey === "i"
+        ? "italic"
+        : shortcutKey === "k"
+          ? "link"
+          : shortcutKey === "e" || event.key === "`"
+          ? "code"
+          : ""
+    : "";
+  if (formatShortcut) {
+    event.preventDefault();
+    await formatDayBlockInput(day, block, input, formatShortcut);
+    return;
+  }
+  if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+    event.preventDefault();
+    await moveDayBlockByDirection(day, blockId, event.key === "ArrowUp" ? "up" : "down", "keyboard-move");
+    return;
+  }
   if (event.key === "Tab") {
     event.preventDefault();
     if (!requireEdit(event.shiftKey ? "减少协作块缩进" : "增加协作块缩进")) return;
@@ -11334,7 +14727,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     const patch = { level: nextLevel };
     if (await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-indent")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
+      if (!refreshDayBlockLevelDom(day, [blockId])) renderDayBlocks(day);
       focusDayBlockInput(blockId);
       await logActivity(`${event.shiftKey ? "减少" : "增加"}协作块缩进`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
       await saveCollaborativePlanChange("已调整协作块缩进");
@@ -11344,72 +14737,69 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (!mutate(event.shiftKey ? "减少协作块缩进" : "增加协作块缩进", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(day.id, "local-day-block-indent-fallback");
-    renderDayBlocks(currentDay());
+    await syncDayBlocksToDoc(day.id, "local-day-block-indent-fallback", { patchBlockIds: [blockId], patchFields: ["level"] });
+    if (!refreshDayBlockLevelDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     focusDayBlockInput(blockId);
     await logActivity(`${event.shiftKey ? "减少" : "增加"}协作块缩进`, { target: dayBlockActivityTarget(day.id, blockId, { action: "indent", level: nextLevel }) });
     await saveCollaborativePlanChange("已调整协作块缩进");
     focusDayBlockInput(blockId);
     return;
   }
+  const commandQuery = dayBlockCommandQueryFromValue(input.value);
+  const commandCandidates = dayBlockCommandCandidates(commandQuery);
+  if (commandQuery && commandCandidates.length) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      clearDayBlockCommandMenu();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      activeDayBlockCommand = {
+        blockId,
+        query: commandQuery,
+        index: (activeDayBlockCommand.index + direction + commandCandidates.length) % commandCandidates.length,
+      };
+      renderDayBlockCommandMenu(input);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      await applyDayBlockCommandSelection(input, activeDayBlockCommand.index);
+      return;
+    }
+  } else if (activeDayBlockCommand.blockId === blockId) {
+    clearDayBlockCommandMenu();
+  }
   const slashType = dayBlockSlashCommand(input.value);
   if (slashType && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();
     clearTimeout(dayBlockEditTimer);
-    if (!requireEdit("切换协作块类型")) return;
-    activeBlockPresenceId = blockId;
-    noteRemoteBlockEditors(blockId, "使用斜杠命令");
-    const patch = { type: slashType, text: "", textYjs: "" };
-    const updatedSlashBlock = await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-slash-command");
-    if (updatedSlashBlock) {
-      const visiblePatch = typeof updatedSlashBlock === "object" ? { ...patch, ...updatedSlashBlock } : patch;
-      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...visiblePatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
-      focusDayBlockInput(blockId);
-      await logActivity(`切换协作块为${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
-      await saveCollaborativePlanChange("已切换协作块类型");
-      focusDayBlockInput(blockId);
-      return;
-    }
-    if (!mutate("切换协作块类型", () => {
-      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
-    }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(day.id, "local-day-block-slash-command-fallback");
-    renderDayBlocks(currentDay());
-    focusDayBlockInput(blockId);
-    await logActivity(`切换协作块为${dayBlockTypeLabel(slashType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "slash-command", blockType: slashType }) });
-    await saveCollaborativePlanChange("已切换协作块类型");
-    focusDayBlockInput(blockId);
+    await applyDayBlockTypeChange(day, blockId, slashType, {
+      clearText: true,
+      source: "local-day-block-slash-command",
+      fallbackSource: "local-day-block-slash-command-fallback",
+      presence: "使用斜杠命令",
+      action: "slash-command",
+      requireLabel: "切换协作块类型",
+      status: "已切换协作块类型",
+    });
     return;
   }
   const shortcutType = dayBlockMarkdownShortcut(input.value);
   if (shortcutType && (event.key === "Enter" || event.key === " ")) {
     event.preventDefault();
     clearTimeout(dayBlockEditTimer);
-    if (!requireEdit("使用快捷标记切换协作块类型")) return;
-    activeBlockPresenceId = blockId;
-    noteRemoteBlockEditors(blockId, "使用快捷标记");
-    const patch = { type: shortcutType, text: "", textYjs: "" };
-    const updatedShortcutBlock = await updateDayBlockInDoc(day.id, blockId, patch, "local-day-block-markdown-shortcut");
-    if (updatedShortcutBlock) {
-      const visiblePatch = typeof updatedShortcutBlock === "object" ? { ...patch, ...updatedShortcutBlock } : patch;
-      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...visiblePatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      renderDayBlocks(day);
-      focusDayBlockInput(blockId);
-      await logActivity(`用快捷标记切换协作块为${dayBlockTypeLabel(shortcutType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "markdown-shortcut", blockType: shortcutType }) });
-      await saveCollaborativePlanChange("已用快捷标记切换协作块类型");
-      focusDayBlockInput(blockId);
-      return;
-    }
-    if (!mutate("使用快捷标记切换协作块类型", () => {
-      currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === blockId ? { ...item, ...patch } : item)));
-    }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(day.id, "local-day-block-markdown-shortcut-fallback");
-    renderDayBlocks(currentDay());
-    focusDayBlockInput(blockId);
-    await logActivity(`用快捷标记切换协作块为${dayBlockTypeLabel(shortcutType)}`, { target: dayBlockActivityTarget(day.id, blockId, { action: "markdown-shortcut", blockType: shortcutType }) });
-    await saveCollaborativePlanChange("已用快捷标记切换协作块类型");
-    focusDayBlockInput(blockId);
+    await applyDayBlockTypeChange(day, blockId, shortcutType, {
+      clearText: true,
+      source: "local-day-block-markdown-shortcut",
+      fallbackSource: "local-day-block-markdown-shortcut-fallback",
+      presence: "使用快捷标记",
+      action: "markdown-shortcut",
+      requireLabel: "使用快捷标记切换协作块类型",
+      status: "已用快捷标记切换协作块类型",
+    });
     return;
   }
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -11444,7 +14834,8 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
         item.id === blockId ? { ...item, ...visibleSplitPatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
       )));
       day.blocks = insertDayBlockList(withSplitText, addedBlock, insertIndex);
-      renderDayBlocks(day);
+      if (!refreshDayBlockTextDom(day, [blockId])) renderDayBlocks(day);
+      if (!refreshDayBlockInsertDom(day, [addedBlock.id], addedBlock.id)) renderDayBlocks(day);
       focusDayBlockInput(addedBlock.id);
       await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
       await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
@@ -11457,8 +14848,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       )));
       currentDay().blocks = insertDayBlockList(splitBlocks, newBlock, insertIndex);
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-add-fallback");
-    renderDayBlocks(currentDay());
+    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-add-fallback", { patchBlockIds: [blockId, newBlock.id], insertBlockIds: [newBlock.id], patchFields: ["text", "textYjs"], preserveRemoteOrder: false });
+    if (!refreshDayBlockTextDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
+    if (!refreshDayBlockInsertDom(currentDay(), [newBlock.id], newBlock.id)) renderDayBlocks(currentDay());
     focusDayBlockInput(newBlock.id);
     await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
     await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
@@ -11472,7 +14864,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-delete-empty")) {
       day.blocks = normalizeDayBlocks((day.blocks || []).filter((item) => item.id !== blockId));
       activeBlockPresenceId = previousBlockId;
-      renderDayBlocks(day);
+      if (!refreshDayBlockDeleteDom(day, [blockId])) renderDayBlocks(day);
       focusDayBlockInput(previousBlockId);
       await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
       await saveCollaborativePlanChange("已删除空白协作块");
@@ -11482,9 +14874,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (!mutate("删除空白协作块", () => {
       currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).filter((item) => item.id !== blockId));
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-delete-empty-fallback");
+    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-delete-empty-fallback", { deleteBlockIds: [blockId], patchFields: [] });
     activeBlockPresenceId = previousBlockId;
-    renderDayBlocks(currentDay());
+    if (!refreshDayBlockDeleteDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     focusDayBlockInput(previousBlockId);
     await logActivity("删除空白协作块", { target: dayBlockActivityTarget(day.id, blockId, { deleted: true, action: "keyboard-delete-empty" }) });
     await saveCollaborativePlanChange("已删除空白协作块");
@@ -11508,7 +14900,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
         .map((item) => (item.id === previousBlock.id ? { ...item, ...visiblePreviousPatch, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item))
         .filter((item) => item.id !== blockId));
       activeBlockPresenceId = previousBlock.id;
-      renderDayBlocks(day);
+      if (!refreshDayBlockTextDom(day, [previousBlock.id])) renderDayBlocks(day);
+      if (!refreshDayBlockCommentsDom(day, previousBlock.id)) renderDayBlocks(day);
+      if (!refreshDayBlockDeleteDom(day, [blockId])) renderDayBlocks(day);
       focusDayBlockInput(previousBlock.id);
       await logActivity("用键盘合并协作块", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
       await saveCollaborativePlanChange("已用键盘合并协作块");
@@ -11520,9 +14914,11 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
         .map((item) => (item.id === previousBlock.id ? { ...item, ...previousPatch } : item))
         .filter((item) => item.id !== blockId));
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-merge-fallback");
+    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-merge-fallback", { deleteBlockIds: [blockId], patchBlockIds: [previousBlock.id], patchFields: ["text", "textYjs", "comments"] });
     activeBlockPresenceId = previousBlock.id;
-    renderDayBlocks(currentDay());
+    if (!refreshDayBlockTextDom(currentDay(), [previousBlock.id])) renderDayBlocks(currentDay());
+    if (!refreshDayBlockCommentsDom(currentDay(), previousBlock.id)) renderDayBlocks(currentDay());
+    if (!refreshDayBlockDeleteDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     focusDayBlockInput(previousBlock.id);
     await logActivity("用键盘合并协作块", { target: dayBlockActivityTarget(day.id, previousBlock.id, { action: "keyboard-merge", mergedBlockId: blockId }) });
     await saveCollaborativePlanChange("已用键盘合并协作块");
@@ -11530,33 +14926,24 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
   }
 });
 
-dom.dayBlockList?.addEventListener("input", (event) => {
+dom.dayBlockList?.addEventListener("input", async (event) => {
   const input = event.target.closest("[data-edit-day-block]");
   if (!input || !canEdit() || isReadonlyMode) return;
   activeBlockPresenceId = input.closest("[data-day-block]")?.dataset.dayBlock || activeBlockPresenceId;
+  renderDayBlockCommandMenu(input);
   schedulePresenceTrack(0);
+  const day = currentDay();
+  const blockId = input.dataset.editDayBlock;
+  const text = input.value.trim();
+  if (!day || !blockId) return;
+  await syncDayBlockInputText(day, blockId, text, input);
   clearTimeout(dayBlockEditTimer);
   dayBlockEditTimer = setTimeout(async () => {
-    const day = currentDay();
-    const blockId = input.dataset.editDayBlock;
-    const text = input.value.trim();
-    if (!day || !blockId) return;
-    const updatedText = await updateDayBlockTextInDoc(day.id, blockId, text, "local-day-block-text-crdt");
-    if (updatedText) {
-      day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item)));
-      const blockElement = dom.dayBlockList.querySelector(`[data-day-block="${CSS.escape(blockId)}"]`);
-      const metaElement = blockElement?.querySelector(".day-block-meta");
-      if (metaElement) metaElement.textContent = `更新：${getCollabName()}`;
-      await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
-      await saveCollaborativePlanChange("协作块已更新");
-      return;
-    }
-    const block = normalizeDayBlocks(day.blocks || []).find((item) => item.id === blockId);
-    if (!block) return;
-    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === blockId ? { ...item, text } : item)));
-    await syncDayBlocksToDoc(day.id, "local-day-block-text-fallback");
-    await logActivity(`编辑协作块「${text.slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, blockId, { action: "text" }) });
-    await saveCollaborativePlanChange("协作块已更新");
+    const latestDay = currentDay();
+    const latestText = input.value.trim();
+    if (!latestDay || !blockId) return;
+    await logActivity(`编辑协作块「${latestText.slice(0, 18)}」`, { target: dayBlockActivityTarget(latestDay.id, blockId, { action: "text" }) });
+    scheduleCollaborativePlanSave("协作块已更新", 250);
   }, 650);
 });
 
@@ -11565,6 +14952,7 @@ dom.dayBlockList?.addEventListener("input", (event) => {
     const input = event.target.closest?.("[data-edit-day-block]");
     if (!input || isReadonlyMode) return;
     activeBlockPresenceId = input.closest("[data-day-block]")?.dataset.dayBlock || activeBlockPresenceId;
+    if (eventName === "focusin" || eventName === "click" || eventName === "keyup") renderDayBlockCommandMenu(input);
     const anchor = buildBlockCommentAnchor(activeBlockPresenceId);
     if (anchor) lastCommentAnchor = { ...anchor, capturedAt: Date.now() };
     schedulePresenceTrack(eventName === "focusin" ? 0 : 90);
@@ -11583,7 +14971,7 @@ document.addEventListener("click", (event) => {
     if (!comment) return;
     if (scope === "block") {
       blockCommentFilters[blockId] = comment.resolved ? "resolved" : "open";
-      renderDayBlocks(currentDay());
+      if (!refreshDayBlockCommentsDom(currentDay(), blockId)) renderDayBlocks(currentDay());
       const thread = Array.from(dom.dayBlockList?.querySelectorAll(`[data-block-comments="${CSS.escape(blockId)}"] [data-comment]`) || []).find((item) => item.dataset.comment === comment.id);
       if (thread) {
         thread.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -11635,6 +15023,13 @@ dom.cancelCandidateEditBtn?.addEventListener("click", () => {
 });
 
 dom.candidateGrid.addEventListener("click", async (event) => {
+  const selectButton = event.target.closest("[data-toggle-candidate-selected]");
+  if (selectButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await toggleCandidateSelection(selectButton.dataset.toggleCandidateSelected);
+    return;
+  }
   const editButton = event.target.closest("[data-edit-candidate]");
   if (editButton) {
     event.preventDefault();
@@ -11665,7 +15060,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
       state.candidates = mergedCandidatesWithPatch("delete", null, candidateId);
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
     }, { requireUnlocked: false, save: false, activityTarget: candidateActivityTarget(candidateId, { deleted: true, action: "delete" }) });
-    await syncCandidatesToDoc("local-candidate-delete-fallback");
+    await syncCandidatesToDoc("local-candidate-delete-fallback", { deleteIds: [candidateId] });
     await saveCollaborativePlanChange(`移除备选「${candidate.title}」`);
     return;
   }
@@ -11674,15 +15069,24 @@ dom.candidateGrid.addEventListener("click", async (event) => {
   if (!requireEdit("加入备选地点")) return;
   const candidate = clone(state.candidates[Number(button.dataset.candidate)]);
   candidate.id = uid();
-  let createdDayId = "";
+  const createdDayId = currentDay()?.id || "";
   const label = `加入备选「${candidate.title}」`;
-  if (!mutate(label, () => {
-    const day = currentDay();
-    createdDayId = day.id;
-    day.stops.push(candidate);
-    activeStop = currentDay().stops.length - 1;
-  }, { save: false, render: false, activityTarget: () => stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add" }) })) return;
-  await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop");
+  saveVersionSnapshot(label);
+  if (createdDayId && await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add" }) });
+    await applyStopCreateFromDoc(createdDayId, candidate.id, label);
+    await saveCollaborativePlanChange(label);
+    broadcastStopCreated(createdDayId, candidate);
+    render();
+    return;
+  }
+  const day = currentDay();
+  if (!day) return;
+  day.stops.push(candidate);
+  activeStop = currentDay().stops.length - 1;
+  clearCurrentAmapRoute();
+  await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add", fallback: true }) });
+  await syncStopListToDoc(createdDayId, "local-candidate-to-stop-fallback", { insertStopIds: [candidate.id], patchFields: [] });
   await saveCollaborativePlanChange(label);
   broadcastStopCreated(createdDayId, candidate);
   render();
@@ -11691,7 +15095,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
 dom.candidateGrid.addEventListener("keydown", (event) => {
   if (!["Enter", " "].includes(event.key)) return;
   const card = event.target.closest("[data-candidate]");
-  if (!card || event.target.closest("[data-delete-candidate], [data-edit-candidate]")) return;
+  if (!card || event.target.closest("[data-delete-candidate], [data-edit-candidate], [data-toggle-candidate-selected]")) return;
   event.preventDefault();
   card.click();
 });
@@ -11747,6 +15151,13 @@ dom.transportFilterForm.addEventListener("submit", (event) => {
 });
 
 dom.transportList.addEventListener("click", async (event) => {
+  const selectButton = event.target.closest("[data-toggle-quote-selected]");
+  if (selectButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await toggleTransportQuoteSelection(selectButton.dataset.toggleQuoteSelected);
+    return;
+  }
   const editButton = event.target.closest("[data-edit-quote]");
   if (editButton) {
     event.preventDefault();
@@ -11779,7 +15190,7 @@ dom.transportList.addEventListener("click", async (event) => {
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
   }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(quoteId, quote.dayId || "", { deleted: true, action: "delete" }) });
-  await syncTransportQuotesToDoc("local-transport-quote-delete-fallback");
+  await syncTransportQuotesToDoc("local-transport-quote-delete-fallback", { deleteIds: [quoteId] });
   await saveCollaborativePlanChange(`删除报价「${quote.code}」`);
 });
 
@@ -11817,7 +15228,7 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
       transportFilterApplied = true;
       clearManualQuoteForm();
     }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(editingTransportQuoteId, quote.dayId || "", { action: "update" }) });
-    await syncTransportQuotesToDoc("local-transport-quote-update-fallback");
+    await syncTransportQuotesToDoc("local-transport-quote-update-fallback", { patchIds: [editingTransportQuoteId], patchFields: Object.keys(manualQuotePatchFromForm()) });
     await saveCollaborativePlanChange(`更新交通报价「${code}」`);
     return;
   }
@@ -11836,9 +15247,12 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
     transportFilterApplied = true;
     clearManualQuoteForm();
   }, { requireUnlocked: false, save: false, activityTarget: transportQuoteActivityTarget(quote.id, quote.dayId || "", { action: "create" }) });
-  await syncTransportQuotesToDoc("local-transport-quote-fallback");
+  await syncTransportQuotesToDoc("local-transport-quote-fallback", { insertIds: [quote.id], patchFields: [] });
   await saveCollaborativePlanChange(`保存交通报价「${code}」`);
 });
+
+dom.budgetAdoptEstimatesBtn?.addEventListener("click", adoptAllBudgetEstimates);
+dom.budgetEnrichPlacesBtn?.addEventListener("click", enrichPlacesFromAmap);
 
 dom.partySizeInput.addEventListener("change", async () => {
   if (!requireEdit("更新同行人数")) return;
@@ -11851,7 +15265,7 @@ dom.partySizeInput.addEventListener("change", async () => {
   mutate("更新同行人数", () => {
     state.partySize = partySize();
   }, { requireUnlocked: false, save: false, activityTarget: budgetSettingActivityTarget("partySize", { action: "update" }) });
-  await syncPlanMetaToDoc("local-party-size-fallback");
+  await syncPlanMetaToDoc("local-party-size-fallback", { fields: ["partySize"] });
   await saveCollaborativePlanChange("更新同行人数");
 });
 
@@ -11866,7 +15280,7 @@ dom.budgetLimitInput.addEventListener("change", async () => {
   mutate("更新预算上限", () => {
     state.budgetLimit = numberValue(dom.budgetLimitInput.value);
   }, { requireUnlocked: false, save: false, activityTarget: budgetSettingActivityTarget("budgetLimit", { action: "update" }) });
-  await syncPlanMetaToDoc("local-budget-limit-fallback");
+  await syncPlanMetaToDoc("local-budget-limit-fallback", { fields: ["budgetLimit"] });
   await saveCollaborativePlanChange("更新预算上限");
 });
 
@@ -11879,7 +15293,7 @@ async function syncPlanMetaFieldInput(field, value, label) {
     return;
   }
   state[field] = normalizePlanSettingValue(field, value);
-  await syncPlanMetaToDoc(`local-plan-meta-${field}-fallback`);
+  await syncPlanMetaToDoc(`local-plan-meta-${field}-fallback`, { fields: [field] });
   await logActivity(label, { target: planMetaActivityTarget(field, { action: "update" }) });
   await saveCollaborativePlanChange(label);
 }
@@ -11915,7 +15329,7 @@ async function syncPlanMetaPatchInput(patch = {}, label, targetField = "") {
     entries.forEach(([field, value]) => {
       state[field] = clone(value);
     });
-    await syncPlanMetaToDoc("local-plan-meta-patch-fallback");
+    await syncPlanMetaToDoc("local-plan-meta-patch-fallback", { fields: entries.map(([field]) => field) });
   }
   await logActivity(label, { target: planMetaActivityTarget(targetField || entries[0][0], { action: "update", fields: entries.map(([field]) => field) }) });
   await saveCollaborativePlanChange(label);
@@ -11923,8 +15337,10 @@ async function syncPlanMetaPatchInput(patch = {}, label, targetField = "") {
 
 function schedulePlanMetaInputSync(field, value, label) {
   clearTimeout(planMetaInputSyncTimers[field]);
+  pendingPlanMetaInputSyncs[field] = { type: "field", field, value, label };
   planMetaInputSyncTimers[field] = setTimeout(() => {
     delete planMetaInputSyncTimers[field];
+    delete pendingPlanMetaInputSyncs[field];
     syncPlanMetaFieldInput(field, value, label).catch((error) => {
       console.warn("Plan meta field sync failed", error);
       dom.saveState.textContent = `${label}同步失败：${error.message}`;
@@ -11934,8 +15350,10 @@ function schedulePlanMetaInputSync(field, value, label) {
 
 function schedulePlanMetaPatchInputSync(timerKey, patch, label, targetField = "") {
   clearTimeout(planMetaInputSyncTimers[timerKey]);
+  pendingPlanMetaInputSyncs[timerKey] = { type: "patch", patch: clone(patch), label, targetField };
   planMetaInputSyncTimers[timerKey] = setTimeout(() => {
     delete planMetaInputSyncTimers[timerKey];
+    delete pendingPlanMetaInputSyncs[timerKey];
     syncPlanMetaPatchInput(patch, label, targetField).catch((error) => {
       console.warn("Plan meta patch sync failed", error);
       dom.saveState.textContent = `${label}同步失败：${error.message}`;
@@ -12010,9 +15428,9 @@ async function createRecommendedPlan() {
     transportFilterApplied = false;
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
-  await replacePlanCollabDoc("local-recommended-plan");
+  await replacePlanCollabDoc("local-recommended-plan", { allowReplace: true, reason: "recommended-plan" });
   await saveCollaborativePlanChange("已生成推荐计划");
-  await broadcastPlanReplaced("生成推荐计划");
+  await broadcastPlanReplaced("生成推荐计划", { replacementType: "recommended-plan" });
   render();
   closeCreateChoice();
 }
@@ -12036,9 +15454,9 @@ async function createBlankTemplate() {
     transportFilterApplied = false;
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
-  await replacePlanCollabDoc("local-blank-plan");
+  await replacePlanCollabDoc("local-blank-plan", { allowReplace: true, reason: "blank-plan" });
   await saveCollaborativePlanChange("已生成空白模板");
-  await broadcastPlanReplaced("生成空白模板");
+  await broadcastPlanReplaced("生成空白模板", { replacementType: "blank-plan" });
   render();
   closeCreateChoice();
 }
@@ -12107,7 +15525,7 @@ async function importPlanJsonFile(file) {
   const restoredFromYjs = importedPlanYjs
     ? await replaceLivePlanDocWithYjsState(importedPlanYjs, "已从 JSON 导入协作快照")
     : false;
-  if (!restoredFromYjs) await replacePlanCollabDoc("local-json-import");
+  if (!restoredFromYjs) await replacePlanCollabDoc("local-json-import", { allowReplace: true, reason: "json-import" });
   await logActivity(`导入 JSON「${file.name || "计划"}」`);
   await saveCollaborativePlanChange("已导入 JSON");
   await broadcastPlanReplaced("导入 JSON", { replacementType: "json-import", importedFileName: file.name || "" });
@@ -12175,6 +15593,20 @@ dom.copyInviteLinkBtn?.addEventListener("click", async () => {
   }
 });
 
+dom.copyCommentLinkBtn?.addEventListener("click", async () => {
+  if (!tripId) {
+    dom.collabStatus.textContent = "请先创建共享计划，再复制评论链接。";
+    return;
+  }
+  const url = getCommentShareUrl();
+  try {
+    await navigator.clipboard.writeText(url);
+    dom.collabStatus.textContent = "评论链接已复制；对方可以查看、添加/回复/解决批注，但不能修改行程内容。";
+  } catch {
+    dom.collabStatus.textContent = url;
+  }
+});
+
 dom.copyReadonlyLinkBtn.addEventListener("click", async () => {
   if (!tripId) {
     dom.collabStatus.textContent = "请先创建共享计划，再复制只读链接。";
@@ -12231,7 +15663,7 @@ dom.editAccessForm?.addEventListener("submit", async (event) => {
   editAccessGranted = true;
   isReadonlyMode = false;
   dom.editAccessInput.value = "";
-  await syncPlanMetaToDoc("local-edit-access");
+  await syncPlanMetaToDoc("local-edit-access", { fields: ["editKeyHash", "editKeyHint"] });
   await saveCollaborativePlanChange("编辑口令已更新");
   dom.collabStatus.textContent = "编辑口令已更新；普通编辑链接需要口令，直入邀请才会带密钥。";
   applyReadonlyUi();
@@ -12393,9 +15825,9 @@ dom.resetBtn.addEventListener("click", async () => {
   activeDay = 0;
   activeStop = 0;
   transportFilterApplied = false;
-  await replacePlanCollabDoc("local-reset-plan");
+  await replacePlanCollabDoc("local-reset-plan", { allowReplace: true, reason: "reset-plan" });
   await saveCollaborativePlanChange("已重置示例");
-  await broadcastPlanReplaced("重置示例计划");
+  await broadcastPlanReplaced("重置示例计划", { replacementType: "reset-plan" });
   render();
 });
 
@@ -12476,37 +15908,48 @@ dom.importForm.addEventListener("submit", async (event) => {
   ].filter(Boolean);
   const rawNote = dom.importNote.value.trim();
   const note = [metadataLines.join("\n"), rawNote].filter(Boolean).join("\n\n");
-  let createdStop = null;
   const label = `导入${pendingProvider}记录`;
-  if (!mutate(label, () => {
-    createdStop = makeStop({
-      time: dom.importTime.value.trim() || "18:30",
-      title,
-      type: category,
-      address: dom.importAddress.value.trim() || "地址待确认",
-      note: note || `${pendingProvider}记录，后续可继续补充订单详情。`,
-      tags: ["已导入", pendingProvider, category].filter(Boolean),
-      budget: numberValue(dom.importBudget.value),
-      paid: numberValue(dom.importPaid.value),
-      payer: dom.importPayer.value.trim(),
-      image: defaults.image,
-      x: 78,
-      y: 60,
-    });
-    targetDay.stops.push(createdStop);
-    activeDay = targetDayIndex;
-    activeStop = targetDay.stops.length - 1;
+  if (!requireEdit(label)) return;
+  saveVersionSnapshot(label);
+  const createdStop = makeStop({
+    time: dom.importTime.value.trim() || "18:30",
+    title,
+    type: category,
+    address: dom.importAddress.value.trim() || "地址待确认",
+    note: note || `${pendingProvider}记录，后续可继续补充订单详情。`,
+    tags: ["已导入", pendingProvider, category].filter(Boolean),
+    budget: numberValue(dom.importBudget.value),
+    paid: numberValue(dom.importPaid.value),
+    payer: dom.importPayer.value.trim(),
+    image: defaults.image,
+    x: 78,
+    y: 60,
+  });
+  const finishImportUi = () => {
     dom.syncBadge.textContent = "已导入";
     dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已加入 ${targetDay.label}，可在右侧继续编辑。</span>`;
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
-  }, { requireUnlocked: false, save: false, render: false, activityTarget: () => stopActivityTarget(targetDay.id, createdStop?.id || "", { action: "external-import" }) })) return;
-  if (createdStop) {
-    await addStopToDoc(targetDay.id, createdStop, "local-import-stop");
+  };
+  if (targetDay?.id && await addStopToDoc(targetDay.id, createdStop, "local-import-stop-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(targetDay.id, createdStop.id || "", { action: "external-import" }) });
+    await applyStopCreateFromDoc(targetDay.id, createdStop.id, label);
+    finishImportUi();
     await saveCollaborativePlanChange(label);
     broadcastStopCreated(targetDay.id, createdStop);
     render();
+    return;
   }
+  targetDay.stops.push(createdStop);
+  activeDay = targetDayIndex;
+  activeStop = targetDay.stops.length - 1;
+  clearCurrentAmapRoute();
+  await logActivity(label, { target: stopActivityTarget(targetDay.id, createdStop.id || "", { action: "external-import", fallback: true }) });
+  finishImportUi();
+  await syncStopListToDoc(targetDay.id, "local-import-stop-fallback", { insertStopIds: [createdStop.id], patchFields: [] });
+  await saveCollaborativePlanChange(label);
+  broadcastStopCreated(targetDay.id, createdStop);
+  render();
 });
 
 async function boot() {
