@@ -270,6 +270,12 @@ assert(
   extractFunctionBody("syncDayBlockInputText").includes("setInputValuePreservingSelection"),
   "syncDayBlockInputText must preserve the current block textarea cursor/selection after Y.Text sync.",
 );
+assert(source.includes("function dayBlockActivitySnippet"), "Day block activity labels must trim only display snippets, not collaborative text.");
+assert(source.includes("function joinDayBlockTexts"), "Day block keyboard merge must preserve source spacing where possible.");
+assert(source.includes("const text = input.value;\n  if (!day || !blockId) return;\n  await syncDayBlockInputText(day, blockId, text, input);"), "Day block input sync must preserve raw textarea text instead of trimming collaborative content.");
+assert(source.includes("const hasAfterText = Boolean(afterText.trim());"), "Day block keyboard split must use trim only for empty-state decisions.");
+assert(source.includes("text: afterText,"), "Day block keyboard split must preserve raw trailing text in the new block.");
+assert(source.includes("const mergedText = joinDayBlockTexts(previousBlock.text || \"\", input.value);"), "Day block keyboard merge must preserve raw current block text.");
 
 const fullBlockSyncBody = extractFunctionBody("syncAllDayBlocksToDoc");
 assert(fullBlockSyncBody.includes("if (!replace) return false;"), "syncAllDayBlocksToDoc must refuse non-replace calls.");

@@ -4510,6 +4510,20 @@ function dayBlockTypeLabel(type = "todo") {
   return "待办";
 }
 
+function dayBlockActivitySnippet(text = "", fallback = "协作块") {
+  const compact = String(text || "").replace(/\s+/g, " ").trim();
+  return compact ? compact.slice(0, 18) : fallback;
+}
+
+function joinDayBlockTexts(previous = "", current = "") {
+  const left = String(previous || "");
+  const right = String(current || "");
+  if (!left) return right;
+  if (!right) return left;
+  if (/\s$/.test(left) || /^\s/.test(right)) return `${left}${right}`;
+  return `${left} ${right}`;
+}
+
 function dayBlockIcon(type = "todo") {
   if (type === "checklist") return "list-checks";
   if (type === "divider") return "minus";
@@ -5502,7 +5516,7 @@ async function saveDayBlockTextChange(day, block, nextText, action = "text-forma
       item.id === block.id ? { ...item, ...updatedText, updatedBy: getCollabName(), updatedAt: new Date().toISOString() } : item
     )));
     if (!refreshDayBlockTextDom(day, [block.id])) renderDayBlocks(day);
-    await logActivity(`编辑协作块「${String(nextText || "").slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+    await logActivity(`编辑协作块「${dayBlockActivitySnippet(nextText, dayBlockTypeLabel(block.type))}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
     await saveCollaborativePlanChange(label);
     return true;
   }
@@ -5510,7 +5524,7 @@ async function saveDayBlockTextChange(day, block, nextText, action = "text-forma
     currentDay().blocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (item.id === block.id ? { ...item, text: nextText } : item)));
   }, { requireUnlocked: false, save: false, render: false })) return false;
   await syncDayBlocksToDoc(day.id, `${origin}-fallback`, { patchBlockIds: [block.id], patchFields: ["text", "textYjs"] });
-  await logActivity(`编辑协作块「${String(nextText || "").slice(0, 18)}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
+  await logActivity(`编辑协作块「${dayBlockActivitySnippet(nextText, dayBlockTypeLabel(block.type))}」`, { target: dayBlockActivityTarget(day.id, block.id, { action }) });
   await saveCollaborativePlanChange(label);
   render();
   return true;
@@ -14901,8 +14915,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     event.preventDefault();
     const cursorStart = input.selectionStart ?? input.value.length;
     const cursorEnd = input.selectionEnd ?? cursorStart;
-    const beforeText = input.value.slice(0, cursorStart).trim();
-    const afterText = input.value.slice(cursorEnd).trim();
+    const beforeText = input.value.slice(0, cursorStart);
+    const afterText = input.value.slice(cursorEnd);
+    const hasAfterText = Boolean(afterText.trim());
     const newBlock = normalizeDayBlock({
       id: uid(),
       type: block.type || "note",
@@ -14911,9 +14926,9 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       createdBy: getCollabName(),
       createdAt: new Date().toISOString(),
     });
-    if (!newBlock || !requireEdit(afterText ? "拆分协作块" : "新增协作块")) return;
+    if (!newBlock || !requireEdit(hasAfterText ? "拆分协作块" : "新增协作块")) return;
     activeBlockPresenceId = newBlock.id;
-    noteRemoteBlockEditors(blockId, afterText ? "拆分" : "新增下方块");
+    noteRemoteBlockEditors(blockId, hasAfterText ? "拆分" : "新增下方块");
     const insertIndex = blockIndex + 1;
     const splitPatch = { text: beforeText, textYjs: "" };
     let textUpdateResult = true;
@@ -14932,12 +14947,12 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       if (!refreshDayBlockTextDom(day, [blockId])) renderDayBlocks(day);
       if (!refreshDayBlockInsertDom(day, [addedBlock.id], addedBlock.id)) renderDayBlocks(day);
       focusDayBlockInput(addedBlock.id);
-      await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
-      await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
+      await logActivity(hasAfterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, addedBlock.id, { action: hasAfterText ? "keyboard-split" : "keyboard-add" }) });
+      await saveCollaborativePlanChange(hasAfterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
       focusDayBlockInput(addedBlock.id);
       return;
     }
-    if (!mutate(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", () => {
+    if (!mutate(hasAfterText ? "用键盘拆分协作块" : "用键盘新增协作块", () => {
       const splitBlocks = normalizeDayBlocks((currentDay().blocks || []).map((item) => (
         item.id === blockId ? { ...item, ...splitPatch } : item
       )));
@@ -14947,8 +14962,8 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (!refreshDayBlockTextDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     if (!refreshDayBlockInsertDom(currentDay(), [newBlock.id], newBlock.id)) renderDayBlocks(currentDay());
     focusDayBlockInput(newBlock.id);
-    await logActivity(afterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: afterText ? "keyboard-split" : "keyboard-add" }) });
-    await saveCollaborativePlanChange(afterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
+    await logActivity(hasAfterText ? "用键盘拆分协作块" : "用键盘新增协作块", { target: dayBlockActivityTarget(day.id, newBlock.id, { action: hasAfterText ? "keyboard-split" : "keyboard-add" }) });
+    await saveCollaborativePlanChange(hasAfterText ? "已用键盘拆分协作块" : "已用键盘新增协作块");
     focusDayBlockInput(newBlock.id);
     return;
   }
@@ -14984,7 +14999,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     if (!previousBlock || !requireEdit("合并协作块")) return;
     noteRemoteBlockEditors(blockId, "合并");
     noteRemoteBlockEditors(previousBlock.id, "合并");
-    const mergedText = `${previousBlock.text || ""}${previousBlock.text ? " " : ""}${input.value.trim()}`.trim();
+    const mergedText = joinDayBlockTexts(previousBlock.text || "", input.value);
     const mergedComments = normalizeComments([...(previousBlock.comments || []), ...(block.comments || [])]);
     const previousPatch = { text: mergedText, textYjs: "", comments: mergedComments, level: previousBlock.level || 0 };
     const previousUpdated = await updateDayBlockInDoc(day.id, previousBlock.id, previousPatch, "local-day-block-keyboard-merge-previous");
@@ -15029,15 +15044,15 @@ dom.dayBlockList?.addEventListener("input", async (event) => {
   schedulePresenceTrack(0);
   const day = currentDay();
   const blockId = input.dataset.editDayBlock;
-  const text = input.value.trim();
+  const text = input.value;
   if (!day || !blockId) return;
   await syncDayBlockInputText(day, blockId, text, input);
   clearTimeout(dayBlockEditTimer);
   dayBlockEditTimer = setTimeout(async () => {
     const latestDay = currentDay();
-    const latestText = input.value.trim();
+    const latestText = dayBlockActivitySnippet(input.value, dayBlockTypeLabel(currentDay()?.blocks?.find((item) => item.id === blockId)?.type || "note"));
     if (!latestDay || !blockId) return;
-    await logActivity(`编辑协作块「${latestText.slice(0, 18)}」`, { target: dayBlockActivityTarget(latestDay.id, blockId, { action: "text" }) });
+    await logActivity(`编辑协作块「${latestText}」`, { target: dayBlockActivityTarget(latestDay.id, blockId, { action: "text" }) });
     scheduleCollaborativePlanSave("协作块已更新", 250);
   }, 650);
 });
