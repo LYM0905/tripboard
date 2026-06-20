@@ -16698,8 +16698,9 @@ dom.exportBtn.addEventListener("click", async () => {
   link.click();
   URL.revokeObjectURL(url);
   if (!isReadonlyMode) {
-    logActivity("导出计划 JSON");
-    saveState("已导出 JSON");
+    await logActivity("导出计划 JSON", { broadcast: false });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    dom.saveState.textContent = "已导出 JSON";
     renderActivities();
   } else {
     dom.saveState.textContent = "已导出 JSON";

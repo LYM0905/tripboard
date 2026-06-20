@@ -516,6 +516,8 @@ const flushPendingBody = extractFunctionBody("flushPendingPlanUpdates");
 assert(flushPendingBody.includes("recordPendingPlanReplayActivity({ reason, applied, failed })"), "Flushing pending plan updates must record the replay result.");
 assert(flushPendingBody.includes('"pending:replay-activity"'), "Replay activity transaction must not enqueue a fresh pending update.");
 assert(flushPendingBody.includes("remainingCount || failed"), "Replay status must report retained pending updates when some entries fail.");
+assert(!source.includes('saveState("已导出 JSON")'), "Exporting JSON must not trigger a remote plan save.");
+assert(source.includes('logActivity("导出计划 JSON", { broadcast: false })'), "Export activity must stay local and avoid collaborative writes.");
 
 if (failures.length) {
   console.error("Collaboration guardrail check failed:");
