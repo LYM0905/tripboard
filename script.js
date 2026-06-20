@@ -1548,17 +1548,23 @@ function mergeCommentListEntries(comments = []) {
   return result;
 }
 
-function mergeDayBlocks(localBlocks = [], remoteBlocks = []) {
+function mergeDayBlocks(localBlocks = [], remoteBlocks = [], baseBlocks = []) {
   const localNormalized = normalizeDayBlocks(localBlocks || []);
   const remoteNormalized = normalizeDayBlocks(remoteBlocks || []);
+  const baseNormalized = normalizeDayBlocks(baseBlocks || []);
   const remoteById = new Map(remoteNormalized.map((block) => [block.id, block]));
+  const baseById = new Map(baseNormalized.map((block) => [block.id, block]));
   const localIds = new Set(localNormalized.map((block) => block.id));
   const merged = localNormalized.map((block) => {
     const remoteBlock = remoteById.get(block.id);
     if (!remoteBlock) return block;
+    const baseBlock = baseById.get(block.id) || {};
+    const mergedText = mergeTextScalarField(baseBlock.text, block.text, remoteBlock.text);
     return normalizeDayBlock({
       ...remoteBlock,
       ...block,
+      text: mergedText,
+      textYjs: mergedText === block.text ? block.textYjs : "",
       done: block.done || remoteBlock.done,
       comments: mergeComments(block.comments || [], remoteBlock.comments || []),
       updatedAt: block.updatedAt || remoteBlock.updatedAt,
@@ -1687,7 +1693,7 @@ function mergeDays(localDays = [], remoteDays = [], baseDays = []) {
       weather: mergeTextScalarField(baseDay.weather, localDay.weather, remoteDay?.weather),
       transport: mergeTextScalarField(baseDay.transport, localDay.transport, remoteDay?.transport),
       comments: mergeComments(localDay.comments || [], remoteDay?.comments || []),
-      blocks: mergeDayBlocks(localDay.blocks || [], remoteDay?.blocks || []),
+      blocks: mergeDayBlocks(localDay.blocks || [], remoteDay?.blocks || [], baseDay.blocks || []),
       stops: mergeStops(localDay.stops || [], remoteDay?.stops || [], baseDay.stops || []),
       amapRoute: mergeScalarField(baseDay.amapRoute, localDay.amapRoute, remoteDay?.amapRoute) || null,
     });

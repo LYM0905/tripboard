@@ -243,6 +243,9 @@ assert(
     extractFunctionBody("mergeDays").includes("mergeTextScalarField(baseDay.route"),
   "Plan, stop, and day text conflict fields must use text-aware merge.",
 );
+const dayBlockMergeBody = extractFunctionBody("mergeDayBlocks");
+assert(dayBlockMergeBody.includes("baseBlocks") && dayBlockMergeBody.includes("mergeTextScalarField(baseBlock.text"), "Day block text conflicts must use base-aware text merge.");
+assert(dayBlockMergeBody.includes('textYjs: mergedText === block.text ? block.textYjs : ""'), "Merged day block text must discard stale textYjs when text changed.");
 for (const field of ["name", "destination", "origin", "startDate", "endDate", "dateRange"]) {
   assert(source.includes(`syncCollabPlanTextFieldToDoc("${field}"`), `Plan ${field} input must write to plan-level Y.Text before cloud save.`);
 }
