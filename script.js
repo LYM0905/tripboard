@@ -2075,6 +2075,31 @@ function remoteTextEditorsForField(field, scope = "stop") {
   });
 }
 
+function confirmRemoteTextFieldEdit(fields = [], scope = "stop", action = "保存字段") {
+  const fieldIds = (Array.isArray(fields) ? fields : [fields]).map((field) => String(field || "")).filter(Boolean);
+  const uniqueFields = [...new Set(fieldIds)];
+  if (!uniqueFields.length) return true;
+  const lockKey = `field:${scope}:${uniqueFields.sort().join("|")}:${action}`;
+  if (confirmedRemoteRecordEditUntil[lockKey] && confirmedRemoteRecordEditUntil[lockKey] > Date.now()) return true;
+  const editors = uniqueFields.flatMap((field) => remoteTextEditorsForField(field, scope));
+  const names = [...new Set(editors.map((member) => member.name || "协作者"))];
+  if (!names.length) return true;
+  const labels = uniqueFields
+    .map((field) => COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD.get(field)?.label || field)
+    .slice(0, 4)
+    .join("、");
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  const ok = window.confirm(`${visible}${extra} 正在编辑${labels ? `「${labels}」` : "同一字段"}。继续${action}可能覆盖或打断对方正在修改的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteRecordEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的字段`;
+  dom.collabStatus.textContent = `${visible}${extra} 仍在编辑${labels ? `「${labels}」` : "同一字段"}，稍后再操作更稳妥。`;
+  return false;
+}
+
 function currentFocusedBlockContext() {
   const active = document.activeElement;
   const focusedBlockElement = active && dom.dayBlockList?.contains(active) ? active.closest?.("[data-day-block]") : null;
@@ -12558,6 +12583,10 @@ dom.dayForm.addEventListener("submit", async (event) => {
   const dayId = currentDay()?.id || "";
   const { draft: dayDraft, patch: dayPatch } = dayEditorDraftChange();
   if (!confirmRemoteDayEdit(dayId, "保存当天设置")) return;
+  const changedDayTextFields = Object.keys(dayPatch)
+    .filter((field) => field !== "date")
+    .map((field) => `day:${field}`);
+  if (!confirmRemoteTextFieldEdit(changedDayTextFields, "day", "保存当天设置")) return;
   const changed = mutate("保存当天设置", () => {
     updatedDay = applyDayEditorDraftToState(dayDraft);
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(dayId, { action: "settings" }) });
@@ -12736,6 +12765,29 @@ dom.stopForm.addEventListener("submit", async (event) => {
   let savedStopId = currentStop()?.id || "";
   const initialStopId = savedStopId;
   const label = `保存「${dom.fieldTitle.value || "地点"}」`;
+  const stopBeforeSave = currentStop();
+  const stopTextValuesBeforeSave = stopBeforeSave && collabTextStopId === stopBeforeSave.id && collabTextDoc
+    ? COLLAB_TEXT_FIELDS.reduce((values, { field }) => {
+      values[field] = collabTextFields[field] ? collabTextFields[field].toString() : stopBeforeSave[field] || "";
+      return values;
+    }, {})
+    : null;
+  const stopStructValuesBeforeSave = stopBeforeSave && collabTextStopId === stopBeforeSave.id && collabStructMap ? readStructFromDoc() : null;
+  const changedStopFields = stopBeforeSave ? [
+    ...COLLAB_TEXT_FIELDS
+      .filter(({ field, domKey }) => !sameSerialized(stopBeforeSave[field], stopTextValuesBeforeSave?.[field] ?? (dom[domKey]?.value.trim() || "")))
+      .map(({ field }) => field),
+    ...COLLAB_STRUCT_PRESENCE_FIELDS
+      .filter(({ structField, domKey }) => {
+        if (!domKey) return false;
+        const currentValue = stopStructValuesBeforeSave && Object.prototype.hasOwnProperty.call(stopStructValuesBeforeSave, structField)
+          ? stopStructValuesBeforeSave[structField]
+          : structField === "tags" ? normalizeTags(dom[domKey].value) : dom[domKey].value.trim();
+        return !sameSerialized(stopBeforeSave[structField], currentValue);
+      })
+      .map(({ field }) => field),
+  ] : [];
+  if (!confirmRemoteTextFieldEdit(changedStopFields, "stop", "保存地点详情")) return;
   if (!mutate(label, () => {
     const stop = currentStop();
     const collabValue = (field, domKey) => (collabTextStopId === stop.id && collabTextFields[field] ? collabTextFields[field].toString() : dom[domKey].value.trim());

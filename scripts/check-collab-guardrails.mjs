@@ -96,6 +96,7 @@ assert(source.includes("function confirmRemoteStopEdit"), "Stop structure edits 
 assert(source.includes("function confirmRemoteDayBlockEdit"), "Day block structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteDayEdit"), "Day-level structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemotePlanReplace"), "Full plan replacements must have a remote active editor confirmation helper.");
+assert(source.includes("function confirmRemoteTextFieldEdit"), "Field-level saves must have a remote same-field editor confirmation helper.");
 assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
 assert(source.includes("let confirmedRemoteRecordEditUntil"), "Record-level remote edit confirmations must be throttled.");
 
@@ -140,6 +141,8 @@ assert(functionBody("createRecommendedPlan").includes('confirmRemotePlanReplace(
 assert(functionBody("createBlankTemplate").includes('confirmRemotePlanReplace("生成空白模板")'), "Blank template generation must confirm when another member is actively editing the plan.");
 assert(functionBody("importPlanJsonFile").includes('confirmRemotePlanReplace("导入 JSON")'), "JSON import must confirm when another member is actively editing the plan.");
 assert(source.includes('confirmRemotePlanReplace("重置计划")'), "Resetting the plan must confirm when another member is actively editing the plan.");
+assert(source.includes('confirmRemoteTextFieldEdit(changedDayTextFields, "day", "保存当天设置")'), "Saving day text fields must confirm when another member is editing the same changed day field.");
+assert(source.includes('confirmRemoteTextFieldEdit(changedStopFields, "stop", "保存地点详情")'), "Saving stop detail fields must confirm when another member is editing the same changed stop field.");
 assert(functionBody("applyDayBlockTypeChange").includes("confirmRemoteDayBlockEdit(blockId, presence)"), "Day block type changes must confirm when another member is editing that block.");
 assert(functionBody("moveDayBlockByDirection").includes('confirmRemoteDayBlockEdit(blockId, action === "keyboard-move" ? "键盘排序" : "排序")'), "Day block moves must confirm when another member is editing that block.");
 assert(functionBody("setSelectedDayBlockType").includes('confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), "批量切换类型")'), "Bulk day block type changes must confirm when another member is editing selected blocks.");
