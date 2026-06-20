@@ -4099,6 +4099,85 @@ function normalizeComments(comments = []) {
   });
 }
 
+function moveBlockAnchorToBlock(comment = {}, nextBlockId = "", nextDayId = "", startOffset = 0, endOffset = startOffset) {
+  const anchor = normalizeCommentAnchor(comment.anchor);
+  if (!anchor || anchor.scope !== "block") return comment;
+  const nextStart = Math.max(0, Number(anchor.start || 0) + Number(startOffset || 0));
+  const nextEnd = Math.max(nextStart, Number(anchor.end || anchor.start || 0) + Number(endOffset || startOffset || 0));
+  return {
+    ...comment,
+    anchor: normalizeCommentAnchor({
+      ...anchor,
+      field: `block:${nextBlockId}`,
+      dayId: nextDayId || anchor.dayId || "",
+      blockId: nextBlockId,
+      start: nextStart,
+      end: nextEnd,
+    }),
+  };
+}
+
+function refreshBlockCommentExcerpt(comment = {}, text = "") {
+  const anchor = normalizeCommentAnchor(comment.anchor);
+  if (!anchor || anchor.scope !== "block") return comment;
+  return {
+    ...comment,
+    anchor: normalizeCommentAnchor({
+      ...anchor,
+      excerpt: selectionExcerptFromText(text, anchor),
+    }),
+  };
+}
+
+function splitDayBlockCommentsForKeyboard(block = {}, newBlockId = "", splitStart = 0, splitEnd = splitStart, dayId = currentDay()?.id || "") {
+  const oldBlockId = block.id || "";
+  const startIndex = Math.max(0, Number(splitStart || 0));
+  const endIndex = Math.max(startIndex, Number(splitEnd || startIndex));
+  const previousText = String(block.text || "").slice(0, startIndex);
+  const nextText = String(block.text || "").slice(endIndex);
+  const previousComments = [];
+  const nextComments = [];
+  normalizeComments(block.comments || []).forEach((comment) => {
+    const anchor = normalizeCommentAnchor(comment.anchor);
+    if (!anchor || anchor.scope !== "block" || anchor.blockId !== oldBlockId) {
+      previousComments.push(comment);
+      return;
+    }
+    const start = Number(anchor.start || 0);
+    const end = Number(anchor.end || start);
+    if (start >= endIndex) {
+      nextComments.push(moveBlockAnchorToBlock(comment, newBlockId, dayId, -endIndex, -endIndex));
+      return;
+    }
+    if (end <= startIndex) {
+      previousComments.push(comment);
+      return;
+    }
+    if (start < startIndex) previousComments.push({ ...comment, anchor: normalizeCommentAnchor({ ...anchor, end: startIndex }) });
+    if (end > endIndex) {
+      const nextComment = moveBlockAnchorToBlock(comment, newBlockId, dayId, -endIndex, -endIndex);
+      nextComments.push({ ...nextComment, anchor: normalizeCommentAnchor({ ...nextComment.anchor, start: 0 }) });
+    }
+  });
+  return {
+    previousComments: normalizeComments(previousComments.map((comment) => refreshBlockCommentExcerpt(comment, previousText))),
+    nextComments: normalizeComments(nextComments.map((comment) => refreshBlockCommentExcerpt(comment, nextText))),
+  };
+}
+
+function mergeDayBlockCommentsForKeyboard(previousBlock = {}, currentBlock = {}, mergedText = "", dayId = currentDay()?.id || "") {
+  const previousText = String(previousBlock.text || "");
+  const currentText = String(currentBlock.text || "");
+  const merged = String(mergedText || "");
+  const insertionOffset = merged.indexOf(currentText, previousText.length);
+  const offset = insertionOffset >= 0 ? insertionOffset : previousText.length;
+  const previousComments = normalizeComments(previousBlock.comments || []);
+  const currentComments = normalizeComments(currentBlock.comments || []).map((comment) => (
+    moveBlockAnchorToBlock(comment, previousBlock.id || "", dayId, offset, offset)
+  ));
+  return mergeComments(previousComments, currentComments).map((comment) => refreshBlockCommentExcerpt(comment, merged));
+}
+
 function readCommentsFromDoc() {
   return normalizeComments(collabCommentsArray ? collabCommentsArray.toArray() : []);
 }
@@ -15251,11 +15330,14 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     const beforeText = input.value.slice(0, cursorStart);
     const afterText = input.value.slice(cursorEnd);
     const hasAfterText = Boolean(afterText.trim());
+    const nextBlockId = uid();
+    const splitComments = splitDayBlockCommentsForKeyboard(block, nextBlockId, cursorStart, cursorEnd, day.id);
     const newBlock = normalizeDayBlock({
-      id: uid(),
+      id: nextBlockId,
       type: block.type || "note",
       level: block.level || 0,
       text: afterText,
+      comments: splitComments.nextComments,
       createdBy: getCollabName(),
       createdAt: new Date().toISOString(),
     });
@@ -15263,10 +15345,11 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     activeBlockPresenceId = newBlock.id;
     noteRemoteBlockEditors(blockId, hasAfterText ? "拆分" : "新增下方块");
     const insertIndex = blockIndex + 1;
-    const splitPatch = { text: beforeText, textYjs: "" };
+    const splitPatch = { text: beforeText, textYjs: "", comments: splitComments.previousComments };
     let textUpdateResult = true;
-    if (beforeText !== block.text) {
-      textUpdateResult = await updateDayBlockTextInDoc(day.id, blockId, beforeText, "local-day-block-keyboard-split-text");
+    const splitPatchChanged = beforeText !== block.text || !sameSerialized(normalizeComments(block.comments || []), splitComments.previousComments);
+    if (splitPatchChanged) {
+      textUpdateResult = await updateDayBlockInDoc(day.id, blockId, splitPatch, "local-day-block-keyboard-split-text");
     }
     const textUpdated = Boolean(textUpdateResult);
     const visibleSplitPatch = typeof textUpdateResult === "object" ? { ...splitPatch, ...textUpdateResult } : splitPatch;
@@ -15291,7 +15374,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
       )));
       currentDay().blocks = insertDayBlockList(splitBlocks, newBlock, insertIndex);
     }, { requireUnlocked: false, save: false, render: false })) return;
-    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-add-fallback", { patchBlockIds: [blockId, newBlock.id], insertBlockIds: [newBlock.id], patchFields: ["text", "textYjs"], preserveRemoteOrder: false });
+    await syncDayBlocksToDoc(day.id, "local-day-block-keyboard-add-fallback", { patchBlockIds: [blockId, newBlock.id], insertBlockIds: [newBlock.id], patchFields: ["text", "textYjs", "comments"], preserveRemoteOrder: false });
     if (!refreshDayBlockTextDom(currentDay(), [blockId])) renderDayBlocks(currentDay());
     if (!refreshDayBlockInsertDom(currentDay(), [newBlock.id], newBlock.id)) renderDayBlocks(currentDay());
     focusDayBlockInput(newBlock.id);
@@ -15333,7 +15416,7 @@ dom.dayBlockList?.addEventListener("keydown", async (event) => {
     noteRemoteBlockEditors(blockId, "合并");
     noteRemoteBlockEditors(previousBlock.id, "合并");
     const mergedText = joinDayBlockTexts(previousBlock.text || "", input.value);
-    const mergedComments = normalizeComments([...(previousBlock.comments || []), ...(block.comments || [])]);
+    const mergedComments = mergeDayBlockCommentsForKeyboard(previousBlock, block, mergedText, day.id);
     const previousPatch = { text: mergedText, textYjs: "", comments: mergedComments, level: previousBlock.level || 0 };
     const previousUpdated = await updateDayBlockInDoc(day.id, previousBlock.id, previousPatch, "local-day-block-keyboard-merge-previous");
     const deleted = previousUpdated ? await deleteDayBlockFromDoc(day.id, blockId, "local-day-block-keyboard-merge-delete") : false;

@@ -361,10 +361,17 @@ assert(
 );
 assert(source.includes("function dayBlockActivitySnippet"), "Day block activity labels must trim only display snippets, not collaborative text.");
 assert(source.includes("function joinDayBlockTexts"), "Day block keyboard merge must preserve source spacing where possible.");
+assert(source.includes("function splitDayBlockCommentsForKeyboard"), "Day block keyboard split must move block comment anchors into the newly split block.");
+assert(source.includes("function mergeDayBlockCommentsForKeyboard"), "Day block keyboard merge must move current block comment anchors into the previous block.");
+assert(source.includes("function refreshBlockCommentExcerpt"), "Moved block comment anchors must refresh excerpts from their new block text.");
 assert(source.includes("const text = input.value;\n  if (!day || !blockId) return;\n  await syncDayBlockInputText(day, blockId, text, input);"), "Day block input sync must preserve raw textarea text instead of trimming collaborative content.");
 assert(source.includes("const hasAfterText = Boolean(afterText.trim());"), "Day block keyboard split must use trim only for empty-state decisions.");
 assert(source.includes("text: afterText,"), "Day block keyboard split must preserve raw trailing text in the new block.");
 assert(source.includes("const mergedText = joinDayBlockTexts(previousBlock.text || \"\", input.value);"), "Day block keyboard merge must preserve raw current block text.");
+assert(source.includes("const splitComments = splitDayBlockCommentsForKeyboard(block, nextBlockId, cursorStart, cursorEnd, day.id);"), "Day block keyboard split must use the selection range when moving block comment anchors.");
+assert(source.includes("comments: splitComments.nextComments"), "Day block keyboard split must attach moved comments to the new block.");
+assert(source.includes("comments: splitComments.previousComments"), "Day block keyboard split must keep only pre-split comments on the original block.");
+assert(source.includes("const mergedComments = mergeDayBlockCommentsForKeyboard(previousBlock, block, mergedText, day.id);"), "Day block keyboard merge must offset current block comments into the merged previous block.");
 const dayBlockTextDocBody = extractFunctionBody("updateDayBlockTextInDoc");
 assert(dayBlockTextDocBody.includes('const nextText = String(text || "");'), "Day block Y.Text writes must preserve raw text.");
 assert(dayBlockTextDocBody.includes('String(options.baseText || "")'), "Day block Y.Text baseline must preserve raw text.");
