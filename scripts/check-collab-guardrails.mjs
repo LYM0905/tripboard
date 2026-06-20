@@ -524,6 +524,12 @@ assert(bootBody.includes('localStorage.setItem(STORAGE_KEY, JSON.stringify(state
 const mutateBody = extractFunctionBody("mutate");
 assert(mutateBody.includes("options.allowSharedSave !== true"), "mutate must block generic saveState in shared mode unless explicitly allowed.");
 assert(mutateBody.includes("Blocked generic mutate save in shared mode"), "Blocked shared mutate saves must leave a visible debug signal.");
+for (const call of findCalls("mutate")) {
+  assert(
+    call.text.includes("save: false") || call.text.includes("allowSharedSave: true"),
+    `mutate call at line ${call.line} must declare save: false or allowSharedSave: true.`,
+  );
+}
 
 if (failures.length) {
   console.error("Collaboration guardrail check failed:");
