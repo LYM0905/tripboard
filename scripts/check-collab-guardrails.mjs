@@ -245,6 +245,14 @@ const stopTextSyncBody = extractFunctionBody("syncCollabTextFieldToDoc");
 const dayTextSyncBody = extractFunctionBody("syncCollabDayTextFieldToDoc");
 assert(stopTextSyncBody.includes("applyTextDiffFromBase"), "Stop text input must patch Y.Text from a local baseline instead of replacing whole field text.");
 assert(dayTextSyncBody.includes("applyTextDiffFromBase"), "Day text input must patch Y.Text from a local baseline instead of replacing whole field text.");
+const dayEditorDraftBody = extractFunctionBody("dayEditorDraftValues");
+assert(dayEditorDraftBody.includes("return value.trim() ? value : fallback;"), "Day text fallback drafts must preserve raw input text and only trim for empty-state checks.");
+assert(!dayEditorDraftBody.includes("dom[domKey].value.trim() || fallback"), "Day text fallback drafts must not trim collaborative text content.");
+const stopFormHandlerStart = source.indexOf('dom.stopForm.addEventListener("submit"');
+const stopFormHandlerEnd = source.indexOf("COLLAB_TEXT_FIELDS.forEach", stopFormHandlerStart);
+const stopFormHandlerBody = stopFormHandlerStart >= 0 && stopFormHandlerEnd > stopFormHandlerStart ? source.slice(stopFormHandlerStart, stopFormHandlerEnd) : "";
+assert(stopFormHandlerBody.includes('String(dom[domKey].value || "")'), "Stop detail fallback save must preserve raw collaborative text field content.");
+assert(!stopFormHandlerBody.includes("dom[domKey].value.trim()"), "Stop detail fallback save must not trim collaborative text field content.");
 for (const functionName of [
   "syncGuideStateFromPlan",
   "renderGuideResult",

@@ -12315,7 +12315,8 @@ function dayEditorDraftValues(day = currentDay()) {
   const collabValues = collabDayTextDayId === day?.id && collabDayTextDoc ? dayTextValuesFromDoc() : null;
   const textValue = (field, domKey, fallback = "") => {
     if (collabValues && Object.prototype.hasOwnProperty.call(collabValues, field)) return collabValues[field];
-    return dom[domKey].value.trim() || fallback;
+    const value = String(dom[domKey].value || "");
+    return value.trim() ? value : fallback;
   };
   return {
     date: dom.fieldDayDate.value || day.date || "",
@@ -13191,7 +13192,7 @@ dom.stopForm.addEventListener("submit", async (event) => {
   const label = `保存「${dom.fieldTitle.value || "地点"}」`;
   if (!mutate(label, () => {
     const stop = currentStop();
-    const collabValue = (field, domKey) => (collabTextStopId === stop.id && collabTextFields[field] ? collabTextFields[field].toString() : dom[domKey].value.trim());
+    const collabValue = (field, domKey) => (collabTextStopId === stop.id && collabTextFields[field] ? collabTextFields[field].toString() : String(dom[domKey].value || ""));
     const structValues = collabTextStopId === stop.id && collabStructMap ? readStructFromDoc() : null;
     const structValue = (field, fallback) => structValues && Object.prototype.hasOwnProperty.call(structValues, field) ? structValues[field] : fallback();
     stop.title = collabValue("title", "fieldTitle") || "未命名地点";
