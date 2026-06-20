@@ -234,6 +234,15 @@ assert(source.includes("let planTextBaselines = {}"), "Plan text fields must tra
 assert(source.includes("refreshPlanTextBaselinesFromDoc()"), "Plan text baselines must be refreshed from the live Yjs document.");
 const planTextSyncBody = extractFunctionBody("syncCollabPlanTextFieldToDoc");
 assert(planTextSyncBody.includes("applyTextDiffFromBase"), "Plan text input must patch Y.Text from a local baseline instead of replacing whole field text.");
+assert(source.includes("function mergeTextFieldFromBase"), "Conflict merge must include a text-aware three-way merge helper.");
+const textMergeBody = extractFunctionBody("mergeTextFieldFromBase");
+assert(textMergeBody.includes("applyTextDiffFromBase"), "Text conflict merge must reuse anchored text patching instead of always keeping local text.");
+assert(
+  extractFunctionBody("mergePlans").includes("mergeTextScalarField(basePlan?.name") &&
+    extractFunctionBody("mergeStopFields").includes("mergeTextScalarField(baseStop?.[field]") &&
+    extractFunctionBody("mergeDays").includes("mergeTextScalarField(baseDay.route"),
+  "Plan, stop, and day text conflict fields must use text-aware merge.",
+);
 for (const field of ["name", "destination", "origin", "startDate", "endDate", "dateRange"]) {
   assert(source.includes(`syncCollabPlanTextFieldToDoc("${field}"`), `Plan ${field} input must write to plan-level Y.Text before cloud save.`);
 }

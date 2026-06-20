@@ -1580,14 +1580,58 @@ function mergeScalarField(baseValue, localValue, remoteValue) {
   return clone(localValue ?? remoteValue ?? baseValue);
 }
 
+function mergeTextFieldFromBase(baseValue = "", localValue = "", remoteValue = "") {
+  const baseText = String(baseValue || "");
+  const localText = String(localValue || "");
+  const remoteText = String(remoteValue || "");
+  const localChanged = localText !== baseText;
+  const remoteChanged = remoteText !== baseText;
+  if (localChanged && !remoteChanged) return localText;
+  if (!localChanged && remoteChanged) return remoteText;
+  if (!localChanged && !remoteChanged) return localText || remoteText || baseText;
+  if (localText === remoteText) return localText;
+  const localDiff = textDiffParts(baseText, localText);
+  if (!localDiff.changed) return remoteText;
+  const remoteDiff = textDiffParts(baseText, remoteText);
+  if (!remoteDiff.changed) return localText;
+  const remoteYText = {
+    value: remoteText,
+    get length() {
+      return this.value.length;
+    },
+    toString() {
+      return this.value;
+    },
+    delete(index, length) {
+      this.value = `${this.value.slice(0, index)}${this.value.slice(index + length)}`;
+    },
+    insert(index, text) {
+      this.value = `${this.value.slice(0, index)}${text}${this.value.slice(index)}`;
+    },
+  };
+  const applied = applyTextDiffFromBase(remoteYText, baseText, localText);
+  const merged = remoteYText.toString();
+  if (!applied || merged === localText || merged === remoteText) return localText;
+  const hasLocalInsert = !localDiff.insertText || merged.includes(localDiff.insertText);
+  const hasRemoteInsert = !remoteDiff.insertText || merged.includes(remoteDiff.insertText);
+  return hasLocalInsert && hasRemoteInsert ? merged : localText;
+}
+
+function mergeTextScalarField(baseValue, localValue, remoteValue) {
+  if (typeof baseValue === "string" || typeof localValue === "string" || typeof remoteValue === "string") {
+    return mergeTextFieldFromBase(baseValue, localValue, remoteValue);
+  }
+  return mergeScalarField(baseValue, localValue, remoteValue);
+}
+
 function mergeStopFields(localStop = {}, remoteStop = {}, baseStop = {}) {
   const merged = { ...clone(remoteStop || {}), ...clone(localStop || {}) };
+  ["title", "address", "note", "amapKeyword"].forEach((field) => {
+    merged[field] = mergeTextScalarField(baseStop?.[field], localStop?.[field], remoteStop?.[field]);
+  });
   [
     "time",
-    "title",
     "type",
-    "address",
-    "note",
     "noteYjs",
     "textYjs",
     "budget",
@@ -1601,7 +1645,6 @@ function mergeStopFields(localStop = {}, remoteStop = {}, baseStop = {}) {
     "y",
     "lng",
     "lat",
-    "amapKeyword",
     "image",
   ].forEach((field) => {
     merged[field] = mergeScalarField(baseStop?.[field], localStop?.[field], remoteStop?.[field]);
@@ -1639,9 +1682,10 @@ function mergeDays(localDays = [], remoteDays = [], baseDays = []) {
     result.push({
       ...clone(remoteDay || {}),
       ...clone(localDay),
-      route: mergeScalarField(baseDay.route, localDay.route, remoteDay?.route),
-      weather: mergeScalarField(baseDay.weather, localDay.weather, remoteDay?.weather),
-      transport: mergeScalarField(baseDay.transport, localDay.transport, remoteDay?.transport),
+      title: mergeTextScalarField(baseDay.title, localDay.title, remoteDay?.title),
+      route: mergeTextScalarField(baseDay.route, localDay.route, remoteDay?.route),
+      weather: mergeTextScalarField(baseDay.weather, localDay.weather, remoteDay?.weather),
+      transport: mergeTextScalarField(baseDay.transport, localDay.transport, remoteDay?.transport),
       comments: mergeComments(localDay.comments || [], remoteDay?.comments || []),
       blocks: mergeDayBlocks(localDay.blocks || [], remoteDay?.blocks || []),
       stops: mergeStops(localDay.stops || [], remoteDay?.stops || [], baseDay.stops || []),
@@ -1660,9 +1704,9 @@ function mergePlans(localPlan, remotePlan, basePlan = lastSyncedState) {
   const merged = {
     ...clone(remotePlan || {}),
     ...clone(localPlan || {}),
-    name: mergeScalarField(basePlan?.name, localPlan?.name, remotePlan?.name),
-    destination: mergeScalarField(basePlan?.destination, localPlan?.destination, remotePlan?.destination),
-    origin: mergeScalarField(basePlan?.origin, localPlan?.origin, remotePlan?.origin),
+    name: mergeTextScalarField(basePlan?.name, localPlan?.name, remotePlan?.name),
+    destination: mergeTextScalarField(basePlan?.destination, localPlan?.destination, remotePlan?.destination),
+    origin: mergeTextScalarField(basePlan?.origin, localPlan?.origin, remotePlan?.origin),
     dateRange: mergeScalarField(basePlan?.dateRange, localPlan?.dateRange, remotePlan?.dateRange),
     startDate: mergeScalarField(basePlan?.startDate, localPlan?.startDate, remotePlan?.startDate),
     endDate: mergeScalarField(basePlan?.endDate, localPlan?.endDate, remotePlan?.endDate),
