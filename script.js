@@ -452,9 +452,20 @@ function conflictDiffSummary(conflict = {}) {
 
 function versionPreviewSummary(versionPlan = {}, currentPlan = state) {
   const changes = collectPlanChangeMap(currentPlan, versionPlan);
+  const currentChanges = collectPlanChangeMap(versionPlan, currentPlan);
+  const details = [...changes.entries()]
+    .filter(([, entry]) => entry.value !== undefined)
+    .map(([key, entry]) => ({
+      label: entry.label,
+      current: diffValuePreview(currentChanges.get(key)?.value),
+      restore: diffValuePreview(entry.value),
+    }))
+    .slice(0, 5);
   return {
     items: [...changes.values()].map((entry) => entry.label).slice(0, 8),
+    details,
     extra: Math.max(0, changes.size - 8),
+    detailExtra: Math.max(0, changes.size - details.length),
   };
 }
 
@@ -8958,6 +8969,23 @@ function renderVersionPreview() {
       ${summary.items.length ? summary.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("") : "<li>与当前版本一致</li>"}
       ${summary.extra ? `<li>还有 ${summary.extra} 项变化</li>` : ""}
     </ul>
+    ${
+      summary.details.length
+        ? `<div class="version-restore-detail">
+            <strong>字段级影响</strong>
+            <ul>
+              ${summary.details.map((item) => `
+                <li>
+                  <span>${escapeHtml(item.label)}</span>
+                  <small>当前：${escapeHtml(item.current)}</small>
+                  <small>恢复后：${escapeHtml(item.restore)}</small>
+                </li>
+              `).join("")}
+              ${summary.detailExtra ? `<li><span>还有 ${summary.detailExtra} 项字段变化</span></li>` : ""}
+            </ul>
+          </div>`
+        : ""
+    }
     <div class="version-impact">
       <strong>${impact.members.length ? "将影响当前在线协作者" : "当前没有其他成员在线编辑"}</strong>
       <ul>

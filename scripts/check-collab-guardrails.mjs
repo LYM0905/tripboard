@@ -130,6 +130,8 @@ assert(source.includes('confirmRemoteStopEdit(movingStopId, "下移地点")'), "
 assert(source.includes("function diffValuePreview"), "Conflict panel must be able to preview local and remote field values.");
 assert(functionBody("conflictDiffSummary").includes("overlapDetails"), "Conflict diff summary must include field-level overlap details.");
 assert(functionBody("showConflictPanel").includes("renderOverlapDetails"), "Conflict panel must render field-level local/remote overlap details.");
+assert(functionBody("versionPreviewSummary").includes("details"), "Version restore preview must include field-level impact details.");
+assert(functionBody("renderVersionPreview").includes("version-restore-detail"), "Version restore preview must render current/restored field value details.");
 
 if (failures.length) {
   console.error("Collaboration delivery guardrail check failed:");
