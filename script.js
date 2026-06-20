@@ -1634,6 +1634,27 @@ function mergeTextScalarField(baseValue, localValue, remoteValue) {
   return mergeScalarField(baseValue, localValue, remoteValue);
 }
 
+function textAnchorMergeField(field = {}) {
+  return field.field || field.docField || "";
+}
+
+function textAnchorValueField(field = {}) {
+  return field.docField || field.structField || field.field || "";
+}
+
+function mergeAnchoredCommentsForTextFields(localComments = [], remoteComments = [], fields = [], localValues = {}, remoteValues = {}, mergedValues = {}) {
+  const anchors = (fields || [])
+    .map((field) => ({ anchorField: textAnchorMergeField(field), valueField: textAnchorValueField(field) }))
+    .filter(({ anchorField, valueField }) => anchorField && valueField);
+  const localMoved = anchors.reduce((comments, { anchorField, valueField }) => (
+    transformCommentAnchorsForField(comments, anchorField, localValues?.[valueField], mergedValues?.[valueField])
+  ), normalizeComments(localComments || []));
+  const remoteMoved = anchors.reduce((comments, { anchorField, valueField }) => (
+    transformCommentAnchorsForField(comments, anchorField, remoteValues?.[valueField], mergedValues?.[valueField])
+  ), normalizeComments(remoteComments || []));
+  return mergeComments(localMoved, remoteMoved);
+}
+
 function mergeStopFields(localStop = {}, remoteStop = {}, baseStop = {}) {
   const merged = { ...clone(remoteStop || {}), ...clone(localStop || {}) };
   ["title", "address", "note", "amapKeyword"].forEach((field) => {
@@ -1659,7 +1680,14 @@ function mergeStopFields(localStop = {}, remoteStop = {}, baseStop = {}) {
   ].forEach((field) => {
     merged[field] = mergeScalarField(baseStop?.[field], localStop?.[field], remoteStop?.[field]);
   });
-  merged.comments = mergeComments(localStop.comments || [], remoteStop.comments || []);
+  merged.comments = mergeAnchoredCommentsForTextFields(
+    localStop.comments || [],
+    remoteStop.comments || [],
+    COLLAB_STOP_COMMENT_ANCHOR_FIELDS,
+    localStop,
+    remoteStop,
+    merged,
+  );
   merged.tags = mergeUniqueList((localStop.tags || []).map((tag) => ({ id: tag, title: tag })), (remoteStop.tags || []).map((tag) => ({ id: tag, title: tag })), "tag").map((tag) => tag.title);
   return merged;
 }
@@ -1689,14 +1717,24 @@ function mergeDays(localDays = [], remoteDays = [], baseDays = []) {
     const remoteDay = remoteIndex >= 0 ? remoteDays[remoteIndex] : remoteDays[index];
     const baseDay = baseDays.find((day) => (localDay.id && day.id === localDay.id) || (localDay.date && day.date === localDay.date)) || baseDays[index] || {};
     if (remoteDay?.id) usedRemote.add(remoteDay.id);
-    result.push({
-      ...clone(remoteDay || {}),
-      ...clone(localDay),
+    const mergedDayTextValues = {
       title: mergeTextScalarField(baseDay.title, localDay.title, remoteDay?.title),
       route: mergeTextScalarField(baseDay.route, localDay.route, remoteDay?.route),
       weather: mergeTextScalarField(baseDay.weather, localDay.weather, remoteDay?.weather),
       transport: mergeTextScalarField(baseDay.transport, localDay.transport, remoteDay?.transport),
-      comments: mergeComments(localDay.comments || [], remoteDay?.comments || []),
+    };
+    result.push({
+      ...clone(remoteDay || {}),
+      ...clone(localDay),
+      ...mergedDayTextValues,
+      comments: mergeAnchoredCommentsForTextFields(
+        localDay.comments || [],
+        remoteDay?.comments || [],
+        COLLAB_DAY_COMMENT_ANCHOR_FIELDS,
+        localDay,
+        remoteDay || {},
+        mergedDayTextValues,
+      ),
       blocks: mergeDayBlocks(localDay.blocks || [], remoteDay?.blocks || [], baseDay.blocks || []),
       stops: mergeStops(localDay.stops || [], remoteDay?.stops || [], baseDay.stops || []),
       amapRoute: mergeScalarField(baseDay.amapRoute, localDay.amapRoute, remoteDay?.amapRoute) || null,

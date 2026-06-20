@@ -243,6 +243,11 @@ assert(
     extractFunctionBody("mergeDays").includes("mergeTextScalarField(baseDay.route"),
   "Plan, stop, and day text conflict fields must use text-aware merge.",
 );
+const anchoredCommentMergeBody = extractFunctionBody("mergeAnchoredCommentsForTextFields");
+assert(anchoredCommentMergeBody.includes("textAnchorMergeField") && anchoredCommentMergeBody.includes("textAnchorValueField"), "Text-field comment conflict merge must map anchor fields to their stored value fields.");
+assert(anchoredCommentMergeBody.includes("localMoved") && anchoredCommentMergeBody.includes("remoteMoved"), "Text-field comment conflict merge must move local and remote comments from their own text baselines.");
+assert(extractFunctionBody("mergeStopFields").includes("mergeAnchoredCommentsForTextFields"), "Stop conflict merge must move anchored comments after text-field merges.");
+assert(extractFunctionBody("mergeDays").includes("mergeAnchoredCommentsForTextFields"), "Day conflict merge must move anchored comments after text-field merges.");
 const dayBlockMergeBody = extractFunctionBody("mergeDayBlocks");
 assert(dayBlockMergeBody.includes("baseBlocks") && dayBlockMergeBody.includes("mergeTextScalarField(baseBlock.text"), "Day block text conflicts must use base-aware text merge.");
 assert(dayBlockMergeBody.includes('textYjs: mergedText === block.text ? block.textYjs : ""'), "Merged day block text must discard stale textYjs when text changed.");
