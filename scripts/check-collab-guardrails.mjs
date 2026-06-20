@@ -92,6 +92,7 @@ assert(editorBody.includes("dom.deleteDayBtn.disabled = !editable"), "Day struct
 
 assert(source.includes("function confirmRemoteCandidateEdit"), "Candidate record edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteTransportQuoteEdit"), "Transport quote record edits must have a remote active editor confirmation helper.");
+assert(source.includes("function confirmRemoteStopEdit"), "Stop structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
 assert(source.includes("let confirmedRemoteRecordEditUntil"), "Record-level remote edit confirmations must be throttled.");
 
@@ -119,6 +120,13 @@ assert(source.includes('confirmRemoteTransportQuoteEdit(editingTransportQuoteId,
 assert(functionBody("applyBudgetEstimateFromToken").includes('confirmRemoteCandidateEdit(candidate.id, "采用备选门票估算")'), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");
 assert(functionBody("adoptAllBudgetEstimates").includes('confirmRemoteCandidateEdit(affectedCandidateIds, "批量采用门票估算")'), "Batch budget estimate adoption must confirm when another member is editing affected candidates.");
 assert(functionBody("enrichPlacesFromAmap").includes('confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")'), "Batch Amap place enrichment must confirm when another member is editing affected candidates.");
+assert(functionBody("adoptAllBudgetEstimates").includes('confirmRemoteStopEdit(affectedStopIds, "批量采用门票估算")'), "Batch budget estimate adoption must confirm when another member is editing affected stops.");
+assert(functionBody("enrichPlacesFromAmap").includes('confirmRemoteStopEdit(affectedStopIds, "补全行程地点图片和坐标")'), "Batch Amap place enrichment must confirm when another member is editing affected stops.");
+assert(functionBody("optimizeCurrentDayRoute").includes('confirmRemoteStopEdit(day.stops.map((stop) => stop.id), "优化路径")'), "Route optimization must confirm when another member is editing affected stops.");
+assert(functionBody("planAmapRouteForCurrentDay").includes("confirmRemoteStopEdit(day.stops.map((stop) => stop.id)"), "Amap route planning must confirm when another member is editing affected stops.");
+assert(source.includes('confirmRemoteStopEdit(deletedStop.id, "删除地点")'), "Deleting a stop must confirm when another member is editing that stop.");
+assert(source.includes('confirmRemoteStopEdit(movingStopId, "上移地点")'), "Moving a stop up must confirm when another member is editing that stop.");
+assert(source.includes('confirmRemoteStopEdit(movingStopId, "下移地点")'), "Moving a stop down must confirm when another member is editing that stop.");
 
 if (failures.length) {
   console.error("Collaboration delivery guardrail check failed:");

@@ -2111,6 +2111,14 @@ function remoteActiveEditorsForRecord(field = "", ids = []) {
   });
 }
 
+function remoteActiveEditorsForStops(stopIds = []) {
+  return remoteActiveEditorsForRecord("activeStopId", stopIds).filter((member) => (
+    member.textSelection ||
+    member.textEditing ||
+    member.lockMode === "editing"
+  ));
+}
+
 function confirmRemoteRecordEdit(kind, ids = [], action = "操作记录") {
   const recordIds = (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean);
   const uniqueIds = [...new Set(recordIds)];
@@ -2131,6 +2139,27 @@ function confirmRemoteRecordEdit(kind, ids = [], action = "操作记录") {
   }
   dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的${label}`;
   dom.collabStatus.textContent = `${visible}${extra} 仍在编辑相关${label}，稍后再操作更稳妥。`;
+  return false;
+}
+
+function confirmRemoteStopEdit(stopIds = [], action = "操作地点") {
+  const ids = (Array.isArray(stopIds) ? stopIds : [stopIds]).map((id) => String(id || "")).filter(Boolean);
+  const uniqueIds = [...new Set(ids)];
+  if (!uniqueIds.length) return true;
+  const lockKey = `stop:${uniqueIds.sort().join("|")}:${action}`;
+  if (confirmedRemoteRecordEditUntil[lockKey] && confirmedRemoteRecordEditUntil[lockKey] > Date.now()) return true;
+  const editors = remoteActiveEditorsForStops(uniqueIds);
+  const names = [...new Set(editors.map((member) => member.name || "协作者"))];
+  if (!names.length) return true;
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  const ok = window.confirm(`${visible}${extra} 正在编辑相关地点。继续${action}可能移动、覆盖或打断对方正在修改的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteRecordEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的地点`;
+  dom.collabStatus.textContent = `${visible}${extra} 仍在编辑相关地点，稍后再操作更稳妥。`;
   return false;
 }
 
@@ -11332,6 +11361,11 @@ async function adoptAllBudgetEstimates() {
     dom.saveState.textContent = "当前没有可采用的门票估算。";
     return;
   }
+  const affectedStopIds = entries
+    .filter((item) => item.refType === "stop")
+    .map((item) => item.itemId)
+    .filter(Boolean);
+  if (!confirmRemoteStopEdit(affectedStopIds, "批量采用门票估算")) return;
   const affectedCandidateIds = entries
     .filter((item) => item.refType === "candidate")
     .map((item) => item.itemId)
@@ -11449,6 +11483,11 @@ async function enrichPlacesFromAmap() {
     dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
     return;
   }
+  const affectedStopIds = candidates
+    .filter((item) => item.type === "stop")
+    .map((item) => item.stop?.id)
+    .filter(Boolean);
+  if (!confirmRemoteStopEdit(affectedStopIds, "补全行程地点图片和坐标")) return;
   const affectedCandidateIds = candidates
     .filter((item) => item.type === "candidate")
     .map((item) => item.stop?.id)
@@ -12784,6 +12823,7 @@ async function planAmapRouteForCurrentDay({ retry = false } = {}) {
     dom.optimizeHint.textContent = "至少需要 2 个地点才能用高德规划路线。";
     return;
   }
+  if (!confirmRemoteStopEdit(day.stops.map((stop) => stop.id), retry ? "重试高德路线规划" : "高德规划路线")) return;
   const mode = retry && lastAmapRouteRequest?.mode ? lastAmapRouteRequest.mode : dom.amapRouteMode.value;
   const strategy = retry && lastAmapRouteRequest?.strategy ? lastAmapRouteRequest.strategy : dom.amapRouteStrategy.value;
   lastAmapRouteRequest = { dayId: day.id, mode, strategy };
@@ -12855,6 +12895,7 @@ dom.deleteStopBtn.addEventListener("click", async () => {
   }
   const deletedStop = clone(currentStop());
   const label = `删除「${deletedStop.title}」`;
+  if (!confirmRemoteStopEdit(deletedStop.id, "删除地点")) return;
   if (!mutate(label, () => {
     day.stops.splice(activeStop, 1);
     activeStop = Math.max(0, activeStop - 1);
@@ -12871,6 +12912,7 @@ dom.moveUpBtn.addEventListener("click", async () => {
   let dayId = "";
   let nextStops = [];
   const movingStopId = currentStop()?.id || "";
+  if (!confirmRemoteStopEdit(movingStopId, "上移地点")) return;
   if (!mutate("上移地点", () => {
     const day = currentDay();
     const stops = day.stops;
@@ -12894,6 +12936,7 @@ dom.moveDownBtn.addEventListener("click", async () => {
   let dayId = "";
   let nextStops = [];
   const movingStopId = currentStop()?.id || "";
+  if (!confirmRemoteStopEdit(movingStopId, "下移地点")) return;
   if (!mutate("下移地点", () => {
     const day = currentDay();
     const dayStops = day.stops;
@@ -13109,6 +13152,7 @@ async function optimizeCurrentDayRoute() {
   }
 
   if (!requireEdit("优化路径")) return;
+  if (!confirmRemoteStopEdit(day.stops.map((stop) => stop.id), "优化路径")) return;
   saveVersionSnapshot("优化路径前版本");
   try {
     dom.optimizeHint.textContent = serviceConfig.aiEndpoint ? "正在请求 AI 路径代理..." : "未配置 AI 代理，使用本地距离排序。";
