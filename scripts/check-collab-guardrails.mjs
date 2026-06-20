@@ -221,9 +221,14 @@ assert(source.includes("function renderConflictPresenceImpact"), "Conflict panel
 assert(extractFunctionBody("showConflictPanel").includes("renderConflictPresenceImpact()"), "Conflict panel must include online collaborator impact in its diff summary.");
 assert(extractFunctionBody("refreshPresenceViews").includes("refreshConflictPresenceImpact()"), "Presence changes must refresh the conflict collaborator impact block.");
 assert(source.includes("function conflictValuePreview"), "Conflict overlap summaries must include compact local/remote value previews.");
+assert(source.includes("function conflictValueDetail"), "Conflict overlap summaries must include expandable local/remote value details.");
 assert(extractFunctionBody("conflictDiffSummary").includes("local: conflictValuePreview"), "Conflict overlap summaries must capture local value previews.");
 assert(extractFunctionBody("conflictDiffSummary").includes("remote: conflictValuePreview"), "Conflict overlap summaries must capture remote value previews.");
+assert(extractFunctionBody("conflictDiffSummary").includes("localDetail: conflictValueDetail"), "Conflict overlap summaries must capture local value details.");
+assert(extractFunctionBody("conflictDiffSummary").includes("remoteDetail: conflictValueDetail"), "Conflict overlap summaries must capture remote value details.");
 assert(extractFunctionBody("showConflictPanel").includes("renderOverlapGroup(diff.overlap"), "Conflict panel must render overlap entries with local/remote value previews.");
+assert(extractFunctionBody("showConflictPanel").includes("<details>"), "Conflict panel overlap entries must be expandable for detailed review.");
+assert(extractFunctionBody("showConflictPanel").includes("conflict-value-compare"), "Conflict panel overlap entries must show detailed local/remote comparisons.");
 
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");

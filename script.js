@@ -311,6 +311,14 @@ function conflictValuePreview(value) {
   return shortDiffLabel(value, "空");
 }
 
+function conflictValueDetail(value) {
+  if (value === undefined) return "结构变化";
+  if (value === null || value === "") return "空";
+  if (Array.isArray(value)) return value.length ? value.map((item, index) => `${index + 1}. ${conflictValuePreview(item)}`).join("\n") : "空列表";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
+}
+
 function collectListDiffChanges(changes, baseItems = [], nextItems = [], options = {}) {
   const {
     path = "list",
@@ -426,6 +434,8 @@ function conflictDiffSummary(conflict = {}) {
       label: localChanges.get(key)?.label || remoteChanges.get(key)?.label || key,
       local: conflictValuePreview(localChanges.get(key)?.value),
       remote: conflictValuePreview(remoteChanges.get(key)?.value),
+      localDetail: conflictValueDetail(localChanges.get(key)?.value),
+      remoteDetail: conflictValueDetail(remoteChanges.get(key)?.value),
     }));
   return {
     local: [...localChanges.values()].map((entry) => entry.label).slice(0, 6),
@@ -1836,8 +1846,16 @@ function showConflictPanel(conflict) {
         <ul>
           ${items.map((item) => `
             <li>
-              <span>${escapeHtml(item.label)}</span>
-              <small>我的：${escapeHtml(item.local)} / 云端：${escapeHtml(item.remote)}</small>
+              <details>
+                <summary>
+                  <span>${escapeHtml(item.label)}</span>
+                  <small>我的：${escapeHtml(item.local)} / 云端：${escapeHtml(item.remote)}</small>
+                </summary>
+                <div class="conflict-value-compare">
+                  <p><b>我的版本</b><span>${escapeHtml(item.localDetail)}</span></p>
+                  <p><b>云端版本</b><span>${escapeHtml(item.remoteDetail)}</span></p>
+                </div>
+              </details>
             </li>
           `).join("")}
           ${extra ? `<li>还有 ${extra} 项冲突</li>` : ""}
