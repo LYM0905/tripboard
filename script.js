@@ -7164,8 +7164,8 @@ async function updateDayBlockTextInDoc(dayId, blockId, text, origin = "local-day
   } catch {
     return false;
   }
-  const nextText = String(text || "").trim();
-  const localBaseText = Object.prototype.hasOwnProperty.call(options, "baseText") ? String(options.baseText || "").trim() : null;
+  const nextText = String(text || "");
+  const localBaseText = Object.prototype.hasOwnProperty.call(options, "baseText") ? String(options.baseText || "") : null;
   let changed = false;
   let nextState = "";
   let appliedText = nextText;
@@ -7262,7 +7262,7 @@ async function updateDayBlockInDoc(dayId, blockId, patch = {}, origin = "local-d
   const items = blockArray.toArray();
   const index = items.findIndex((block) => block?.id === blockId);
   if (index < 0) return false;
-  const nextText = patchHasText ? String(patch.text || "").trim() : "";
+  const nextText = patchHasText ? String(patch.text || "") : "";
   const nextTextState = patchHasText ? bytesToBase64(buildInitialDayBlockTextUpdate(Y, { ...items[index], ...patch, id: blockId, text: nextText }, dayId)) : "";
   const normalizedPatch = patchHasText ? { ...patch, text: nextText, textYjs: nextTextState } : patch;
   const next = normalizeDayBlock({

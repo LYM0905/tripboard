@@ -284,6 +284,13 @@ assert(source.includes("const text = input.value;\n  if (!day || !blockId) retur
 assert(source.includes("const hasAfterText = Boolean(afterText.trim());"), "Day block keyboard split must use trim only for empty-state decisions.");
 assert(source.includes("text: afterText,"), "Day block keyboard split must preserve raw trailing text in the new block.");
 assert(source.includes("const mergedText = joinDayBlockTexts(previousBlock.text || \"\", input.value);"), "Day block keyboard merge must preserve raw current block text.");
+const dayBlockTextDocBody = extractFunctionBody("updateDayBlockTextInDoc");
+assert(dayBlockTextDocBody.includes('const nextText = String(text || "");'), "Day block Y.Text writes must preserve raw text.");
+assert(dayBlockTextDocBody.includes('String(options.baseText || "")'), "Day block Y.Text baseline must preserve raw text.");
+assert(!dayBlockTextDocBody.includes("String(text || \"\").trim()"), "Day block Y.Text writes must not trim collaborative text.");
+const dayBlockPatchBody = extractFunctionBody("updateDayBlockInDoc");
+assert(dayBlockPatchBody.includes('const nextText = patchHasText ? String(patch.text || "") : "";'), "Day block text patch writes must preserve raw text.");
+assert(!dayBlockPatchBody.includes("String(patch.text || \"\").trim()"), "Day block text patch writes must not trim collaborative text.");
 
 const fullBlockSyncBody = extractFunctionBody("syncAllDayBlocksToDoc");
 assert(fullBlockSyncBody.includes("if (!replace) return false;"), "syncAllDayBlocksToDoc must refuse non-replace calls.");
