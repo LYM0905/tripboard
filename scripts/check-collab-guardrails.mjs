@@ -93,6 +93,7 @@ assert(editorBody.includes("dom.deleteDayBtn.disabled = !editable"), "Day struct
 assert(source.includes("function confirmRemoteCandidateEdit"), "Candidate record edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteTransportQuoteEdit"), "Transport quote record edits must have a remote active editor confirmation helper.");
 assert(source.includes("function confirmRemoteStopEdit"), "Stop structure edits must have a remote active editor confirmation helper.");
+assert(source.includes("function confirmRemoteDayBlockEdit"), "Day block structure edits must have a remote active editor confirmation helper.");
 assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
 assert(source.includes("let confirmedRemoteRecordEditUntil"), "Record-level remote edit confirmations must be throttled.");
 
@@ -127,6 +128,20 @@ assert(functionBody("planAmapRouteForCurrentDay").includes("confirmRemoteStopEdi
 assert(source.includes('confirmRemoteStopEdit(deletedStop.id, "删除地点")'), "Deleting a stop must confirm when another member is editing that stop.");
 assert(source.includes('confirmRemoteStopEdit(movingStopId, "上移地点")'), "Moving a stop up must confirm when another member is editing that stop.");
 assert(source.includes('confirmRemoteStopEdit(movingStopId, "下移地点")'), "Moving a stop down must confirm when another member is editing that stop.");
+assert(functionBody("applyDayBlockTypeChange").includes("confirmRemoteDayBlockEdit(blockId, presence)"), "Day block type changes must confirm when another member is editing that block.");
+assert(functionBody("moveDayBlockByDirection").includes('confirmRemoteDayBlockEdit(blockId, action === "keyboard-move" ? "键盘排序" : "排序")'), "Day block moves must confirm when another member is editing that block.");
+assert(functionBody("setSelectedDayBlockType").includes('confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), "批量切换类型")'), "Bulk day block type changes must confirm when another member is editing selected blocks.");
+assert(functionBody("setSelectedDayBlockDone").includes("confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), done ?"), "Bulk day block done/open changes must confirm when another member is editing selected blocks.");
+assert(functionBody("indentSelectedDayBlocks").includes("confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), delta > 0"), "Bulk day block indent changes must confirm when another member is editing selected blocks.");
+assert(functionBody("duplicateSelectedDayBlocks").includes('confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), "批量复制")'), "Bulk day block duplication must confirm when another member is editing selected blocks.");
+assert(functionBody("deleteSelectedDayBlocks").includes('confirmRemoteDayBlockEdit(selectedBlocks.map((block) => block.id), "批量删除")'), "Bulk day block deletion must confirm when another member is editing selected blocks.");
+assert(source.includes('confirmRemoteDayBlockEdit(sourceBlockId, "复制")'), "Single day block duplication must confirm when another member is editing the source block.");
+assert(source.includes('confirmRemoteDayBlockEdit(blockId, "删除")'), "Single day block deletion must confirm when another member is editing that block.");
+assert(source.includes('confirmRemoteDayBlockEdit([draggedId, targetBlockId], "拖拽排序")'), "Drag reordering day blocks must confirm when another member is editing affected blocks.");
+assert(source.includes('confirmRemoteDayBlockEdit(blockId, event.shiftKey ? "减少缩进" : "增加缩进")'), "Keyboard day block indent changes must confirm when another member is editing that block.");
+assert(source.includes('confirmRemoteDayBlockEdit(blockId, afterText ? "拆分" : "新增下方块")'), "Keyboard day block split/add must confirm when another member is editing that block.");
+assert(source.includes('confirmRemoteDayBlockEdit(blockId, "删除空白块")'), "Keyboard empty day block deletion must confirm when another member is editing that block.");
+assert(source.includes('confirmRemoteDayBlockEdit([blockId, previousBlock.id], "合并")'), "Keyboard day block merge must confirm when another member is editing affected blocks.");
 assert(source.includes("function diffValuePreview"), "Conflict panel must be able to preview local and remote field values.");
 assert(functionBody("conflictDiffSummary").includes("overlapDetails"), "Conflict diff summary must include field-level overlap details.");
 assert(functionBody("showConflictPanel").includes("renderOverlapDetails"), "Conflict panel must render field-level local/remote overlap details.");
