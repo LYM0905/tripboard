@@ -11965,6 +11965,7 @@ function setManualQuoteEditing(quote = null) {
   }
   if (dom.cancelQuoteEditBtn) dom.cancelQuoteEditBtn.hidden = !quote;
   refreshIcons();
+  schedulePresenceTrack(0);
 }
 
 function clearManualQuoteForm() {
@@ -12036,6 +12037,7 @@ function setCandidateEditing(candidate = null) {
   }
   if (dom.cancelCandidateEditBtn) dom.cancelCandidateEditBtn.hidden = !candidate;
   refreshIcons();
+  schedulePresenceTrack(0);
 }
 
 function hideAmapCandidates(target = "both") {

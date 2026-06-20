@@ -290,6 +290,8 @@ assert(extractFunctionBody("presencePayload").includes("activeTransportQuoteId")
 assert(extractFunctionBody("memberActivityLabel").includes("activeCandidateId"), "Member activity labels must show when someone is editing a candidate.");
 assert(extractFunctionBody("memberActivityLabel").includes("activeTransportQuoteId"), "Member activity labels must show when someone is editing a transport quote.");
 assert(extractFunctionBody("renderMembers").includes("recordEditing"), "Online member list must surface candidate/transport quote record editing state.");
+assert(extractFunctionBody("setCandidateEditing").includes("schedulePresenceTrack(0)"), "Starting or clearing candidate editing must immediately publish presence.");
+assert(extractFunctionBody("setManualQuoteEditing").includes("schedulePresenceTrack(0)"), "Starting or clearing transport quote editing must immediately publish presence.");
 assert(extractFunctionBody("toggleCandidateSelection").includes("confirmRemoteCandidateEdit(candidateId"), "Candidate selection must confirm when another member is editing that candidate.");
 assert(extractFunctionBody("toggleTransportQuoteSelection").includes("confirmRemoteTransportQuoteEdit(quoteId"), "Transport quote selection must confirm when another member is editing that quote.");
 assert(extractFunctionBody("applyBudgetEstimateFromToken").includes("confirmRemoteCandidateEdit(candidate.id"), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");
