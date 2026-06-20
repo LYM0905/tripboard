@@ -2938,17 +2938,17 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
     previousTextValues,
     nextValues,
   );
+  if (collabTextDoc && collabCommentsArray && !isApplyingCollabTextRemote) {
+    collabTextDoc.transact(() => {
+      replaceYArrayContents(collabCommentsArray, nextComments);
+    }, "local-comment-anchor-transform");
+  }
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabTextDoc)) : stop.textYjs || stop.noteYjs || "";
   const textChanged = COLLAB_TEXT_FIELDS.some(({ field }) => stop[field] !== nextValues[field]);
   const structChanged = COLLAB_STRUCT_FIELDS.some(({ field }) => !sameSerialized(stop[field], nextStructValues[field]));
   const commentsChanged = !sameSerialized(normalizeComments(stop.comments || []), nextComments);
   const changed = textChanged || structChanged || commentsChanged || stop.textYjs !== nextYjs;
   if (!changed) return;
-  if (collabTextDoc && collabCommentsArray && !isApplyingCollabTextRemote) {
-    collabTextDoc.transact(() => {
-      replaceYArrayContents(collabCommentsArray, nextComments);
-    }, "local-comment-anchor-transform");
-  }
   if (canEdit()) {
     COLLAB_TEXT_FIELDS.forEach(({ field }) => {
       stop[field] = nextValues[field];
@@ -2994,16 +2994,16 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
     previousTextValues,
     nextValues,
   );
-  const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabDayTextDoc)) : day.textYjs || day.dayTextYjs || "";
-  const textChanged = COLLAB_DAY_TEXT_FIELDS.some(({ docField }) => day[docField] !== nextValues[docField]);
-  const commentsChanged = !sameSerialized(normalizeComments(day.comments || []), nextComments);
-  const yjsChanged = day.textYjs !== nextYjs || day.dayTextYjs !== nextYjs;
-  if (!textChanged && !commentsChanged && !yjsChanged) return;
   if (collabDayTextDoc && collabDayCommentsArray && !isApplyingCollabDayTextRemote) {
     collabDayTextDoc.transact(() => {
       replaceYArrayContents(collabDayCommentsArray, nextComments);
     }, "local-day-comment-anchor-transform");
   }
+  const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabDayTextDoc)) : day.textYjs || day.dayTextYjs || "";
+  const textChanged = COLLAB_DAY_TEXT_FIELDS.some(({ docField }) => day[docField] !== nextValues[docField]);
+  const commentsChanged = !sameSerialized(normalizeComments(day.comments || []), nextComments);
+  const yjsChanged = day.textYjs !== nextYjs || day.dayTextYjs !== nextYjs;
+  if (!textChanged && !commentsChanged && !yjsChanged) return;
   COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
     day[docField] = nextValues[docField];
   });

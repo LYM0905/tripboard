@@ -269,6 +269,11 @@ assert(
   extractFunctionBody("persistCurrentTextFromDoc").includes("replaceYArrayContents(collabCommentsArray, nextComments)"),
   "Stop text persistence must write moved comment anchors back to the Yjs comments array.",
 );
+const stopPersistBody = extractFunctionBody("persistCurrentTextFromDoc");
+assert(
+  stopPersistBody.indexOf("replaceYArrayContents(collabCommentsArray, nextComments)") < stopPersistBody.indexOf("encodeStateAsUpdate(collabTextDoc)"),
+  "Stop text persistence must encode Yjs after moved comment anchors are written.",
+);
 assert(
   extractFunctionBody("persistCurrentDayTextFromDoc").includes("transformCommentAnchorsForTextValues"),
   "Day text persistence must move anchored comments when collaborative text changes.",
@@ -276,6 +281,11 @@ assert(
 assert(
   extractFunctionBody("persistCurrentDayTextFromDoc").includes("replaceYArrayContents(collabDayCommentsArray, nextComments)"),
   "Day text persistence must write moved comment anchors back to the Yjs day comments array.",
+);
+const dayPersistBody = extractFunctionBody("persistCurrentDayTextFromDoc");
+assert(
+  dayPersistBody.indexOf("replaceYArrayContents(collabDayCommentsArray, nextComments)") < dayPersistBody.indexOf("encodeStateAsUpdate(collabDayTextDoc)"),
+  "Day text persistence must encode Yjs after moved comment anchors are written.",
 );
 assert(
   extractFunctionBody("updateDayBlockTextInDoc").includes("transformCommentAnchorsForField"),
