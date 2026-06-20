@@ -375,6 +375,10 @@ assert(source.includes("function confirmDeleteCommentThread"), "Deleting comment
 assert(source.includes("confirmDeleteCommentThread(stop.comments || [], commentId"), "Stop comment deletes must confirm before removing a thread with replies.");
 assert(source.includes("confirmDeleteCommentThread(day.comments || [], commentId"), "Day comment deletes must confirm before removing a thread with replies.");
 assert(source.includes("confirmDeleteCommentThread(block.comments || [], commentId"), "Block comment deletes must confirm before removing a thread with replies.");
+assert(source.includes("function confirmDeleteCommentedStop"), "Deleting a stop with comment threads must require an explicit confirmation helper.");
+assert(source.includes("function confirmDeleteCommentedDay"), "Deleting a day with comment threads must require an explicit confirmation helper.");
+assert(source.includes("confirmDeleteCommentedStop(deletedStop"), "Stop deletes must confirm before removing a stop with comment threads.");
+assert(source.includes("confirmDeleteCommentedDay(deletedDay"), "Day deletes must confirm before removing day, stop, or block comment threads.");
 assert(source.includes("function confirmRemoteBlockEdit"), "High-risk day block structure edits must confirm when another member is actively editing the same block.");
 assert(extractFunctionBody("applyDayBlockTypeChange").includes("confirmRemoteBlockEdit(blockId"), "Day block type changes must confirm when another member is actively editing the block.");
 assert(extractFunctionBody("moveDayBlockByDirection").includes("confirmRemoteBlockEdit(blockId"), "Day block sorting must confirm when another member is actively editing the block.");
