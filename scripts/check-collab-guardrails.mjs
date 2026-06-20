@@ -255,13 +255,22 @@ assert(stopFormHandlerBody.includes('String(dom[domKey].value || "")'), "Stop de
 assert(!stopFormHandlerBody.includes("dom[domKey].value.trim()"), "Stop detail fallback save must not trim collaborative text field content.");
 assert(source.includes("function transformCommentAnchorForTextChange"), "Comment anchors must support text-diff position transforms.");
 assert(source.includes("function transformCommentAnchorsForTextValues"), "Comment anchors must update across collaborative text field changes.");
+assert(source.includes("function replaceYArrayContents"), "Transformed comment anchors must be writable back to Yjs comment arrays.");
 assert(
   extractFunctionBody("persistCurrentTextFromDoc").includes("transformCommentAnchorsForTextValues"),
   "Stop text persistence must move anchored comments when collaborative text changes.",
 );
 assert(
+  extractFunctionBody("persistCurrentTextFromDoc").includes("replaceYArrayContents(collabCommentsArray, nextComments)"),
+  "Stop text persistence must write moved comment anchors back to the Yjs comments array.",
+);
+assert(
   extractFunctionBody("persistCurrentDayTextFromDoc").includes("transformCommentAnchorsForTextValues"),
   "Day text persistence must move anchored comments when collaborative text changes.",
+);
+assert(
+  extractFunctionBody("persistCurrentDayTextFromDoc").includes("replaceYArrayContents(collabDayCommentsArray, nextComments)"),
+  "Day text persistence must write moved comment anchors back to the Yjs day comments array.",
 );
 assert(
   extractFunctionBody("updateDayBlockTextInDoc").includes("transformCommentAnchorsForField"),

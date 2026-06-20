@@ -2940,6 +2940,11 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
   const commentsChanged = !sameSerialized(normalizeComments(stop.comments || []), nextComments);
   const changed = textChanged || structChanged || commentsChanged || stop.textYjs !== nextYjs;
   if (!changed) return;
+  if (collabTextDoc && collabCommentsArray && !isApplyingCollabTextRemote) {
+    collabTextDoc.transact(() => {
+      replaceYArrayContents(collabCommentsArray, nextComments);
+    }, "local-comment-anchor-transform");
+  }
   if (canEdit()) {
     COLLAB_TEXT_FIELDS.forEach(({ field }) => {
       stop[field] = nextValues[field];
@@ -2990,6 +2995,11 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
   const commentsChanged = !sameSerialized(normalizeComments(day.comments || []), nextComments);
   const yjsChanged = day.textYjs !== nextYjs || day.dayTextYjs !== nextYjs;
   if (!textChanged && !commentsChanged && !yjsChanged) return;
+  if (collabDayTextDoc && collabDayCommentsArray && !isApplyingCollabDayTextRemote) {
+    collabDayTextDoc.transact(() => {
+      replaceYArrayContents(collabDayCommentsArray, nextComments);
+    }, "local-day-comment-anchor-transform");
+  }
   COLLAB_DAY_TEXT_FIELDS.forEach(({ docField }) => {
     day[docField] = nextValues[docField];
   });
@@ -3989,6 +3999,15 @@ function readCommentsFromDoc() {
 
 function readDayCommentsFromDoc() {
   return normalizeComments(collabDayCommentsArray ? collabDayCommentsArray.toArray() : []);
+}
+
+function replaceYArrayContents(yArray, values = []) {
+  if (!yArray || typeof yArray.toArray !== "function") return false;
+  const normalized = normalizeComments(values);
+  if (sameSerialized(normalizeComments(yArray.toArray()), normalized)) return false;
+  if (yArray.length > 0) yArray.delete(0, yArray.length);
+  if (normalized.length) yArray.insert(0, normalized);
+  return true;
 }
 
 function commentsWithoutThread(comments = [], commentId = "") {
