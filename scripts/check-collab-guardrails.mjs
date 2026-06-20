@@ -334,6 +334,10 @@ assert(
   extractFunctionBody("updateDayBlockInDoc").includes("transformCommentAnchorsForField"),
   "Day block text patch writes must move anchored block comments when text changes.",
 );
+assert(
+  extractFunctionBody("syncDayBlocksToDoc").includes("transformCommentAnchorsForField(latest.comments || [], `block:${block.id}`"),
+  "Day block text fallback patches must move anchored block comments when text changes.",
+);
 for (const functionName of [
   "syncGuideStateFromPlan",
   "renderGuideResult",

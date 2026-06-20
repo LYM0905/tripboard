@@ -7801,7 +7801,11 @@ async function syncDayBlocksToDoc(dayId, origin = "local-day-blocks", options = 
     constrainedPatchFields.forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(block, field)) patch[field] = block[field];
     });
-    return normalizeDayBlock({ ...latest, ...patch, id: block.id });
+    const merged = { ...latest, ...patch, id: block.id };
+    if (Object.prototype.hasOwnProperty.call(patch, "text") && !Object.prototype.hasOwnProperty.call(patch, "comments")) {
+      merged.comments = transformCommentAnchorsForField(latest.comments || [], `block:${block.id}`, latest.text || "", patch.text || "");
+    }
+    return normalizeDayBlock(merged);
   };
   const mergedLocalBlocks = localBlocks.map(mergeLocalBlock);
   const nextBlocks = replace
