@@ -16455,6 +16455,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     event.stopPropagation();
     const candidate = state.candidates.find((item) => item.id === editButton.dataset.editCandidate);
     if (!candidate || !requireEdit("编辑备选地点")) return;
+    if (!confirmRemoteCandidateEdit(candidate.id, "编辑备选地点")) return;
     setCandidateEditing(candidate);
     renderCandidates();
     dom.quickPlaceName.focus();
@@ -16584,6 +16585,7 @@ dom.transportList.addEventListener("click", async (event) => {
     event.stopPropagation();
     const quote = (state.transportQuotes || []).find((item) => item.id === editButton.dataset.editQuote);
     if (!quote || !requireEdit("编辑交通报价")) return;
+    if (!confirmRemoteTransportQuoteEdit(quote.id, "编辑交通报价")) return;
     setManualQuoteEditing(quote);
     renderTransport();
     dom.manualQuoteCode.focus();
