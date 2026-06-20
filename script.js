@@ -2578,6 +2578,10 @@ function confirmRemoteStopStructureEdit(stopIds = [], action = "操作地点") {
   return window.confirm(`${visible}${extra} 正在编辑相关地点字段。继续${action}可能打断对方正在输入的内容，确定继续吗？`);
 }
 
+function stopIdsForStructureEdit(stops = []) {
+  return (Array.isArray(stops) ? stops : []).map((stop) => stop?.id).filter(Boolean);
+}
+
 function dayPresenceMetaForDocField(field = "") {
   const normalizedField = String(field || "");
   return [...COLLAB_DAY_STRUCT_PRESENCE_FIELDS, ...COLLAB_DAY_TEXT_FIELDS].find((meta) => (
@@ -14600,6 +14604,10 @@ async function planAmapRouteForCurrentDay({ retry = false } = {}) {
     dom.optimizeHint.textContent = "至少需要 2 个地点才能用高德规划路线。";
     return;
   }
+  if (!confirmRemoteStopStructureEdit(stopIdsForStructureEdit(day.stops), "高德规划路线")) {
+    dom.optimizeHint.textContent = "已取消高德规划路线，保留协作者正在编辑的地点。";
+    return;
+  }
   const mode = retry && lastAmapRouteRequest?.mode ? lastAmapRouteRequest.mode : dom.amapRouteMode.value;
   const strategy = retry && lastAmapRouteRequest?.strategy ? lastAmapRouteRequest.strategy : dom.amapRouteStrategy.value;
   lastAmapRouteRequest = { dayId: day.id, mode, strategy };
@@ -14941,6 +14949,10 @@ async function optimizeCurrentDayRoute() {
   }
 
   if (!requireEdit("优化路径")) return;
+  if (!confirmRemoteStopStructureEdit(stopIdsForStructureEdit(day.stops), "优化当天路径")) {
+    dom.optimizeHint.textContent = "已取消路径优化，保留协作者正在编辑的地点。";
+    return;
+  }
   saveVersionSnapshot("优化路径前版本");
   try {
     dom.optimizeHint.textContent = serviceConfig.aiEndpoint ? "正在请求 AI 路径代理..." : "未配置 AI 代理，使用本地距离排序。";

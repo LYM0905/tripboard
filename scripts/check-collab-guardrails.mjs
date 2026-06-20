@@ -278,6 +278,9 @@ assert(source.includes('confirmRemoteStopStructureEdit(deletedStop.id, "删除�
 assert(source.includes('confirmRemoteStopStructureEdit(movingStopId, "上移地点")'), "Stop move-up must confirm when another member is actively editing the stop.");
 assert(source.includes('confirmRemoteStopStructureEdit(movingStopId, "下移地点")'), "Stop move-down must confirm when another member is actively editing the stop.");
 
+assert(extractFunctionBody("planAmapRouteForCurrentDay").includes("confirmRemoteStopStructureEdit(stopIdsForStructureEdit(day.stops)"), "Amap route planning must confirm when another member is actively editing affected stops.");
+assert(extractFunctionBody("optimizeCurrentDayRoute").includes("confirmRemoteStopStructureEdit(stopIdsForStructureEdit(day.stops)"), "AI/local route optimization must confirm when another member is actively editing affected stops.");
+
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");
 assert(
