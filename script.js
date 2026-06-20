@@ -6176,11 +6176,39 @@ function refreshDayBlockPresenceDom(day = currentDay()) {
   return allBlocksFound;
 }
 
+function refreshRecordPresenceCards() {
+  let updated = false;
+  dom.transportList?.querySelectorAll("[data-quote]").forEach((card) => {
+    const quoteId = card.dataset.quote || "";
+    const editors = remoteRecordEditorNames("transportQuote", quoteId);
+    card.classList.toggle("is-remote-editing", Boolean(editors));
+    card.querySelector(".record-presence")?.remove();
+    if (editors) {
+      const detail = card.querySelector(":scope > div");
+      detail?.insertAdjacentHTML("beforeend", `<small class="record-presence">${escapeHtml(editors)} 正在编辑这条报价</small>`);
+    }
+    updated = true;
+  });
+  dom.candidateGrid?.querySelectorAll("[data-candidate-id]").forEach((card) => {
+    const candidateId = card.dataset.candidateId || "";
+    const editors = remoteRecordEditorNames("candidate", candidateId);
+    card.classList.toggle("is-remote-editing", Boolean(editors));
+    card.querySelector(".record-presence")?.remove();
+    if (editors) {
+      const meta = card.querySelector(".candidate-meta");
+      meta?.insertAdjacentHTML("afterend", `<span class="record-presence">${escapeHtml(editors)} 正在编辑</span>`);
+    }
+    updated = true;
+  });
+  return updated;
+}
+
 function refreshPresenceViews() {
   renderMembers();
   if (!refreshDayBlockPresenceDom(currentDay())) {
     renderDayBlocks(currentDay());
   }
+  refreshRecordPresenceCards();
   refreshConflictPresenceImpact();
   renderEditorLockState();
 }

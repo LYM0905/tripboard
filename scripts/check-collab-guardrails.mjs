@@ -297,6 +297,8 @@ assert(source.includes('confirmRemoteTransportQuoteEdit(quote.id, "编辑交通�
 assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
 assert(extractFunctionBody("renderCandidates").includes('remoteRecordEditorNames("candidate"'), "Candidate cards must show remote record editing hints.");
 assert(extractFunctionBody("renderTransport").includes('remoteRecordEditorNames("transportQuote"'), "Transport quote cards must show remote record editing hints.");
+assert(source.includes("function refreshRecordPresenceCards"), "Record-level remote editing hints must have a local card refresh helper.");
+assert(extractFunctionBody("refreshPresenceViews").includes("refreshRecordPresenceCards()"), "Presence changes must refresh candidate and transport quote card hints.");
 assert(extractFunctionBody("toggleCandidateSelection").includes("confirmRemoteCandidateEdit(candidateId"), "Candidate selection must confirm when another member is editing that candidate.");
 assert(extractFunctionBody("toggleTransportQuoteSelection").includes("confirmRemoteTransportQuoteEdit(quoteId"), "Transport quote selection must confirm when another member is editing that quote.");
 assert(extractFunctionBody("applyBudgetEstimateFromToken").includes("confirmRemoteCandidateEdit(candidate.id"), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");
