@@ -1186,6 +1186,12 @@ button:disabled {
   box-shadow: 0 10px 24px rgba(36, 115, 92, 0.12);
 }
 
+.transport-item.is-remote-editing,
+.candidate.is-remote-editing {
+  border-color: rgba(203, 96, 64, 0.5);
+  box-shadow: 0 10px 22px rgba(203, 96, 64, 0.1);
+}
+
 .transport-item.is-selected {
   border-color: rgba(36, 115, 92, 0.55);
   background: linear-gradient(0deg, rgba(218, 240, 222, 0.55), rgba(255, 255, 255, 0.94));
@@ -1222,6 +1228,21 @@ button:disabled {
   color: var(--coral);
   font-style: normal;
   font-weight: 900;
+  white-space: nowrap;
+}
+
+.record-presence {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 5px;
+  padding: 2px 7px;
+  overflow: hidden;
+  color: #8a3d28;
+  font-size: 11px;
+  border-radius: 999px;
+  background: rgba(255, 226, 214, 0.75);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1913,6 +1934,10 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.candidate .record-presence {
+  grid-column: 1 / -1;
 }
 
 .candidate-actions {

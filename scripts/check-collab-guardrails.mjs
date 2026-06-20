@@ -90,6 +90,36 @@ const editorBody = functionBody("renderDayEditor");
 assert(editorBody.includes("const editable = canEdit();"), "renderDayEditor must use canEdit for day structure controls.");
 assert(editorBody.includes("dom.deleteDayBtn.disabled = !editable"), "Day structure buttons must be disabled for non-editors.");
 
+assert(source.includes("function confirmRemoteCandidateEdit"), "Candidate record edits must have a remote active editor confirmation helper.");
+assert(source.includes("function confirmRemoteTransportQuoteEdit"), "Transport quote record edits must have a remote active editor confirmation helper.");
+assert(source.includes("function remoteRecordEditorNames"), "Record-level remote editor names must be available for visible candidate/quote hints.");
+assert(source.includes("let confirmedRemoteRecordEditUntil"), "Record-level remote edit confirmations must be throttled.");
+
+const presenceBody = functionBody("presencePayload");
+assert(presenceBody.includes("activeCandidateId"), "Presence payload must publish the candidate currently being edited.");
+assert(presenceBody.includes("activeTransportQuoteId"), "Presence payload must publish the transport quote currently being edited.");
+assert(functionBody("memberActivityLabel").includes("activeCandidateId"), "Member activity labels must show when someone is editing a candidate.");
+assert(functionBody("memberActivityLabel").includes("activeTransportQuoteId"), "Member activity labels must show when someone is editing a transport quote.");
+
+assert(functionBody("setCandidateEditing").includes("schedulePresenceTrack(0)"), "Entering or leaving candidate edit mode must publish presence immediately.");
+assert(functionBody("setManualQuoteEditing").includes("schedulePresenceTrack(0)"), "Entering or leaving transport quote edit mode must publish presence immediately.");
+assert(functionBody("renderCandidates").includes('remoteRecordEditorNames("candidate"'), "Candidate cards must show remote record editing hints.");
+assert(functionBody("renderTransport").includes('remoteRecordEditorNames("transportQuote"'), "Transport quote cards must show remote record editing hints.");
+assert(source.includes("function refreshRecordPresenceCards"), "Record-level remote editing hints must have a local card refresh helper.");
+assert(functionBody("refreshPresenceViews").includes("refreshRecordPresenceCards()"), "Presence changes must refresh candidate and transport quote card hints.");
+
+assert(functionBody("toggleCandidateSelection").includes("confirmRemoteCandidateEdit(candidateId"), "Candidate selection must confirm when another member is editing that candidate.");
+assert(functionBody("toggleTransportQuoteSelection").includes("confirmRemoteTransportQuoteEdit(quoteId"), "Transport quote selection must confirm when another member is editing that quote.");
+assert(source.includes('confirmRemoteCandidateEdit(candidate.id, "编辑备选地点")'), "Opening candidate edit mode must confirm when another member is editing that candidate.");
+assert(source.includes('confirmRemoteTransportQuoteEdit(quote.id, "编辑交通报价")'), "Opening transport quote edit mode must confirm when another member is editing that quote.");
+assert(source.includes('confirmRemoteCandidateEdit(candidateId, "移除备选地点")'), "Deleting a candidate must confirm when another member is editing that candidate.");
+assert(source.includes('confirmRemoteTransportQuoteEdit(quoteId, "删除交通报价")'), "Deleting a transport quote must confirm when another member is editing that quote.");
+assert(source.includes('confirmRemoteCandidateEdit(editingCandidateId, "更新备选地点")'), "Saving candidate edits must confirm when another member is editing that candidate.");
+assert(source.includes('confirmRemoteTransportQuoteEdit(editingTransportQuoteId, "更新交通报价")'), "Saving transport quote edits must confirm when another member is editing that quote.");
+assert(functionBody("applyBudgetEstimateFromToken").includes('confirmRemoteCandidateEdit(candidate.id, "采用备选门票估算")'), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");
+assert(functionBody("adoptAllBudgetEstimates").includes('confirmRemoteCandidateEdit(affectedCandidateIds, "批量采用门票估算")'), "Batch budget estimate adoption must confirm when another member is editing affected candidates.");
+assert(functionBody("enrichPlacesFromAmap").includes('confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")'), "Batch Amap place enrichment must confirm when another member is editing affected candidates.");
+
 if (failures.length) {
   console.error("Collaboration delivery guardrail check failed:");
   failures.forEach((failure) => console.error(`- ${failure}`));

@@ -461,6 +461,8 @@ function memberActivityLabel(member = {}) {
   const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
   if (textEditing) return textEditing;
   if (member.blockEditing) return `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}`;
+  if (member.activeCandidateId) return `正在编辑备选：${candidateLabel(member.activeCandidateId)}`;
+  if (member.activeTransportQuoteId) return `正在编辑报价：${transportQuoteLabel(member.activeTransportQuoteId)}`;
   return `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || member.activeDay || "计划"}`;
 }
 
@@ -2093,6 +2095,57 @@ function remoteBlockEditorNames(blockId = "") {
 
 function remoteBlockSelectorNames(blockId = "") {
   const names = [...new Set(remoteSelectorsForBlock(blockId).map((member) => member.name || "协作者"))];
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  return visible ? `${visible}${extra}` : "";
+}
+
+function remoteActiveEditorsForRecord(field = "", ids = []) {
+  const recordIds = new Set((Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean));
+  if (!field || !recordIds.size) return [];
+  const ownMemberId = memberProfile?.id || sessionId;
+  return onlineMembers.filter((member) => {
+    if (!member || member.memberId === sessionId || member.memberId === ownMemberId) return false;
+    if (!freshMember(member)) return false;
+    return recordIds.has(String(member[field] || ""));
+  });
+}
+
+function confirmRemoteRecordEdit(kind, ids = [], action = "操作记录") {
+  const recordIds = (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean);
+  const uniqueIds = [...new Set(recordIds)];
+  if (!uniqueIds.length) return true;
+  const lockKey = `${kind}:${uniqueIds.sort().join("|")}:${action}`;
+  if (confirmedRemoteRecordEditUntil[lockKey] && confirmedRemoteRecordEditUntil[lockKey] > Date.now()) return true;
+  const field = kind === "candidate" ? "activeCandidateId" : "activeTransportQuoteId";
+  const label = kind === "candidate" ? "备选地点" : "交通报价";
+  const editors = remoteActiveEditorsForRecord(field, uniqueIds);
+  const names = [...new Set(editors.map((member) => member.name || "协作者"))];
+  if (!names.length) return true;
+  const visible = names.slice(0, 3).join("、");
+  const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
+  const ok = window.confirm(`${visible}${extra} 正在编辑相关${label}。继续${action}可能覆盖或打断对方正在修改的内容，确定继续吗？`);
+  if (ok) {
+    confirmedRemoteRecordEditUntil[lockKey] = Date.now() + 30000;
+    return true;
+  }
+  dom.saveState.textContent = `已取消${action}，保留协作者正在编辑的${label}`;
+  dom.collabStatus.textContent = `${visible}${extra} 仍在编辑相关${label}，稍后再操作更稳妥。`;
+  return false;
+}
+
+function confirmRemoteCandidateEdit(candidateIds = [], action = "操作备选地点") {
+  return confirmRemoteRecordEdit("candidate", candidateIds, action);
+}
+
+function confirmRemoteTransportQuoteEdit(quoteIds = [], action = "操作交通报价") {
+  return confirmRemoteRecordEdit("transportQuote", quoteIds, action);
+}
+
+function remoteRecordEditorNames(kind, ids = []) {
+  const recordIds = (Array.isArray(ids) ? ids : [ids]).map((id) => String(id || "")).filter(Boolean);
+  const field = kind === "candidate" ? "activeCandidateId" : "activeTransportQuoteId";
+  const names = [...new Set(remoteActiveEditorsForRecord(field, recordIds).map((member) => member.name || "协作者"))];
   const visible = names.slice(0, 3).join("、");
   const extra = names.length > 3 ? ` 等 ${names.length} 人` : "";
   return visible ? `${visible}${extra}` : "";
@@ -5136,11 +5189,39 @@ function refreshDayBlockPresenceDom(day = currentDay()) {
   return allBlocksFound;
 }
 
+function refreshRecordPresenceCards() {
+  let updated = false;
+  dom.transportList?.querySelectorAll("[data-quote]").forEach((card) => {
+    const quoteId = card.dataset.quote || "";
+    const editors = remoteRecordEditorNames("transportQuote", quoteId);
+    card.classList.toggle("is-remote-editing", Boolean(editors));
+    card.querySelector(".record-presence")?.remove();
+    if (editors) {
+      const detail = card.querySelector(":scope > div");
+      detail?.insertAdjacentHTML("beforeend", `<small class="record-presence">${escapeHtml(editors)} 正在编辑这条报价</small>`);
+    }
+    updated = true;
+  });
+  dom.candidateGrid?.querySelectorAll("[data-candidate-id]").forEach((card) => {
+    const candidateId = card.dataset.candidateId || "";
+    const editors = remoteRecordEditorNames("candidate", candidateId);
+    card.classList.toggle("is-remote-editing", Boolean(editors));
+    card.querySelector(".record-presence")?.remove();
+    if (editors) {
+      const meta = card.querySelector(".candidate-meta");
+      meta?.insertAdjacentHTML("afterend", `<span class="record-presence">${escapeHtml(editors)} 正在编辑</span>`);
+    }
+    updated = true;
+  });
+  return updated;
+}
+
 function refreshPresenceViews() {
   renderMembers();
   if (!refreshDayBlockPresenceDom(currentDay())) {
     renderDayBlocks(currentDay());
   }
+  refreshRecordPresenceCards();
   renderEditorLockState();
 }
 
@@ -8548,6 +8629,7 @@ let lastRemoteUpdatedAt = "";
 let lastSyncedState = null;
 let pendingLocalRemoteUpdatedAt = "";
 let pendingConflict = null;
+let confirmedRemoteRecordEditUntil = {};
 let pendingVersionRestoreId = "";
 let isResolvingConflict = false;
 let editLockEnabled = true;
@@ -8938,6 +9020,8 @@ function presencePayload() {
     activeDay: day?.label || "D1",
     activeDayId: day?.id || "",
     activeStopId: stop?.id || "",
+    activeCandidateId: editingCandidateId || "",
+    activeTransportQuoteId: editingTransportQuoteId || "",
     activeBlockId: blockContext?.blockId || "",
     activeBlockText: blockContext?.blockText || "",
     blockSelection: blockContext?.blockSelection || null,
@@ -8992,7 +9076,7 @@ function renderMembers() {
   dom.onlineCountText.textContent = count ? `${count} 位成员在线协作` : "填写信息后加入协作";
   dom.onlineAvatars.innerHTML = members
     .slice(0, 5)
-    .map((member, index) => `<span class="avatar a${(index % 4) + 1}" title="${member.name} · ${member.role || "同行成员"}">${memberInitial(member.name)}</span>`)
+    .map((member, index) => `<span class="avatar a${(index % 4) + 1}" title="${escapeHtml(`${member.name || "匿名成员"} · ${member.role || "同行成员"} · ${memberActivityLabel(member)}`)}">${memberInitial(member.name)}</span>`)
     .join("") + (count ? `<span class="online-dot"></span>` : "");
   dom.memberList.innerHTML =
     members
@@ -9001,12 +9085,14 @@ function renderMembers() {
           const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
           const blockEditing = member.blockEditing ? `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}` : "";
           const selectedBlocks = Number(member.selectedDayBlockCount || 0) > 0 ? `已选中 ${member.selectedDayBlockCount} 个协作块` : "";
-          const activity = textEditing || blockEditing || selectedBlocks || `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}`;
+          const recordEditing = member.activeCandidateId || member.activeTransportQuoteId ? memberActivityLabel(member) : "";
+          const activeDetail = textEditing || blockEditing || selectedBlocks || recordEditing;
+          const activity = activeDetail || memberActivityLabel(member);
           return `
-          <div class="member-item ${textEditing || blockEditing || selectedBlocks ? "is-text-editing" : ""}">
+          <div class="member-item ${activeDetail ? "is-text-editing" : ""}">
             <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
             <p><strong>${escapeHtml(member.name || "匿名成员")}</strong><small>${escapeHtml(member.role || "同行成员")} · ${escapeHtml(member.activeDay || "在线")} · ${escapeHtml(activity)}</small></p>
-            ${textEditing || blockEditing || selectedBlocks ? `<em>${escapeHtml(member.editing || member.activeBlockText || selectedBlocks || "当前内容")}</em>` : ""}
+            ${activeDetail ? `<em>${escapeHtml(member.editing || member.activeBlockText || selectedBlocks || recordEditing || "当前内容")}</em>` : ""}
           </div>
         `;
         },
@@ -10156,6 +10242,7 @@ function setManualQuoteEditing(quote = null) {
   }
   if (dom.cancelQuoteEditBtn) dom.cancelQuoteEditBtn.hidden = !quote;
   refreshIcons();
+  schedulePresenceTrack(0);
 }
 
 function clearManualQuoteForm() {
@@ -10227,6 +10314,7 @@ function setCandidateEditing(candidate = null) {
   }
   if (dom.cancelCandidateEditBtn) dom.cancelCandidateEditBtn.hidden = !candidate;
   refreshIcons();
+  schedulePresenceTrack(0);
 }
 
 function hideAmapCandidates(target = "both") {
@@ -10374,6 +10462,7 @@ async function toggleTransportQuoteSelection(quoteId) {
     return;
   }
   const selected = !quote.selected;
+  if (!confirmRemoteTransportQuoteEdit(quoteId, selected ? "选择交通方案" : "取消交通方案")) return;
   if (await updateTransportQuoteInDoc(quoteId, { selected })) {
     persistCurrentPlanFromDoc("交通方案选择已同步");
     await logActivity(`${selected ? "选择" : "取消"}交通 ${quote.code}`, { target: transportQuoteActivityTarget(quoteId, quote.dayId || "", { action: selected ? "select" : "unselect" }) });
@@ -10392,6 +10481,7 @@ async function toggleCandidateSelection(candidateId) {
   const candidate = (state.candidates || []).find((item) => item.id === candidateId);
   if (!candidate || !requireEdit("选择备选地点")) return;
   const selected = !candidate.selected;
+  if (!confirmRemoteCandidateEdit(candidateId, selected ? "预选备选地点" : "取消预选备选地点")) return;
   if (await updateCandidateInDoc(candidateId, { selected })) {
     persistCurrentPlanFromDoc("备选预选已同步");
     await logActivity(`${selected ? "预选" : "取消预选"}${candidate.title}`, { target: candidateActivityTarget(candidateId, { action: selected ? "select" : "unselect" }) });
@@ -10738,12 +10828,14 @@ function renderTransport() {
       .map(
         (item) => {
           const selected = Boolean(item.selected);
+          const remoteEditors = remoteRecordEditorNames("transportQuote", item.id);
           return `
-          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-quote="${escapeHtml(item.id || "")}">
+          <article class="transport-item ${item.id === editingTransportQuoteId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}" data-quote="${escapeHtml(item.id || "")}">
             <span class="transport-icon">${icon(item.type === "flight" ? "plane" : "train-front")}</span>
             <div>
               <strong>${escapeHtml(item.code)} · ${escapeHtml(item.from)} → ${escapeHtml(item.to)}</strong>
               <span>${escapeHtml(item.depart)} - ${escapeHtml(item.arrive)} · 约${Math.floor(item.duration / 60)}小时${item.duration % 60}分 · ${escapeHtml(item.source)}</span>
+              ${remoteEditors ? `<small class="record-presence">${escapeHtml(remoteEditors)} 正在编辑这条报价</small>` : ""}
             </div>
             <em>${money(item.price)}</em>
             <span class="transport-actions">
@@ -11074,6 +11166,17 @@ function transportBudgetLabel(item = {}) {
   return `${type} ${item.code || ""}`.trim();
 }
 
+function transportQuoteLabel(quoteId = "") {
+  const quote = (state.transportQuotes || []).find((item) => item.id === quoteId);
+  if (!quote) return "交通报价";
+  return transportBudgetLabel(quote) || quote.code || "交通报价";
+}
+
+function candidateLabel(candidateId = "") {
+  const candidate = (state.candidates || []).find((item) => item.id === candidateId);
+  return candidate?.title || "备选地点";
+}
+
 function budgetComboItems() {
   const confirmedStops = (state.days || []).flatMap((day) =>
     (day.stops || []).map((stop) => {
@@ -11202,6 +11305,7 @@ async function applyBudgetEstimateFromToken(token = "") {
       dom.saveState.textContent = "没有找到可采用的备选估算。";
       return;
     }
+    if (!confirmRemoteCandidateEdit(candidate.id, "采用备选门票估算")) return;
     const patch = {
       budget: estimate,
       tags: Array.from(new Set([...(candidate.tags || []), "门票估算待确认"])),
@@ -11228,6 +11332,11 @@ async function adoptAllBudgetEstimates() {
     dom.saveState.textContent = "当前没有可采用的门票估算。";
     return;
   }
+  const affectedCandidateIds = entries
+    .filter((item) => item.refType === "candidate")
+    .map((item) => item.itemId)
+    .filter(Boolean);
+  if (!confirmRemoteCandidateEdit(affectedCandidateIds, "批量采用门票估算")) return;
   saveVersionSnapshot("批量采用门票估算前版本");
   let stopCount = 0;
   let candidateCount = 0;
@@ -11340,6 +11449,11 @@ async function enrichPlacesFromAmap() {
     dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
     return;
   }
+  const affectedCandidateIds = candidates
+    .filter((item) => item.type === "candidate")
+    .map((item) => item.stop?.id)
+    .filter(Boolean);
+  if (!confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")) return;
   saveVersionSnapshot("补全地点图片前版本");
   dom.saveState.textContent = `正在通过高德补全 ${Math.min(candidates.length, 12)} 个地点...`;
   const fallbackDayIds = new Set();
@@ -11673,11 +11787,13 @@ function renderCandidates() {
         const payer = stop.payer ? ` · ${escapeHtml(stop.payer)}` : "";
         const amountText = money(numberValue(stop.budget) || estimatedTicket);
         const estimateText = !numberValue(stop.budget) && estimatedTicket ? " 估" : "";
+        const remoteEditors = remoteRecordEditorNames("candidate", stop.id);
         return `
-        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
+        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
           ${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}
           <span class="candidate-title">${escapeHtml(stop.title)}</span>
           <span class="candidate-meta">${escapeHtml(category)}${selected ? " · 已预选" : ""}${paid ? ` · 已付 ${money(paid)}${payer}` : ""}</span>
+          ${remoteEditors ? `<span class="record-presence">${escapeHtml(remoteEditors)} 正在编辑</span>` : ""}
           <span class="candidate-price">${amountText}${estimateText}</span>
           ${editable ? `<span class="candidate-actions">
             <button type="button" class="icon-btn subtle" data-toggle-candidate-selected="${escapeHtml(stop.id)}" aria-label="${selected ? "移出预选" : "加入预选"}" title="${selected ? "移出预选" : "加入预选"}">${icon(selected ? "check-circle-2" : "circle")}</button>
@@ -12553,6 +12669,7 @@ dom.addCandidateBtn.addEventListener("click", async () => {
   });
   if (!draft || !requireEdit("加入备选池")) return;
   if (editingCandidateId) {
+    if (!confirmRemoteCandidateEdit(editingCandidateId, "更新备选地点")) return;
     const existing = state.candidates.find((item) => item.id === editingCandidateId);
     if (!existing) {
       setCandidateEditing(null);
@@ -14349,6 +14466,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     event.stopPropagation();
     const candidate = state.candidates.find((item) => item.id === editButton.dataset.editCandidate);
     if (!candidate || !requireEdit("编辑备选地点")) return;
+    if (!confirmRemoteCandidateEdit(candidate.id, "编辑备选地点")) return;
     setCandidateEditing(candidate);
     renderCandidates();
     dom.quickPlaceName.focus();
@@ -14362,6 +14480,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     const candidateId = deleteButton.dataset.deleteCandidate;
     const candidate = state.candidates.find((item) => item.id === candidateId);
     if (!candidate || !requireEdit("移除备选地点")) return;
+    if (!confirmRemoteCandidateEdit(candidateId, "移除备选地点")) return;
     if (await deleteCandidateFromDoc(candidateId)) {
       if (editingCandidateId === candidateId) clearQuickPlaceForm();
       await logActivity(`移除备选「${candidate.title}」`, { target: candidateActivityTarget(candidateId, { deleted: true, action: "delete" }) });
@@ -14477,6 +14596,7 @@ dom.transportList.addEventListener("click", async (event) => {
     event.stopPropagation();
     const quote = (state.transportQuotes || []).find((item) => item.id === editButton.dataset.editQuote);
     if (!quote || !requireEdit("编辑交通报价")) return;
+    if (!confirmRemoteTransportQuoteEdit(quote.id, "编辑交通报价")) return;
     setManualQuoteEditing(quote);
     renderTransport();
     dom.manualQuoteCode.focus();
@@ -14490,6 +14610,7 @@ dom.transportList.addEventListener("click", async (event) => {
   const quoteId = deleteButton.dataset.deleteQuote;
   const quote = (state.transportQuotes || []).find((item) => item.id === quoteId);
   if (!quote || !requireEdit("删除交通报价")) return;
+  if (!confirmRemoteTransportQuoteEdit(quoteId, "删除交通报价")) return;
   if (await deleteTransportQuoteFromDoc(quoteId)) {
     transportFilterApplied = true;
     if (editingTransportQuoteId === quoteId) clearManualQuoteForm();
@@ -14521,6 +14642,7 @@ dom.manualQuoteForm.addEventListener("submit", async (event) => {
   const price = numberValue(quote.price);
   if (!code || !price) return;
   if (editingTransportQuoteId) {
+    if (!confirmRemoteTransportQuoteEdit(editingTransportQuoteId, "更新交通报价")) return;
     if (!existingQuote) {
       clearManualQuoteForm();
       dom.saveState.textContent = "这条报价已被其他成员删除，请重新保存。";
