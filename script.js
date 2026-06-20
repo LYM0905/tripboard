@@ -534,6 +534,8 @@ function memberActivityLabel(member = {}) {
   const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
   if (textEditing) return textEditing;
   if (member.blockEditing) return `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}`;
+  if (member.activeCandidateId) return `正在编辑备选：${candidateLabel(member.activeCandidateId)}`;
+  if (member.activeTransportQuoteId) return `正在编辑报价：${transportQuoteLabel(member.activeTransportQuoteId)}`;
   return `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || member.activeDay || "计划"}`;
 }
 
@@ -10686,12 +10688,14 @@ function renderMembers() {
           const textEditing = member.textEditing || (member.textSelection ? textSelectionLabel(member.textSelection) : "");
           const blockEditing = member.blockEditing ? `${member.blockEditing}：${member.activeBlockText || member.editing || "协作块"}` : "";
           const selectedBlocks = Number(member.selectedDayBlockCount || 0) > 0 ? `已选中 ${member.selectedDayBlockCount} 个协作块` : "";
-          const activity = textEditing || blockEditing || selectedBlocks || `${member.lockMode === "editing" ? "正在编辑" : "浏览"}：${member.editing || "计划"}`;
+          const recordEditing = member.activeCandidateId || member.activeTransportQuoteId ? memberActivityLabel(member) : "";
+          const activeDetail = textEditing || blockEditing || selectedBlocks || recordEditing;
+          const activity = activeDetail || memberActivityLabel(member);
           return `
-          <div class="member-item ${textEditing || blockEditing || selectedBlocks ? "is-text-editing" : ""}">
+          <div class="member-item ${activeDetail ? "is-text-editing" : ""}">
             <span class="avatar a${(index % 4) + 1}">${memberInitial(member.name)}</span>
             <p><strong>${escapeHtml(member.name || "匿名成员")}</strong><small>${escapeHtml(member.role || "同行成员")} · ${escapeHtml(member.activeDay || "在线")} · ${escapeHtml(activity)}</small></p>
-            ${textEditing || blockEditing || selectedBlocks ? `<em>${escapeHtml(member.editing || member.activeBlockText || selectedBlocks || "当前内容")}</em>` : ""}
+            ${activeDetail ? `<em>${escapeHtml(member.editing || member.activeBlockText || selectedBlocks || recordEditing || "当前内容")}</em>` : ""}
           </div>
         `;
         },
@@ -12879,6 +12883,17 @@ function inferTicketPrice(item = {}) {
 function transportBudgetLabel(item = {}) {
   const type = item.type === "train" ? "动车/高铁" : "机票";
   return `${type} ${item.code || ""}`.trim();
+}
+
+function transportQuoteLabel(quoteId = "") {
+  const quote = (state.transportQuotes || []).find((item) => item.id === quoteId);
+  if (!quote) return "交通报价";
+  return transportBudgetLabel(quote) || quote.code || "交通报价";
+}
+
+function candidateLabel(candidateId = "") {
+  const candidate = (state.candidates || []).find((item) => item.id === candidateId);
+  return candidate?.title || "备选地点";
 }
 
 function budgetTransportOptionsForDay(day = currentDay()) {

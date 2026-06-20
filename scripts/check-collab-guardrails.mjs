@@ -287,6 +287,9 @@ assert(source.includes("function confirmRemoteCandidateEdit"), "Candidate record
 assert(source.includes("function confirmRemoteTransportQuoteEdit"), "Transport quote edits must have a remote active editor confirmation helper.");
 assert(extractFunctionBody("presencePayload").includes("activeCandidateId"), "Presence payload must publish the candidate currently being edited.");
 assert(extractFunctionBody("presencePayload").includes("activeTransportQuoteId"), "Presence payload must publish the transport quote currently being edited.");
+assert(extractFunctionBody("memberActivityLabel").includes("activeCandidateId"), "Member activity labels must show when someone is editing a candidate.");
+assert(extractFunctionBody("memberActivityLabel").includes("activeTransportQuoteId"), "Member activity labels must show when someone is editing a transport quote.");
+assert(extractFunctionBody("renderMembers").includes("recordEditing"), "Online member list must surface candidate/transport quote record editing state.");
 assert(extractFunctionBody("toggleCandidateSelection").includes("confirmRemoteCandidateEdit(candidateId"), "Candidate selection must confirm when another member is editing that candidate.");
 assert(extractFunctionBody("toggleTransportQuoteSelection").includes("confirmRemoteTransportQuoteEdit(quoteId"), "Transport quote selection must confirm when another member is editing that quote.");
 assert(extractFunctionBody("applyBudgetEstimateFromToken").includes("confirmRemoteCandidateEdit(candidate.id"), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");
