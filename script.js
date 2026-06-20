@@ -58,6 +58,7 @@ const COLLAB_DAY_TEXT_FIELDS = [
   { field: "day:transport", docField: "transport", domKey: "fieldDayTransport", label: "交通", presenceId: "fieldDayTransportPresence", scope: "day" },
 ];
 const COLLAB_PLAN_TEXT_PRESENCE_FIELDS = [
+  { field: "plan:name", planField: "name", domKey: "planNameInput", label: "计划名称", presenceId: "planNameInputPresence", scope: "plan" },
   { field: "plan:destination", planField: "destination", domKey: "destinationInput", label: "目的地", presenceId: "destinationInputPresence", scope: "plan" },
   { field: "plan:origin", planField: "origin", domKey: "originInput", label: "出发城市", presenceId: "originInputPresence", scope: "plan" },
   { field: "plan:startDate", planField: "startDate", domKey: "startDateInput", label: "出发日期", presenceId: "startDateInputPresence", scope: "plan" },
@@ -774,10 +775,11 @@ function syncGuideStateFromPlan() {
   guideState.origin = state.origin || guideState.origin;
   guideState.startDate = state.startDate || guideState.startDate;
   guideState.endDate = state.endDate || guideState.endDate;
-  if (dom.destinationInput) dom.destinationInput.value = guideState.destination;
-  if (dom.originInput) dom.originInput.value = guideState.origin;
-  if (dom.startDateInput) dom.startDateInput.value = guideState.startDate;
-  if (dom.endDateInput) dom.endDateInput.value = guideState.endDate;
+  setInputValuePreservingSelection(dom.planNameInput, state.name || "");
+  setInputValuePreservingSelection(dom.destinationInput, guideState.destination);
+  setInputValuePreservingSelection(dom.originInput, guideState.origin);
+  setInputValuePreservingSelection(dom.startDateInput, guideState.startDate);
+  setInputValuePreservingSelection(dom.endDateInput, guideState.endDate);
   if (dom.transportFrom && !dom.transportFrom.value) dom.transportFrom.value = guideState.origin;
 }
 
@@ -1775,6 +1777,27 @@ function elementSelectionPayload(element, meta = {}) {
     end,
     length: value.length,
   };
+}
+
+function setInputValuePreservingSelection(element, nextValue = "") {
+  if (!element) return false;
+  const currentValue = String(element.value || "");
+  const value = String(nextValue || "");
+  if (currentValue === value) return false;
+  const focused = document.activeElement === element;
+  const start = focused && typeof element.selectionStart === "number" ? element.selectionStart : null;
+  const end = focused && typeof element.selectionEnd === "number" ? element.selectionEnd : start;
+  element.value = value;
+  if (focused && typeof element.setSelectionRange === "function") {
+    const nextStart = transformTextPosition(currentValue, value, start ?? value.length);
+    const nextEnd = transformTextPosition(currentValue, value, end ?? nextStart);
+    element.setSelectionRange(Math.max(0, Math.min(nextStart, value.length)), Math.max(0, Math.min(nextEnd, value.length)));
+  }
+  return true;
+}
+
+function setDomFieldValuePreservingSelection(domKey, nextValue = "") {
+  return setInputValuePreservingSelection(dom[domKey], nextValue);
 }
 
 function selectionExcerptFromElement(element, selection = {}) {
@@ -2898,10 +2921,7 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
   if (!collabTextDoc || !collabTextStopId) return;
   const stop = state.days.flatMap((day) => day.stops || []).find((item) => item.id === collabTextStopId);
   if (!stop) return;
-  const nextValues = {};
-  COLLAB_TEXT_FIELDS.forEach(({ field }) => {
-    nextValues[field] = collabTextFields[field]?.toString() || "";
-  });
+  const nextValues = textValuesFromDoc();
   const nextStructValues = readStructFromDoc();
   const nextComments = readCommentsFromDoc();
   const nextYjs = yjsModule ? bytesToBase64(yjsModule.encodeStateAsUpdate(collabTextDoc)) : stop.textYjs || stop.noteYjs || "";
@@ -2924,6 +2944,7 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
   await syncStopSnapshotToPlanDoc(stop.id, "local-stop-detail-snapshot", canEdit() ? undefined : { patchFields: ["comments"] });
   applyStopRealtimeFields(stop);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  refreshStopTextBaselinesFromDoc();
   if (updateStatus) setNoteCollabStatus(label);
   if (refreshViews && (textChanged || structChanged || commentsChanged)) refreshRealtimeStopViews();
   if (!scheduleSave) return;
@@ -2991,9 +3012,10 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
     });
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  refreshDayTextBaselinesFromDoc();
   if (collabDayTextDayId === day.id) {
     COLLAB_DAY_TEXT_FIELDS.forEach(({ docField, domKey }) => {
-      if (dom[domKey] && dom[domKey].value !== nextValues[docField]) dom[domKey].value = nextValues[docField];
+      setDomFieldValuePreservingSelection(domKey, nextValues[docField]);
     });
   }
   if (updateStatus) {
@@ -3150,6 +3172,11 @@ function readSettingTextStatesFromDoc() {
 function readSettingTextValuesFromDoc() {
   if (!collabSettingTextsMap) return settingTextValueSnapshotFromPlan(state);
   return Object.fromEntries(PLAN_TEXT_SETTING_FIELDS.map((field) => [field, collabSettingTextsMap.get(field)?.toString() || ""]));
+}
+
+function refreshPlanTextBaselinesFromDoc() {
+  const values = collabSettingTextsMap ? readSettingTextValuesFromDoc() : settingTextValueSnapshotFromPlan(state);
+  planTextBaselines = Object.fromEntries(PLAN_TEXT_SETTING_FIELDS.map((field) => [field, values[field] || planTextSettingValue(state, field)]));
 }
 
 function applyDayMetasToState(dayMetas = []) {
@@ -3446,6 +3473,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   });
   PLAN_TEXT_SETTING_FIELDS.forEach((field) => {
     state[`${field}Yjs`] = nextSettingTextStates[field] || "";
+    planTextBaselines[field] = nextSettings[field] || nextSettingTextValues[field] || "";
   });
   if (!state.dateRange && state.startDate && state.endDate) state.dateRange = dateRangeText(state.startDate, state.endDate);
   syncGuideStateFromPlan();
@@ -4293,6 +4321,22 @@ function dayTextValuesFromDoc(doc = collabDayTextDoc, fields = collabDayTextFiel
     values[docField] = fields[docField]?.toString?.() ?? doc?.getText?.(docField)?.toString?.() ?? "";
   });
   return values;
+}
+
+function textValuesFromDoc(fields = collabTextFields) {
+  const values = {};
+  COLLAB_TEXT_FIELDS.forEach(({ field }) => {
+    values[field] = fields[field]?.toString?.() || "";
+  });
+  return values;
+}
+
+function refreshStopTextBaselinesFromDoc() {
+  stopTextBaselines = textValuesFromDoc();
+}
+
+function refreshDayTextBaselinesFromDoc() {
+  dayTextBaselines = dayTextValuesFromDoc();
 }
 
 function dayValuesFromTextState(textState = "", fallbackDay = {}) {
@@ -6056,6 +6100,7 @@ function destroyCollabTextDoc() {
   collabTextFields = {};
   collabStructMap = null;
   collabCommentsArray = null;
+  stopTextBaselines = {};
   if (collabTextDoc) {
     collabTextDoc.destroy();
     collabTextDoc = null;
@@ -6068,6 +6113,7 @@ function destroyCollabDayTextDoc() {
   collabDayTextDayId = "";
   collabDayTextFields = {};
   collabDayCommentsArray = null;
+  dayTextBaselines = {};
   if (collabDayTextDoc) {
     collabDayTextDoc.destroy();
     collabDayTextDoc = null;
@@ -6097,6 +6143,7 @@ function destroyCollabPlanDoc() {
   collabSettingsMap = null;
   collabSettingTextStatesMap = null;
   collabSettingTextsMap = null;
+  planTextBaselines = {};
   if (collabPlanDoc) {
     collabPlanDoc.destroy();
     collabPlanDoc = null;
@@ -6157,6 +6204,7 @@ async function bindCollabPlanDoc() {
     restored = false;
   }
   attachCollabPlanDocObserver();
+  refreshPlanTextBaselinesFromDoc();
   persistCurrentPlanFromDoc("已载入计划结构协作状态");
   renderTransport();
   refreshIcons();
@@ -7844,12 +7892,13 @@ async function bindCollabTextDoc() {
   }, "restore");
   COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
     const value = restored ? collabTextFields[field].toString() : stop[field] || "";
-    if (dom[domKey] && dom[domKey].value !== value) dom[domKey].value = value;
+    setInputValuePreservingSelection(dom[domKey], value);
   });
+  refreshStopTextBaselinesFromDoc();
   COLLAB_STRUCT_FIELDS.forEach((meta) => {
     if (!meta.domKey) return;
     const value = collabStructMap.get(meta.field);
-    if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(value, meta.type);
+    setDomFieldValuePreservingSelection(meta.domKey, structDisplayValue(value, meta.type));
   });
   const comments = readCommentsFromDoc();
   if (comments.length) {
@@ -7917,8 +7966,9 @@ async function bindCollabDayTextDoc() {
   }, "restore");
   COLLAB_DAY_TEXT_FIELDS.forEach(({ docField, domKey }) => {
     const value = restored ? collabDayTextFields[docField].toString() : day[docField] || "";
-    if (dom[domKey] && dom[domKey].value !== value) dom[domKey].value = value;
+    setInputValuePreservingSelection(dom[domKey], value);
   });
+  refreshDayTextBaselinesFromDoc();
   const comments = readDayCommentsFromDoc();
   if (comments.length) {
     day.comments = comments;
@@ -7953,12 +8003,13 @@ async function applyRemoteTextUpdate(payload = {}) {
     Y.applyUpdate(collabTextDoc, base64ToBytes(payload.update), "remote");
     COLLAB_TEXT_FIELDS.forEach(({ field, domKey }) => {
       const nextValue = collabTextFields[field]?.toString() || "";
-      if (dom[domKey] && dom[domKey].value !== nextValue) dom[domKey].value = nextValue;
+      setInputValuePreservingSelection(dom[domKey], nextValue);
     });
+    refreshStopTextBaselinesFromDoc();
     COLLAB_STRUCT_FIELDS.forEach((meta) => {
       if (!meta.domKey) return;
       const nextValue = collabStructMap?.get(meta.field);
-      if (dom[meta.domKey]) dom[meta.domKey].value = structDisplayValue(nextValue, meta.type);
+      setDomFieldValuePreservingSelection(meta.domKey, structDisplayValue(nextValue, meta.type));
     });
     const stop = currentStop();
     if (stop?.id === collabTextStopId) applyStopRealtimeFields({ ...stop, ...readStructFromDoc() });
@@ -7983,8 +8034,9 @@ async function applyRemoteDayTextUpdate(payload = {}) {
     Y.applyUpdate(collabDayTextDoc, base64ToBytes(payload.update), "remote");
     COLLAB_DAY_TEXT_FIELDS.forEach(({ docField, domKey }) => {
       const nextValue = collabDayTextFields[docField]?.toString() || "";
-      if (dom[domKey] && dom[domKey].value !== nextValue) dom[domKey].value = nextValue;
+      setInputValuePreservingSelection(dom[domKey], nextValue);
     });
+    refreshDayTextBaselinesFromDoc();
     if (currentDay()?.id === collabDayTextDayId) {
       currentDay().comments = readDayCommentsFromDoc();
       renderDayComments(currentDay());
@@ -8513,9 +8565,15 @@ async function syncCollabTextFieldToDoc(field, value) {
   await bindCollabTextDoc();
   const yText = collabTextFields[field];
   if (!collabTextDoc || !yText || isApplyingCollabTextRemote) return;
+  const baseValue = Object.prototype.hasOwnProperty.call(stopTextBaselines, field)
+    ? stopTextBaselines[field]
+    : yText.toString();
+  let appliedValue = String(value || "");
   collabTextDoc.transact(() => {
-    applyTextDiff(yText, value);
+    applyTextDiffFromBase(yText, baseValue, String(value || ""));
+    appliedValue = yText.toString();
   }, "local-input");
+  stopTextBaselines[field] = appliedValue;
 }
 
 async function syncCollabDayTextFieldToDoc(field, value) {
@@ -8523,9 +8581,37 @@ async function syncCollabDayTextFieldToDoc(field, value) {
   await bindCollabDayTextDoc();
   const yText = collabDayTextFields[field];
   if (!collabDayTextDoc || !yText || isApplyingCollabDayTextRemote) return;
+  const baseValue = Object.prototype.hasOwnProperty.call(dayTextBaselines, field)
+    ? dayTextBaselines[field]
+    : yText.toString();
+  let appliedValue = String(value || "");
   collabDayTextDoc.transact(() => {
-    applyTextDiff(yText, value);
+    applyTextDiffFromBase(yText, baseValue, String(value || ""));
+    appliedValue = yText.toString();
   }, "local-day-text-input");
+  dayTextBaselines[field] = appliedValue;
+}
+
+async function syncCollabPlanTextFieldToDoc(field, value) {
+  if (!canEdit() || isReadonlyMode || !PLAN_TEXT_SETTING_FIELDS.includes(field)) return false;
+  await bindCollabPlanDoc();
+  const yText = collabSettingTextsMap?.get(field);
+  if (!collabPlanDoc || !collabSettingsMap || !yText || isApplyingCollabPlanRemote) return false;
+  const nextValue = normalizePlanSettingValue(field, value);
+  if (yText.toString() === String(nextValue || "") && sameSerialized(collabSettingsMap.get(field), nextValue)) return true;
+  const baseValue = Object.prototype.hasOwnProperty.call(planTextBaselines, field)
+    ? planTextBaselines[field]
+    : yText.toString();
+  let appliedValue = String(nextValue || "");
+  collabPlanDoc.transact(() => {
+    applyTextDiffFromBase(yText, baseValue, String(nextValue || ""));
+    appliedValue = yText.toString();
+    const textState = settingTextStateFromYText(field, yText);
+    if (collabSettingTextStatesMap && textState) collabSettingTextStatesMap.set(field, textState);
+    collabSettingsMap.set(field, normalizePlanSettingValue(field, appliedValue));
+  }, "local-plan-text-input");
+  planTextBaselines[field] = appliedValue;
+  return true;
 }
 
 async function syncCollabStructFieldToDoc(meta) {
@@ -8867,6 +8953,7 @@ async function handleRemotePlanUpdate(next) {
 const dom = {
   tripName: document.querySelector("#tripName"),
   templateName: document.querySelector("#templateName"),
+  planNameInput: document.querySelector("#planNameInput"),
   tripCover: document.querySelector("#tripCover"),
   tripDateRange: document.querySelector("#tripDateRange"),
   onlineCountText: document.querySelector("#onlineCountText"),
@@ -9172,6 +9259,9 @@ let isApplyingCollabPlanRemote = false;
 let collabPlanBindRequestId = 0;
 let planMetaInputSyncTimers = {};
 let pendingPlanMetaInputSyncs = {};
+let planTextBaselines = {};
+let stopTextBaselines = {};
+let dayTextBaselines = {};
 let dayFieldSyncTimer = null;
 let pendingDayEditorSync = false;
 let dayBlockEditTimer = null;
@@ -12188,12 +12278,12 @@ function renderDaySummary() {
 function renderDayEditor() {
   const day = currentDay();
   if (!day) return;
-  dom.fieldDayDate.value = day.date || "";
+  setInputValuePreservingSelection(dom.fieldDayDate, day.date || "");
   if (collabDayTextDayId !== day.id || !collabDayTextDoc) {
-    dom.fieldDayTitle.value = day.title || "";
-    dom.fieldDayRoute.value = day.route || "";
-    dom.fieldDayWeather.value = day.weather || "";
-    dom.fieldDayTransport.value = day.transport || "";
+    setInputValuePreservingSelection(dom.fieldDayTitle, day.title || "");
+    setInputValuePreservingSelection(dom.fieldDayRoute, day.route || "");
+    setInputValuePreservingSelection(dom.fieldDayWeather, day.weather || "");
+    setInputValuePreservingSelection(dom.fieldDayTransport, day.transport || "");
   }
   dom.dayEditorStatus.textContent = isReadonlyMode ? "只读" : tripId ? "实时协作" : "本地保存";
   const editable = canEdit();
@@ -12298,19 +12388,19 @@ function renderDetail() {
   dom.commentTitle.textContent = stop.title;
 
   if (collabTextStopId !== stop.id || !collabTextDoc) {
-    dom.fieldTime.value = stop.time || "";
-    dom.fieldTitle.value = stop.title || "";
-    dom.fieldType.value = stop.type || "";
-    dom.fieldAddress.value = stop.address || "";
-    dom.fieldAmapKeyword.value = stop.amapKeyword || `${state.destination || ""} ${stop.title}`.trim();
-    dom.fieldNote.value = stop.note || "";
-    dom.fieldBudget.value = stop.budget || "";
-    dom.fieldPaid.value = stop.paid || "";
-    dom.fieldPayer.value = stop.payer || "";
-    dom.fieldLng.value = stop.lng || "";
-    dom.fieldLat.value = stop.lat || "";
-    dom.fieldImage.value = stop.image || "";
-    dom.fieldTags.value = (stop.tags || []).join(", ");
+    setInputValuePreservingSelection(dom.fieldTime, stop.time || "");
+    setInputValuePreservingSelection(dom.fieldTitle, stop.title || "");
+    setInputValuePreservingSelection(dom.fieldType, stop.type || "");
+    setInputValuePreservingSelection(dom.fieldAddress, stop.address || "");
+    setInputValuePreservingSelection(dom.fieldAmapKeyword, stop.amapKeyword || `${state.destination || ""} ${stop.title}`.trim());
+    setInputValuePreservingSelection(dom.fieldNote, stop.note || "");
+    setInputValuePreservingSelection(dom.fieldBudget, stop.budget || "");
+    setInputValuePreservingSelection(dom.fieldPaid, stop.paid || "");
+    setInputValuePreservingSelection(dom.fieldPayer, stop.payer || "");
+    setInputValuePreservingSelection(dom.fieldLng, stop.lng || "");
+    setInputValuePreservingSelection(dom.fieldLat, stop.lat || "");
+    setInputValuePreservingSelection(dom.fieldImage, stop.image || "");
+    setInputValuePreservingSelection(dom.fieldTags, (stop.tags || []).join(", "));
   }
   const detailKeyword = dom.fieldAmapKeyword.value || stop.title;
   dom.fieldAmapLink.href = amapSearchUrl(detailKeyword);
@@ -12618,6 +12708,7 @@ function focusPlanMetaActivityTarget(detail = null) {
   syncGuideStateFromPlan();
   renderGuideResult();
   const fieldTarget = {
+    name: dom.planNameInput,
     destination: dom.destinationInput,
     origin: dom.originInput,
     startDate: dom.startDateInput,
@@ -12743,9 +12834,10 @@ function renderGuideResult() {
   const days = guideDayCount();
   const range = dateRangeText(guideState.startDate, guideState.endDate);
   dom.guideResult.textContent = `${guideState.origin}出发，${guideState.destination}${range}，共${days}天，${guideState.pace}节奏，偏好${guideState.interests.join(" / ")}，${guideState.budget}预算。`;
-  dom.originInput.value = guideState.origin;
-  dom.startDateInput.value = guideState.startDate;
-  dom.endDateInput.value = guideState.endDate;
+  setInputValuePreservingSelection(dom.planNameInput, state.name || "");
+  setInputValuePreservingSelection(dom.originInput, guideState.origin);
+  setInputValuePreservingSelection(dom.startDateInput, guideState.startDate);
+  setInputValuePreservingSelection(dom.endDateInput, guideState.endDate);
   dom.tripLengthHint.textContent = `共 ${days} 天，按出发日到返程日生成。最多支持 30 天。`;
 }
 
@@ -15134,7 +15226,7 @@ function syncGuideDatesFromInputs() {
   }
   guideState.startDate = start;
   guideState.endDate = end;
-  if (dom.endDateInput.value !== end) dom.endDateInput.value = end;
+  setInputValuePreservingSelection(dom.endDateInput, end);
   renderGuideResult();
   return {
     startDate: start,
@@ -15361,12 +15453,25 @@ function schedulePlanMetaPatchInputSync(timerKey, patch, label, targetField = ""
   }, 650);
 }
 
+dom.planNameInput?.addEventListener("input", () => {
+  const name = dom.planNameInput.value.trim() || `${guideState.destination || state.destination || "自定义"}同行计划`;
+  state.name = name;
+  renderShell();
+  syncCollabPlanTextFieldToDoc("name", name).catch((error) => {
+    console.warn("Plan name text sync failed", error);
+  });
+  schedulePlanMetaInputSync("name", name, "更新计划名称");
+});
+
 dom.destinationInput.addEventListener("input", () => {
   const destination = dom.destinationInput.value.trim() || "自定义";
   guideState.destination = destination;
   state.destination = destination;
   renderGuideResult();
   renderShell();
+  syncCollabPlanTextFieldToDoc("destination", destination).catch((error) => {
+    console.warn("Destination text sync failed", error);
+  });
   schedulePlanMetaInputSync("destination", destination, "更新目的地");
 });
 
@@ -15376,6 +15481,9 @@ dom.originInput.addEventListener("input", () => {
   state.origin = origin;
   dom.transportFrom.value = guideState.origin;
   renderGuideResult();
+  syncCollabPlanTextFieldToDoc("origin", origin).catch((error) => {
+    console.warn("Origin text sync failed", error);
+  });
   schedulePlanMetaInputSync("origin", origin, "更新出发地");
 });
 
@@ -15385,6 +15493,15 @@ function handleGuideDateInput(event) {
   state.endDate = patch.endDate;
   state.dateRange = patch.dateRange;
   renderShell();
+  syncCollabPlanTextFieldToDoc("startDate", patch.startDate).catch((error) => {
+    console.warn("Start date text sync failed", error);
+  });
+  syncCollabPlanTextFieldToDoc("endDate", patch.endDate).catch((error) => {
+    console.warn("End date text sync failed", error);
+  });
+  syncCollabPlanTextFieldToDoc("dateRange", patch.dateRange).catch((error) => {
+    console.warn("Date range text sync failed", error);
+  });
   schedulePlanMetaPatchInputSync("dateRange", patch, "更新日期范围", event?.target === dom.endDateInput ? "endDate" : "startDate");
 }
 

@@ -828,6 +828,10 @@ button:disabled {
   min-width: 0;
 }
 
+.plan-name-field {
+  grid-column: span 2;
+}
+
 .destination-field {
   grid-column: span 2;
 }

@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scriptPath = path.join(rootDir, "script.js");
+const indexPath = path.join(rootDir, "index.html");
 const source = fs.readFileSync(scriptPath, "utf8");
+const indexSource = fs.readFileSync(indexPath, "utf8");
 
 const expectedReplacementReasons = [
   "recommended-plan",
@@ -215,6 +217,49 @@ for (const call of findCalls("broadcastPlanReplaced")) {
 
 const remoteReplaceBody = extractFunctionBody("applyRemotePlanReplaced");
 assert(remoteReplaceBody.includes("PLAN_REPLACE_REASONS.has(payload.replacementType || \"\")"), "applyRemotePlanReplaced must reject untrusted replacementType values.");
+
+assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
+assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");
+assert(
+  source.includes('{ field: "plan:name", planField: "name", domKey: "planNameInput"'),
+  "Plan name must be registered as a plan-level collaborative text field.",
+);
+assert(source.includes('schedulePlanMetaInputSync("name"'), "Plan name input must sync through plan meta collaboration.");
+assert(source.includes("async function syncCollabPlanTextFieldToDoc"), "Plan text fields must have a per-input Y.Text sync function.");
+assert(source.includes("function setInputValuePreservingSelection"), "Collaborative text refreshes must preserve the local cursor/selection.");
+assert(source.includes("function setDomFieldValuePreservingSelection"), "Collaborative dom-key refreshes must preserve the local cursor/selection.");
+assert(source.includes("let planTextBaselines = {}"), "Plan text fields must track local text baselines.");
+assert(source.includes("refreshPlanTextBaselinesFromDoc()"), "Plan text baselines must be refreshed from the live Yjs document.");
+const planTextSyncBody = extractFunctionBody("syncCollabPlanTextFieldToDoc");
+assert(planTextSyncBody.includes("applyTextDiffFromBase"), "Plan text input must patch Y.Text from a local baseline instead of replacing whole field text.");
+for (const field of ["name", "destination", "origin", "startDate", "endDate", "dateRange"]) {
+  assert(source.includes(`syncCollabPlanTextFieldToDoc("${field}"`), `Plan ${field} input must write to plan-level Y.Text before cloud save.`);
+}
+assert(source.includes("let stopTextBaselines = {}"), "Stop text fields must track local text baselines.");
+assert(source.includes("let dayTextBaselines = {}"), "Day text fields must track local text baselines.");
+assert(source.includes("refreshStopTextBaselinesFromDoc()"), "Stop text baselines must be refreshed from the live Yjs document.");
+assert(source.includes("refreshDayTextBaselinesFromDoc()"), "Day text baselines must be refreshed from the live Yjs document.");
+const stopTextSyncBody = extractFunctionBody("syncCollabTextFieldToDoc");
+const dayTextSyncBody = extractFunctionBody("syncCollabDayTextFieldToDoc");
+assert(stopTextSyncBody.includes("applyTextDiffFromBase"), "Stop text input must patch Y.Text from a local baseline instead of replacing whole field text.");
+assert(dayTextSyncBody.includes("applyTextDiffFromBase"), "Day text input must patch Y.Text from a local baseline instead of replacing whole field text.");
+for (const functionName of [
+  "syncGuideStateFromPlan",
+  "renderGuideResult",
+  "renderDayEditor",
+  "renderDetail",
+  "bindCollabTextDoc",
+  "bindCollabDayTextDoc",
+  "applyRemoteTextUpdate",
+  "applyRemoteDayTextUpdate",
+]) {
+  const body = extractFunctionBody(functionName);
+  assert(body.includes("setInputValuePreservingSelection"), `${functionName} must preserve input cursor/selection when refreshing collaborative fields.`);
+}
+assert(
+  extractFunctionBody("persistCurrentDayTextFromDoc").includes("setDomFieldValuePreservingSelection"),
+  "persistCurrentDayTextFromDoc must preserve input cursor/selection when refreshing day text fields.",
+);
 
 const fullBlockSyncBody = extractFunctionBody("syncAllDayBlocksToDoc");
 assert(fullBlockSyncBody.includes("if (!replace) return false;"), "syncAllDayBlocksToDoc must refuse non-replace calls.");
