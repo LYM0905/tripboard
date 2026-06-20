@@ -229,6 +229,13 @@ assert(extractFunctionBody("conflictDiffSummary").includes("remoteDetail: confli
 assert(extractFunctionBody("showConflictPanel").includes("renderOverlapGroup(diff.overlap"), "Conflict panel must render overlap entries with local/remote value previews.");
 assert(extractFunctionBody("showConflictPanel").includes("<details>"), "Conflict panel overlap entries must be expandable for detailed review.");
 assert(extractFunctionBody("showConflictPanel").includes("conflict-value-compare"), "Conflict panel overlap entries must show detailed local/remote comparisons.");
+assert(source.includes("let conflictFieldChoices = new Map()"), "Conflict field choices must be tracked while the conflict panel is open.");
+assert(source.includes("function isSelectableConflictKey"), "Conflict panel must distinguish field-level choices from structural conflicts.");
+assert(source.includes("function applyConflictFieldChoices"), "Conflict resolution must be able to apply per-field local/remote choices.");
+assert(extractFunctionBody("resolveConflict").includes("applyConflictFieldChoices"), "Smart merge conflict resolution must apply per-field choices.");
+assert(extractFunctionBody("conflictDiffSummary").includes("selectable: isSelectableConflictKey"), "Conflict overlap entries must mark whether they support per-field choices.");
+assert(extractFunctionBody("showConflictPanel").includes("data-conflict-choice"), "Conflict overlap entries must expose per-field choice controls.");
+assert(source.includes('dom.conflictDiff?.addEventListener("change"'), "Conflict field choice controls must update local choice state.");
 
 assert(indexSource.includes('id="planNameInput"'), "Plan name must have an editable input.");
 assert(indexSource.includes('id="planNameInputPresence"'), "Plan name input must expose a presence overlay.");

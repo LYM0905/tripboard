@@ -319,6 +319,19 @@ function conflictValueDetail(value) {
   return String(value);
 }
 
+function conflictChoiceKey(value = "") {
+  return encodeURIComponent(String(value || ""));
+}
+
+function isSelectableConflictKey(key = "") {
+  const parts = String(key || "").split(".");
+  if (parts[0] === "plan" && parts.length === 2) return true;
+  if (parts[0] !== "days" || parts.length < 3) return false;
+  if (parts.length === 3) return true;
+  if ((parts[2] === "stops" || parts[2] === "blocks") && parts.length === 5) return true;
+  return false;
+}
+
 function collectListDiffChanges(changes, baseItems = [], nextItems = [], options = {}) {
   const {
     path = "list",
@@ -431,11 +444,14 @@ function conflictDiffSummary(conflict = {}) {
     .filter((key) => remoteChanges.has(key))
     .filter((key) => !sameSerialized(localChanges.get(key)?.value, remoteChanges.get(key)?.value))
     .map((key) => ({
+      key,
       label: localChanges.get(key)?.label || remoteChanges.get(key)?.label || key,
       local: conflictValuePreview(localChanges.get(key)?.value),
       remote: conflictValuePreview(remoteChanges.get(key)?.value),
       localDetail: conflictValueDetail(localChanges.get(key)?.value),
       remoteDetail: conflictValueDetail(remoteChanges.get(key)?.value),
+      selectable: isSelectableConflictKey(key),
+      choice: conflictFieldChoices.get(key) || "merge",
     }));
   return {
     local: [...localChanges.values()].map((entry) => entry.label).slice(0, 6),
@@ -1806,6 +1822,65 @@ function mergePlans(localPlan, remotePlan, basePlan = lastSyncedState) {
   return normalizedMerged;
 }
 
+function findDiffDayByKey(days = [], dayKey = "") {
+  const list = Array.isArray(days) ? days : [];
+  return list.find((day, index) => diffItemKey(day, "day", index) === dayKey) || null;
+}
+
+function findDiffItemByKey(items = [], prefix = "item", itemKey = "") {
+  const list = Array.isArray(items) ? items : [];
+  return list.find((item, index) => diffItemKey(item, prefix, index) === itemKey) || null;
+}
+
+function setConflictChoiceValue(plan = {}, key = "", value) {
+  const parts = String(key || "").split(".");
+  if (parts[0] === "plan" && parts.length === 2) {
+    plan[parts[1]] = clone(value);
+    return true;
+  }
+  if (parts[0] !== "days" || parts.length < 3) return false;
+  const day = findDiffDayByKey(plan.days || [], parts[1]);
+  if (!day) return false;
+  if (parts.length === 3) {
+    day[parts[2]] = clone(value);
+    return true;
+  }
+  if (parts[2] === "stops" && parts.length === 5) {
+    const stop = findDiffItemByKey(day.stops || [], "stop", parts[3]);
+    if (!stop) return false;
+    stop[parts[4]] = clone(value);
+    return true;
+  }
+  if (parts[2] === "blocks" && parts.length === 5) {
+    const block = findDiffItemByKey(normalizeDayBlocks(day.blocks || []), "block", parts[3]);
+    if (!block) return false;
+    block[parts[4]] = clone(value);
+    day.blocks = normalizeDayBlocks((day.blocks || []).map((item) => (item.id === block.id ? block : item)));
+    return true;
+  }
+  return false;
+}
+
+function applyConflictFieldChoices(plan = {}, conflict = pendingConflict) {
+  if (!conflict || !conflictFieldChoices.size) return plan;
+  const localPlan = conflict.local || state;
+  const remotePlan = conflict.remote || {};
+  const basePlan = conflict.base || lastSyncedState || {};
+  const localChanges = collectPlanChangeMap(basePlan, localPlan);
+  const remoteChanges = collectPlanChangeMap(basePlan, remotePlan);
+  conflictFieldChoices.forEach((choice, key) => {
+    if (choice !== "local" && choice !== "remote") return;
+    const source = choice === "local" ? localChanges : remoteChanges;
+    const entry = source.get(key);
+    if (!entry) return;
+    setConflictChoiceValue(plan, key, entry.value);
+  });
+  const nextPlanYjs = planYjsSnapshotFromPlan(plan);
+  if (nextPlanYjs) plan.planYjs = nextPlanYjs;
+  else clearPlanYjsState(plan);
+  return plan;
+}
+
 function conflictSummary(conflict) {
   const who = conflict?.updatedBy || "其他成员";
   const when = conflict?.updatedAt ? new Date(conflict.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "刚刚";
@@ -1855,6 +1930,13 @@ function showConflictPanel(conflict) {
                   <p><b>我的版本</b><span>${escapeHtml(item.localDetail)}</span></p>
                   <p><b>云端版本</b><span>${escapeHtml(item.remoteDetail)}</span></p>
                 </div>
+                ${item.selectable ? `
+                  <div class="conflict-choice" role="group" aria-label="选择这个冲突的处理方式">
+                    <label><input type="radio" name="conflict-choice-${conflictChoiceKey(item.key)}" data-conflict-choice="${escapeHtml(item.key)}" value="merge"${item.choice === "merge" ? " checked" : ""}>智能合并</label>
+                    <label><input type="radio" name="conflict-choice-${conflictChoiceKey(item.key)}" data-conflict-choice="${escapeHtml(item.key)}" value="local"${item.choice === "local" ? " checked" : ""}>用我的</label>
+                    <label><input type="radio" name="conflict-choice-${conflictChoiceKey(item.key)}" data-conflict-choice="${escapeHtml(item.key)}" value="remote"${item.choice === "remote" ? " checked" : ""}>用云端</label>
+                  </div>
+                ` : `<small>结构变化将由智能合并整体处理</small>`}
               </details>
             </li>
           `).join("")}
@@ -1905,6 +1987,7 @@ function refreshConflictPresenceImpact() {
 
 function hideConflictPanel() {
   pendingConflict = null;
+  conflictFieldChoices.clear();
   if (dom.conflictPanel) dom.conflictPanel.hidden = true;
   if (dom.conflictDiff) dom.conflictDiff.innerHTML = "";
 }
@@ -9341,6 +9424,9 @@ async function resolveConflict(mode) {
     if (mode === "merge") {
       mergedWithYjsSnapshot = await mergeConflictPlanYjsSnapshot(remotePlan, "已通过协作快照合并冲突");
       if (!mergedWithYjsSnapshot) state = mergePlans(localPlan, remotePlan, basePlan);
+      if (conflictFieldChoices.size) {
+        state = applyConflictFieldChoices(state, { ...conflict, local: localPlan, remote: remotePlan, base: basePlan });
+      }
     } else {
       state = ensurePlanDates(localPlan);
     }
@@ -9693,6 +9779,7 @@ let lastRemoteUpdatedAt = "";
 let lastSyncedState = null;
 let pendingLocalRemoteUpdatedAt = "";
 let pendingConflict = null;
+let conflictFieldChoices = new Map();
 let pendingVersionRestoreId = "";
 let isResolvingConflict = false;
 let editLockEnabled = true;
@@ -16478,6 +16565,15 @@ dom.editAccessForm?.addEventListener("submit", async (event) => {
 dom.mergeConflictBtn?.addEventListener("click", () => resolveConflict("merge"));
 dom.keepLocalConflictBtn?.addEventListener("click", () => resolveConflict("local"));
 dom.useRemoteConflictBtn?.addEventListener("click", () => resolveConflict("remote"));
+dom.conflictDiff?.addEventListener("change", (event) => {
+  const input = event.target.closest?.("[data-conflict-choice]");
+  if (!input) return;
+  const key = input.dataset.conflictChoice || "";
+  const choice = input.value === "local" || input.value === "remote" ? input.value : "merge";
+  if (choice === "merge") conflictFieldChoices.delete(key);
+  else conflictFieldChoices.set(key, choice);
+  dom.saveState.textContent = choice === "merge" ? "该冲突将使用智能合并" : `该冲突将${choice === "local" ? "保留我的版本" : "使用云端版本"}`;
+});
 
 dom.versionList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-version]");

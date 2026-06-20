@@ -1852,6 +1852,32 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.conflict-choice {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.conflict-choice label {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dfe9ea;
+  border-radius: 6px;
+  color: #496064;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 900;
+  gap: 4px;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px;
+}
+
+.conflict-choice input {
+  accent-color: #1f7a8c;
+}
+
 .conflict-actions {
   display: grid;
   gap: 8px;
