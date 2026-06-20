@@ -13869,7 +13869,14 @@ function mutate(label, action, options = {}) {
   action();
   const activityTarget = typeof options.activityTarget === "function" ? options.activityTarget() : options.activityTarget;
   logActivity(label, activityTarget ? { target: activityTarget } : {});
-  if (options.save !== false) saveState(label);
+  if (options.save !== false) {
+    if (tripId && supabaseClient && options.allowSharedSave !== true) {
+      console.warn("Blocked generic mutate save in shared mode", label);
+      dom.saveState.textContent = `${label}已更新本地；共享计划需要走协作同步路径`;
+    } else {
+      saveState(label);
+    }
+  }
   if (options.render !== false) render();
   return true;
 }

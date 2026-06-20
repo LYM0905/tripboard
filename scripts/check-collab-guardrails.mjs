@@ -521,6 +521,9 @@ assert(source.includes('logActivity("导出计划 JSON", { broadcast: false })')
 const bootBody = extractFunctionBody("boot");
 assert(!bootBody.includes("saveState();"), "Boot local fallback must not call generic saveState because it can push remotely after config changes.");
 assert(bootBody.includes('localStorage.setItem(STORAGE_KEY, JSON.stringify(state))'), "Boot local fallback must persist only to localStorage.");
+const mutateBody = extractFunctionBody("mutate");
+assert(mutateBody.includes("options.allowSharedSave !== true"), "mutate must block generic saveState in shared mode unless explicitly allowed.");
+assert(mutateBody.includes("Blocked generic mutate save in shared mode"), "Blocked shared mutate saves must leave a visible debug signal.");
 
 if (failures.length) {
   console.error("Collaboration guardrail check failed:");
