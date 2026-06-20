@@ -556,6 +556,25 @@ for (const call of saveStateCalls) {
 }
 assert(allowedSaveStateBounds.length === 3, "Direct saveState call guard must recognize the three approved wrapper locations.");
 
+const pushRemoteStateCalls = findCalls("pushRemoteState");
+const allowedPushRemoteStateBounds = [
+  functionBounds("flushPendingPlanUpdates"),
+  functionBounds("persistCurrentTextFromDoc"),
+  functionBounds("persistCurrentPlanFromDoc"),
+  functionBounds("scheduleCollaborativePlanSave"),
+  functionBounds("ensureRemotePlanYjsSnapshot"),
+  functionBounds("resolveConflict"),
+  functionBounds("saveState"),
+  functionBounds("saveCollaborativeCommentChange"),
+  functionBounds("loadRemoteState"),
+  functionBounds("createSharedTrip"),
+].filter(Boolean);
+for (const call of pushRemoteStateCalls) {
+  const allowed = allowedPushRemoteStateBounds.some((bounds) => call.index >= bounds.start && call.index <= bounds.end);
+  assert(allowed, `pushRemoteState call at line ${call.line} must stay inside an approved collaborative remote-save path.`);
+}
+assert(allowedPushRemoteStateBounds.length === 10, "Direct pushRemoteState guard must recognize the approved remote-save paths.");
+
 if (failures.length) {
   console.error("Collaboration guardrail check failed:");
   for (const failure of failures) console.error(`- ${failure}`);
