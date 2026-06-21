@@ -79,6 +79,7 @@ button {
 .day-blocks-panel,
 .guide-panel,
 .quick-add-panel,
+.stay-food-panel,
 .transport-panel,
 .map-panel,
 .place-detail,
@@ -303,6 +304,7 @@ button {
 .day-blocks-panel,
 .guide-panel,
 .quick-add-panel,
+.stay-food-panel,
 .transport-panel,
 .map-panel,
 .editor-panel,
@@ -1356,6 +1358,123 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 8px;
   outline: 0;
+}
+
+.service-board-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.service-board {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.service-board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.service-board-head h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.service-board-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.service-list {
+  display: grid;
+  gap: 9px;
+}
+
+.service-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.service-card.is-selected {
+  border-color: rgba(36, 115, 92, 0.55);
+  background: linear-gradient(0deg, rgba(218, 240, 222, 0.55), #fff);
+}
+
+.service-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--green);
+  background: var(--green-2);
+  border-radius: 8px;
+}
+
+.service-card strong,
+.service-card span,
+.service-card small {
+  display: block;
+  min-width: 0;
+}
+
+.service-card strong {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-card span {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-card small {
+  margin-top: 5px;
+  color: var(--coral);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.service-card-actions {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.service-import-note {
+  display: flex;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px;
+  color: #34464f;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.service-import-note i {
+  flex: 0 0 auto;
+  color: var(--green);
 }
 
 .amap-place-results {
@@ -4050,6 +4169,7 @@ svg {
   .day-form,
   .edit-form,
   .quick-add-form,
+  .service-board-grid,
   .transport-summary,
   .transport-controls,
   .multi-origin-panel,
@@ -4127,6 +4247,15 @@ svg {
 
   .transport-item {
     grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .service-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .service-card-actions {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .transport-item em {

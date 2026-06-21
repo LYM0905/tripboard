@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260621-recommended-plan-fix" />
+    <link rel="stylesheet" href="styles.css?v=20260621-stay-food" />
   </head>
   <body>
     <div class="app-shell">
@@ -442,6 +442,47 @@
           <a class="map-link" id="quickAmapLink" href="#" target="_blank" rel="noopener">高德链接会显示在这里</a>
         </section>
 
+        <section class="stay-food-panel">
+          <div class="section-title">
+            <span>住宿与餐饮</span>
+            <strong id="stayFoodSummary">可推荐、添加、导入</strong>
+          </div>
+          <div class="service-board-grid">
+            <section class="service-board" aria-labelledby="lodgingBoardTitle">
+              <div class="service-board-head">
+                <div>
+                  <p class="eyebrow">Stay</p>
+                  <h3 id="lodgingBoardTitle">住宿</h3>
+                </div>
+                <div class="service-board-actions">
+                  <button type="button" class="icon-btn subtle" id="recommendLodgingBtn" title="推荐住宿"><i data-lucide="sparkles"></i></button>
+                  <button type="button" class="icon-btn subtle" id="addLodgingBtn" title="手动添加住宿"><i data-lucide="plus"></i></button>
+                  <button type="button" class="icon-btn subtle" id="importLodgingBtn" title="导入酒店或民宿订单"><i data-lucide="file-input"></i></button>
+                </div>
+              </div>
+              <div class="service-list" id="lodgingBoard"></div>
+            </section>
+            <section class="service-board" aria-labelledby="diningBoardTitle">
+              <div class="service-board-head">
+                <div>
+                  <p class="eyebrow">Food</p>
+                  <h3 id="diningBoardTitle">餐饮</h3>
+                </div>
+                <div class="service-board-actions">
+                  <button type="button" class="icon-btn subtle" id="recommendDiningBtn" title="推荐餐饮"><i data-lucide="sparkles"></i></button>
+                  <button type="button" class="icon-btn subtle" id="addDiningBtn" title="手动添加餐饮"><i data-lucide="plus"></i></button>
+                  <button type="button" class="icon-btn subtle" id="importDiningBtn" title="导入美团或点评记录"><i data-lucide="file-input"></i></button>
+                </div>
+              </div>
+              <div class="service-list" id="diningBoard"></div>
+            </section>
+          </div>
+          <div class="service-import-note">
+            <i data-lucide="shield-check"></i>
+            <span>当前支持粘贴大众点评/美团分享链接、订单文本、短信或酒店邮件后导入；自动读取 App 账号订单需要平台授权/API。</span>
+          </div>
+        </section>
+
         <section class="service-panel">
           <div class="section-title">
             <span>智能与实时数据</span>
@@ -725,7 +766,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260621-recommended-plan-fix"></script>
-    <script src="script.js?v=20260621-recommended-plan-fix"></script>
+    <script src="config.js?v=20260621-stay-food"></script>
+    <script src="script.js?v=20260621-stay-food"></script>
   </body>
 </html>

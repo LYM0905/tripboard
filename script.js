@@ -1201,6 +1201,7 @@ function distanceBetween(a, b) {
 }
 
 function makeStop({
+  id = "",
   time = "09:00",
   title = "新地点",
   type = "Place",
@@ -1223,9 +1224,10 @@ function makeStop({
   lat = "",
   amapKeyword = "",
   image = images.city,
+  selected = false,
 } = {}) {
   return {
-    id: uid(),
+    id: id || uid(),
     time,
     title,
     type,
@@ -1249,6 +1251,7 @@ function makeStop({
     lat,
     amapKeyword,
     image,
+    selected: Boolean(selected),
   };
 }
 
@@ -3858,6 +3861,7 @@ function refreshRealtimePlanViews() {
   renderDayBlocks(currentDay());
   renderTransport();
   renderCandidates();
+  renderStayFoodBoards();
   renderActivities();
   refreshIcons();
   requestAnimationFrame(() => refreshDayBlockTextPresence());
@@ -8969,6 +8973,15 @@ const dom = {
   deleteDayBtn: document.querySelector("#deleteDayBtn"),
   timeline: document.querySelector("#timeline"),
   candidateGrid: document.querySelector("#candidateGrid"),
+  stayFoodSummary: document.querySelector("#stayFoodSummary"),
+  lodgingBoard: document.querySelector("#lodgingBoard"),
+  diningBoard: document.querySelector("#diningBoard"),
+  recommendLodgingBtn: document.querySelector("#recommendLodgingBtn"),
+  addLodgingBtn: document.querySelector("#addLodgingBtn"),
+  importLodgingBtn: document.querySelector("#importLodgingBtn"),
+  recommendDiningBtn: document.querySelector("#recommendDiningBtn"),
+  addDiningBtn: document.querySelector("#addDiningBtn"),
+  importDiningBtn: document.querySelector("#importDiningBtn"),
   routeDistance: document.querySelector("#routeDistance"),
   routeDuration: document.querySelector("#routeDuration"),
   mapProviderStatus: document.querySelector("#mapProviderStatus"),
@@ -9157,7 +9170,8 @@ const sessionId = crypto.randomUUID ? crypto.randomUUID() : uid();
 let supabaseClient = null;
 let realtimeChannel = null;
 const urlParams = new URLSearchParams(window.location.search);
-let tripId = urlParams.get("trip") || localStorage.getItem("tripboard-current-trip-id") || "";
+const forceLocalMode = urlParams.get("local") === "1";
+let tripId = urlParams.get("trip") || (forceLocalMode ? "" : localStorage.getItem("tripboard-current-trip-id")) || "";
 const forcedReadonlyMode = urlParams.get("mode") === "readonly";
 let editAccessGranted = false;
 let editAccessRequired = false;
@@ -10980,6 +10994,137 @@ function clearQuickPlaceForm({ keepCandidateEditing = false } = {}) {
   if (!keepCandidateEditing) setCandidateEditing(null);
 }
 
+function destinationName() {
+  return String(state.destination || guideState.destination || state.name || "目的地").trim() || "目的地";
+}
+
+function serviceRecommendationTemplates(kind = "") {
+  const destination = destinationName();
+  if (kind === "lodging") {
+    return [
+      { title: `${destination}市中心住宿`, time: "15:00", budget: 520, tags: ["住宿", "交通便利", "待比价"], note: "优先查地铁/车站附近，适合作为多人集合和行李寄存点。" },
+      { title: `${destination}景区附近酒店`, time: "15:00", budget: 680, tags: ["住宿", "近景点", "待比价"], note: "适合早出发或夜游，确认取消政策、早餐和停车/打车便利度。" },
+      { title: `${destination}特色民宿`, time: "15:00", budget: 430, tags: ["民宿", "体验", "待确认"], note: "适合体验型住宿，导入真实订单后补充房型、入住人、押金和联系方式。" },
+    ];
+  }
+  return [
+    { title: `${destination}当地特色餐厅`, time: "18:30", budget: 180, tags: ["餐饮", "特色菜", "待预约"], note: "适合作为正餐候选，可粘贴大众点评/美团链接或团购信息后确认。" },
+    { title: `${destination}小吃/夜市`, time: "20:00", budget: 90, tags: ["小吃", "夜市", "可选"], note: "适合弹性安排，注意营业时间、排队情况和返程交通。" },
+    { title: `${destination}咖啡/休息点`, time: "14:30", budget: 55, tags: ["咖啡", "休息", "备选"], note: "用于行程间歇、集合等人或雨天备选。" },
+  ];
+}
+
+function serviceRecommendationId(kind = "", template = {}) {
+  return [
+    "service",
+    kind,
+    destinationName(),
+    template.title || "",
+  ]
+    .map((part) => encodeURIComponent(String(part).trim().toLowerCase()))
+    .join("-");
+}
+
+function existingCandidateKeys() {
+  return new Set((state.candidates || []).map((item) => `${quickTypeValue(item.type)}:${String(item.title || "").trim()}:${String(item.address || item.amapKeyword || "").trim()}`));
+}
+
+async function addServiceRecommendations(kind = "") {
+  const label = serviceKindLabel(kind);
+  if (!requireEdit(`推荐${label}`)) return;
+  const existing = existingCandidateKeys();
+  const destination = destinationName();
+  const drafts = serviceRecommendationTemplates(kind)
+    .map((template, index) => makeStop({
+      id: serviceRecommendationId(kind, template),
+      time: template.time,
+      title: template.title,
+      type: serviceKindType(kind),
+      address: destination,
+      note: template.note,
+      tags: ["推荐", ...template.tags],
+      budget: template.budget,
+      amapKeyword: `${destination} ${template.title}`,
+      image: serviceKindImage(kind),
+      selected: false,
+      x: 64 + index * 5,
+      y: 42 + index * 4,
+    }))
+    .filter((draft) => !existing.has(`${quickTypeValue(draft.type)}:${draft.title}:${draft.address || draft.amapKeyword || ""}`))
+    .slice(0, 3);
+  if (!drafts.length) {
+    dom.saveState.textContent = `${label}推荐已在备选池里，可以直接预选或加入当天。`;
+    return;
+  }
+  saveVersionSnapshot(`推荐${label}`);
+  await bindCollabPlanDoc();
+  let added = 0;
+  if (collabPlanDoc && collabCandidatesArray && canEdit() && !isReadonlyMode && !isApplyingCollabPlanRemote) {
+    const current = readCandidatesFromDoc();
+    const currentIds = new Set(current.map((item) => item.id));
+    const additions = normalizeCandidateStops(drafts.filter((draft) => !currentIds.has(draft.id)));
+    if (additions.length) {
+      collabPlanDoc.transact(() => {
+        collabCandidatesArray.insert(0, additions);
+      }, `local-service-${kind}-recommendations`);
+      persistCurrentPlanFromDoc("住宿餐饮推荐已实时同步");
+      added = additions.length;
+    }
+  }
+  if (!added) {
+    state.candidates = normalizeCandidateStops([...drafts, ...(state.candidates || [])]).slice(0, 80);
+    await syncCandidatesToDoc(`local-service-${kind}-recommendations-fallback`);
+    added = drafts.length;
+  }
+  await logActivity(`生成${label}推荐 ${added} 项`, { target: candidateActivityTarget(drafts[0]?.id || "", { action: "service-recommend", serviceKind: kind }) });
+  await saveCollaborativePlanChange(`生成${label}推荐`);
+  dom.saveState.textContent = `已生成 ${added} 个${label}候选，可预选、编辑或加入当天。`;
+  refreshRealtimePlanViews();
+}
+
+function prefillServiceQuickAdd(kind = "") {
+  const label = serviceKindLabel(kind);
+  if (!requireEdit(`添加${label}`)) return;
+  const destination = destinationName();
+  clearQuickPlaceForm();
+  if (dom.quickType) dom.quickType.value = serviceKindType(kind);
+  dom.quickPlaceName.value = kind === "lodging" ? `${destination}住宿` : `${destination}餐厅`;
+  dom.quickAmapKeyword.value = kind === "lodging" ? `${destination} 酒店 民宿` : `${destination} 特色餐厅 美食`;
+  dom.quickTime.value = kind === "lodging" ? "15:00" : "18:30";
+  dom.quickBudget.value = kind === "lodging" ? "520" : "180";
+  dom.quickSelected.checked = true;
+  dom.quickAddress.value = destination;
+  dom.quickPlaceName.focus();
+  dom.quickAddForm.scrollIntoView({ block: "center", behavior: "smooth" });
+  dom.optimizeHint.textContent = `已切到${label}录入。可先改名称、预算，再加入当天或备选池。`;
+}
+
+function openExternalImport(provider = "") {
+  if (!requireEdit("导入外部记录")) return;
+  pendingProvider = provider || "分享/截图";
+  const defaults = providerDefaults(pendingProvider);
+  lastParsedImport = null;
+  dom.importTitle.textContent = `从${pendingProvider}导入`;
+  dom.importCopy.textContent = externalImportConfig.endpoint
+    ? "粘贴订单文本后可用 AI 解析，再写入计划；不会读取你的账号。"
+    : "这里不会读取你的账号，只把你录入或粘贴的订单信息写入计划。";
+  dom.importCategory.value = defaults.category;
+  dom.importDate.value = currentDay()?.date || "";
+  dom.importName.value = defaults.title;
+  dom.importTime.value = defaults.time;
+  dom.importBudget.value = "";
+  dom.importPaid.value = "";
+  dom.importPayer.value = memberProfile?.name || "";
+  dom.importAddress.value = "";
+  dom.importOrderNo.value = "";
+  dom.importSourceUrl.value = "";
+  dom.importNote.value = "";
+  renderImportPreview(null);
+  dom.importModal.classList.add("is-open");
+  dom.importModal.setAttribute("aria-hidden", "false");
+  refreshIcons();
+}
+
 async function saveProviderTransportQuotes(items = [], day = currentDay(), source = "") {
   const incoming = items
     .map((item) => transportQuoteFromProviderItem(item, day, source))
@@ -11069,6 +11214,34 @@ async function toggleCandidateSelection(candidateId) {
   await saveCollaborativePlanChange("更新备选预选");
 }
 
+async function addCandidateToCurrentDay(candidateId = "", sourceLabel = "备选") {
+  const sourceCandidate = (state.candidates || []).find((item) => item.id === candidateId);
+  if (!sourceCandidate || !requireEdit("加入备选地点")) return;
+  const candidate = clone(sourceCandidate);
+  candidate.id = uid();
+  const createdDayId = currentDay()?.id || "";
+  const label = `加入${sourceLabel}「${candidate.title}」`;
+  saveVersionSnapshot(label);
+  if (createdDayId && await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop-yjs-first")) {
+    await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add" }) });
+    await applyStopCreateFromDoc(createdDayId, candidate.id, label);
+    await saveCollaborativePlanChange(label);
+    broadcastStopCreated(createdDayId, candidate);
+    render();
+    return;
+  }
+  const day = currentDay();
+  if (!day) return;
+  day.stops.push(candidate);
+  activeStop = currentDay().stops.length - 1;
+  clearCurrentAmapRoute();
+  await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add", fallback: true }) });
+  await syncStopListToDoc(createdDayId, "local-candidate-to-stop-fallback");
+  await saveCollaborativePlanChange(label);
+  broadcastStopCreated(createdDayId, candidate);
+  render();
+}
+
 function manualTransportQuotes() {
   return state.transportQuotes || [];
 }
@@ -11094,6 +11267,36 @@ function quickTypeLabel(type = "") {
     Transport: "交通",
     Other: "其他",
   }[quickTypeValue(type)] || "景点/门票";
+}
+
+function serviceKindFromItem(item = {}) {
+  const type = quickTypeValue(item.type);
+  if (type === "Hotel") return "lodging";
+  if (type === "Food") return "dining";
+  const text = budgetTextForItem(item);
+  if (/hotel|住宿|民宿|酒店|客栈|入住|离店|房型/.test(text)) return "lodging";
+  if (/food|餐饮|餐厅|咖啡|午餐|晚餐|早餐|美食|团购|夜市|小吃|排队|到店|套餐|Dinner|Lunch|Market/i.test(text)) return "dining";
+  return "";
+}
+
+function serviceKindLabel(kind = "") {
+  return kind === "lodging" ? "住宿" : "餐饮";
+}
+
+function serviceKindType(kind = "") {
+  return kind === "lodging" ? "Hotel" : "Food";
+}
+
+function serviceKindProvider(kind = "") {
+  return kind === "lodging" ? "民宿/酒店" : "美团/点评";
+}
+
+function serviceKindIcon(kind = "") {
+  return kind === "lodging" ? "bed-double" : "utensils";
+}
+
+function serviceKindImage(kind = "") {
+  return kind === "lodging" ? providerDefaults("住宿").image : images.food;
 }
 
 function normalizeImportCategory(value, provider = "") {
@@ -12542,6 +12745,88 @@ function renderCandidates() {
     .join("");
 }
 
+function serviceBoardItems(kind = "") {
+  const items = [];
+  (state.days || []).forEach((day, dayIndex) => {
+    (day.stops || []).forEach((stop, stopIndex) => {
+      if (serviceKindFromItem(stop) !== kind) return;
+      items.push({
+        source: "stop",
+        day,
+        dayIndex,
+        stop,
+        stopIndex,
+        selected: stop.budgetSelected !== false,
+      });
+    });
+  });
+  (state.candidates || []).forEach((stop, candidateIndex) => {
+    if (serviceKindFromItem(stop) !== kind) return;
+    items.push({
+      source: "candidate",
+      stop,
+      candidateIndex,
+      selected: Boolean(stop.selected),
+    });
+  });
+  return items;
+}
+
+function renderServiceBoard(kind = "") {
+  const container = kind === "lodging" ? dom.lodgingBoard : dom.diningBoard;
+  if (!container) return 0;
+  const editable = canEdit();
+  const items = serviceBoardItems(kind);
+  const label = serviceKindLabel(kind);
+  if (!items.length) {
+    container.innerHTML = `<p class="empty-state">还没有${label}。可以点“推荐”生成候选，或点“添加/导入”录入真实预订。</p>`;
+    return 0;
+  }
+  container.innerHTML = items
+    .map((entry) => {
+      const stop = entry.stop;
+      const title = stop.title || label;
+      const sourceText = entry.source === "stop"
+        ? `${entry.day?.label || `D${entry.dayIndex + 1}`} · 已排入行程`
+        : "备选池";
+      const paid = numberValue(stop.paid);
+      const budget = numberValue(stop.budget) || inferTicketPrice(stop);
+      const payer = stop.payer ? ` · ${escapeHtml(stop.payer)}` : "";
+      const amount = budget || paid;
+      const meta = [
+        sourceText,
+        stop.time || "",
+        stop.address || stop.amapKeyword || "",
+      ].filter(Boolean).join(" · ");
+      const action = entry.source === "candidate"
+        ? `
+          <button type="button" class="icon-btn subtle" data-service-toggle-candidate="${escapeHtml(stop.id || "")}" title="${entry.selected ? "移出预选" : "加入预选"}">${icon(entry.selected ? "check-circle-2" : "circle")}</button>
+          <button type="button" class="icon-btn subtle" data-service-edit-candidate="${escapeHtml(stop.id || "")}" title="编辑">${icon("pencil")}</button>
+          <button type="button" class="icon-btn subtle" data-service-add-candidate="${escapeHtml(stop.id || "")}" title="加入当天">${icon("calendar-plus")}</button>
+        `
+        : `<button type="button" class="icon-btn subtle" data-service-focus-stop="${entry.dayIndex}:${entry.stopIndex}" title="查看行程地点">${icon("locate-fixed")}</button>`;
+      return `
+        <article class="service-card${entry.selected ? " is-selected" : ""}">
+          <span class="service-icon">${icon(serviceKindIcon(kind))}</span>
+          <div>
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(meta)}</span>
+            <small>${amount ? `${money(amount)}${paid ? ` · 已付 ${money(paid)}${payer}` : ""}` : "金额待确认"}</small>
+          </div>
+          ${editable ? `<div class="service-card-actions">${action}</div>` : ""}
+        </article>
+      `;
+    })
+    .join("");
+  return items.length;
+}
+
+function renderStayFoodBoards() {
+  const lodgingCount = renderServiceBoard("lodging");
+  const diningCount = renderServiceBoard("dining");
+  if (dom.stayFoodSummary) dom.stayFoodSummary.textContent = `${lodgingCount} 项住宿 · ${diningCount} 项餐饮`;
+}
+
 function renderActivities() {
   const list = normalizeActivities(state.activities || []);
   const counts = list.reduce((result, item) => {
@@ -12927,6 +13212,7 @@ function render() {
   renderMap();
   renderDetail();
   renderCandidates();
+  renderStayFoodBoards();
   renderActivities();
   renderGuideResult();
   renderAmapRouteReport(currentDay()?.amapRoute || null);
@@ -15242,6 +15528,69 @@ dom.cancelCandidateEditBtn?.addEventListener("click", () => {
   dom.saveState.textContent = "已取消编辑备选地点";
 });
 
+dom.recommendLodgingBtn?.addEventListener("click", () => {
+  addServiceRecommendations("lodging").catch((error) => {
+    dom.saveState.textContent = `生成住宿推荐失败：${error.message}`;
+  });
+});
+
+dom.recommendDiningBtn?.addEventListener("click", () => {
+  addServiceRecommendations("dining").catch((error) => {
+    dom.saveState.textContent = `生成餐饮推荐失败：${error.message}`;
+  });
+});
+
+dom.addLodgingBtn?.addEventListener("click", () => prefillServiceQuickAdd("lodging"));
+
+dom.addDiningBtn?.addEventListener("click", () => prefillServiceQuickAdd("dining"));
+
+dom.importLodgingBtn?.addEventListener("click", () => openExternalImport("民宿/酒店"));
+
+dom.importDiningBtn?.addEventListener("click", () => openExternalImport("美团/点评"));
+
+[dom.lodgingBoard, dom.diningBoard].forEach((board) => {
+  board?.addEventListener("click", async (event) => {
+    const toggleButton = event.target.closest("[data-service-toggle-candidate]");
+    if (toggleButton) {
+      event.preventDefault();
+      await toggleCandidateSelection(toggleButton.dataset.serviceToggleCandidate);
+      return;
+    }
+    const editButton = event.target.closest("[data-service-edit-candidate]");
+    if (editButton) {
+      event.preventDefault();
+      const candidate = state.candidates.find((item) => item.id === editButton.dataset.serviceEditCandidate);
+      if (!candidate || !requireEdit("编辑备选地点")) return;
+      if (!confirmRemoteCandidateEdit(candidate.id, "编辑备选地点")) return;
+      setCandidateEditing(candidate);
+      renderCandidates();
+      renderStayFoodBoards();
+      dom.quickPlaceName.focus();
+      dom.quickAddForm.scrollIntoView({ block: "center", behavior: "smooth" });
+      dom.saveState.textContent = `正在编辑备选「${candidate.title}」`;
+      return;
+    }
+    const addButton = event.target.closest("[data-service-add-candidate]");
+    if (addButton) {
+      event.preventDefault();
+      await addCandidateToCurrentDay(addButton.dataset.serviceAddCandidate, "住宿餐饮备选");
+      return;
+    }
+    const focusButton = event.target.closest("[data-service-focus-stop]");
+    if (focusButton) {
+      event.preventDefault();
+      const [dayIndexText, stopIndexText] = String(focusButton.dataset.serviceFocusStop || "").split(":");
+      const dayIndex = Number(dayIndexText);
+      const stopIndex = Number(stopIndexText);
+      if (!Number.isFinite(dayIndex) || !Number.isFinite(stopIndex) || !state.days[dayIndex]?.stops?.[stopIndex]) return;
+      activeDay = dayIndex;
+      activeStop = stopIndex;
+      render();
+      dom.saveState.textContent = "已定位到住宿/餐饮行程项";
+    }
+  });
+});
+
 dom.candidateGrid.addEventListener("click", async (event) => {
   const selectButton = event.target.closest("[data-toggle-candidate-selected]");
   if (selectButton) {
@@ -15288,30 +15637,8 @@ dom.candidateGrid.addEventListener("click", async (event) => {
   }
   const button = event.target.closest("[data-candidate]");
   if (!button) return;
-  if (!requireEdit("加入备选地点")) return;
-  const candidate = clone(state.candidates[Number(button.dataset.candidate)]);
-  candidate.id = uid();
-  const createdDayId = currentDay()?.id || "";
-  const label = `加入备选「${candidate.title}」`;
-  saveVersionSnapshot(label);
-  if (createdDayId && await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop-yjs-first")) {
-    await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add" }) });
-    await applyStopCreateFromDoc(createdDayId, candidate.id, label);
-    await saveCollaborativePlanChange(label);
-    broadcastStopCreated(createdDayId, candidate);
-    render();
-    return;
-  }
-  const day = currentDay();
-  if (!day) return;
-  day.stops.push(candidate);
-  activeStop = currentDay().stops.length - 1;
-  clearCurrentAmapRoute();
-  await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add", fallback: true }) });
-  await syncStopListToDoc(createdDayId, "local-candidate-to-stop-fallback");
-  await saveCollaborativePlanChange(label);
-  broadcastStopCreated(createdDayId, candidate);
-  render();
+  const candidate = state.candidates[Number(button.dataset.candidate)];
+  await addCandidateToCurrentDay(candidate?.id, "备选");
 });
 
 dom.candidateGrid.addEventListener("keydown", (event) => {
@@ -16042,29 +16369,7 @@ dom.resetBtn.addEventListener("click", async () => {
 
 document.querySelectorAll(".sync-card").forEach((card) => {
   card.addEventListener("click", () => {
-    if (!requireEdit("导入外部记录")) return;
-    pendingProvider = card.dataset.provider;
-    const defaults = providerDefaults(pendingProvider);
-    lastParsedImport = null;
-    dom.importTitle.textContent = `从${pendingProvider}导入`;
-    dom.importCopy.textContent = externalImportConfig.endpoint
-      ? "粘贴订单文本后可用 AI 解析，再写入计划；不会读取你的账号。"
-      : "这里不会读取你的账号，只把你录入或粘贴的订单信息写入计划。";
-    dom.importCategory.value = defaults.category;
-    dom.importDate.value = currentDay()?.date || "";
-    dom.importName.value = defaults.title;
-    dom.importTime.value = defaults.time;
-    dom.importBudget.value = "";
-    dom.importPaid.value = "";
-    dom.importPayer.value = memberProfile?.name || "";
-    dom.importAddress.value = "";
-    dom.importOrderNo.value = "";
-    dom.importSourceUrl.value = "";
-    dom.importNote.value = "";
-    renderImportPreview(null);
-    dom.importModal.classList.add("is-open");
-    dom.importModal.setAttribute("aria-hidden", "false");
-    refreshIcons();
+    openExternalImport(card.dataset.provider);
   });
 });
 
