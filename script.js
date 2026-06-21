@@ -137,7 +137,24 @@ const images = {
     "https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=900&q=80",
   museum:
     "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=900&q=80",
+  qinghai:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Qinghai_Lake_from_space_1989.jpg/900px-Qinghai_Lake_from_space_1989.jpg",
+  qingdao:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Qingdao_skyline_2021.jpg/900px-Qingdao_skyline_2021.jpg",
 };
+
+const WIKIPEDIA_IMAGE_RULES = [
+  [/莫高窟|敦煌.*石窟|Mogao/i, "Mogao_Caves"],
+  [/七彩丹霞|张掖.*丹霞|丹霞.*张掖|Zhangye.*Danxia|Danxia/i, "Zhangye_National_Geopark"],
+  [/鸣沙山|月牙泉|Mingsha|Crescent/i, "Crescent_Lake_(Dunhuang)"],
+  [/嘉峪关|关城|Jiayu/i, "Jiayu_Pass"],
+  [/甘肃省博物馆|Gansu.*Museum/i, "Gansu_Provincial_Museum"],
+  [/中山桥|黄河铁桥|Lanzhou.*Bridge|Zhongshan/i, "Zhongshan_Bridge_(Lanzhou)"],
+  [/甘肃|Gansu/i, "Gansu"],
+  [/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i, "Qinghai_Lake"],
+  [/青岛|Qingdao/i, "Qingdao"],
+];
+const wikipediaImageCache = new Map();
 
 function uid() {
   return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -588,7 +605,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw new Error("请求超时，已切换本地解析。");
+      throw new Error("请求超时，请稍后重试。");
     }
     throw error;
   } finally {
@@ -926,11 +943,11 @@ async function lookupAmapPlaces(keyword, { limit = 6 } = {}) {
   for (const variant of variants) {
     for (const city of cityHints) {
       try {
-        const response = await fetch(serviceConfig.amapEndpoint, {
+        const response = await fetchWithTimeout(serviceConfig.amapEndpoint, {
           method: "POST",
           headers: serviceHeaders("", serviceConfig.amapEndpoint),
           body: JSON.stringify({ keyword: variant, city, limit }),
-        });
+        }, 6000);
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
         const places = (Array.isArray(data.places) ? data.places : [data.place || data].filter(Boolean))
@@ -6059,7 +6076,7 @@ function applyStopRealtimeFields(stop) {
   dom.placeAddress.textContent = stop.address || "地址待确认";
   dom.placeNote.textContent = stop.note || "";
   dom.commentTitle.textContent = stop.title || "当前地点";
-  dom.placePhoto.style.setProperty("--photo", `url("${stop.image || images.city}")`);
+  dom.placePhoto.style.setProperty("--photo", `url("${displayImageForStop(stop)}")`);
   dom.favoriteBtn.classList.toggle("selected", Boolean(stop.favorite));
   dom.mustVote.classList.toggle("is-active", Boolean(stop.userVoted));
   dom.voteCount.textContent = stop.votes || 0;
@@ -11737,10 +11754,74 @@ function stopPlaceLookupKeyword(stop = {}) {
     .find(Boolean) || "";
 }
 
+function isPlaceholderStop(stop = {}) {
+  const title = String(stop.title || "").trim();
+  const keyword = String(stop.amapKeyword || "").trim();
+  const type = String(stop.type || "").trim();
+  return /待填写地点|备选景点|自由探索时段|返程缓冲|外部记录/.test(title) || /Draft|Idea|Flexible/.test(type) || (keyword && keyword === String(state.destination || "").trim());
+}
+
+function wikipediaTitleForStop(stop = {}) {
+  const text = `${stop.amapKeyword || ""} ${stop.address || ""} ${stop.title || ""} ${stop.type || ""}`;
+  const matched = WIKIPEDIA_IMAGE_RULES.find(([pattern]) => pattern.test(text));
+  return matched ? matched[1] : "";
+}
+
+async function lookupWikipediaImage(stop = {}) {
+  const title = wikipediaTitleForStop(stop);
+  if (!title) return "";
+  if (wikipediaImageCache.has(title)) return wikipediaImageCache.get(title);
+  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+  try {
+    const response = await fetchWithTimeout(url, {
+      headers: { Accept: "application/json" },
+    }, 5000);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+    const image = data?.originalimage?.source || data?.thumbnail?.source || "";
+    wikipediaImageCache.set(title, image || "");
+    return image || "";
+  } catch (error) {
+    console.warn("Wikipedia image lookup failed", title, error);
+    wikipediaImageCache.set(title, "");
+    return "";
+  }
+}
+
 function isDefaultTripboardImage(value = "") {
   const url = String(value || "").trim();
   if (!url) return true;
   return Object.values(images).includes(url) || /images\.unsplash\.com/.test(url);
+}
+
+function displayFallbackImageForStop(stop = {}) {
+  const title = wikipediaTitleForStop(stop);
+  if (title && wikipediaImageCache.get(title)) return wikipediaImageCache.get(title);
+  const text = `${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${state.destination || ""}`;
+  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/.test(text)) return images.qinghai;
+  if (/青岛|Qingdao/.test(text)) return images.qingdao;
+  if (/甘肃|敦煌|张掖|嘉峪关|兰州|丝路/.test(text)) return images.gansu;
+  if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(text)) return images.food;
+  if (/交通|高铁|动车|机场|火车|Transit/.test(text)) return images.train;
+  if (/博物馆|Museum|寺|石窟|文化/.test(text)) return images.museum;
+  return state.cover && !isDefaultTripboardImage(state.cover) ? state.cover : images.city;
+}
+
+function displayImageForStop(stop = {}) {
+  return isDefaultTripboardImage(stop.image) ? displayFallbackImageForStop(stop) : stop.image;
+}
+
+function displayCoverImage() {
+  if (!isDefaultTripboardImage(state.cover)) return state.cover;
+  const firstStopImage = (state.days || [])
+    .flatMap((day) => day.stops || [])
+    .map((stop) => displayImageForStop(stop))
+    .find((image) => image && !isDefaultTripboardImage(image));
+  const destination = String(state.destination || "");
+  if (/青海|西宁|茶卡|青海湖|Qinghai/.test(destination)) return images.qinghai;
+  if (/青岛|Qingdao/.test(destination)) return images.qingdao;
+  if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/.test(destination)) return images.gansu;
+  return firstStopImage || state.cover || images.city;
 }
 
 function applyPlaceToStop(stop, place) {
@@ -11769,41 +11850,54 @@ function applyPlaceToStop(stop, place) {
   return Object.keys(patch).length ? patch : null;
 }
 
-async function enrichPlacesFromAmap() {
-  if (!requireEdit("补全地点图片")) return;
-  if (!serviceConfig.amapEndpoint) {
-    dom.saveState.textContent = "请先在服务配置里填写高德地点代理地址，才能自动补全地点图片和坐标。";
-    return;
-  }
+function imageEnrichmentCandidates() {
   const candidates = [];
   state.days.forEach((day) => {
     (day.stops || []).forEach((stop) => {
+      if (isPlaceholderStop(stop)) return;
       const needsPlace = !stop.lng || !stop.lat || !stop.address || isDefaultTripboardImage(stop.image);
       const keyword = stopPlaceLookupKeyword(stop);
       if (needsPlace && keyword) candidates.push({ type: "stop", day, stop, keyword });
     });
   });
   (state.candidates || []).forEach((stop) => {
+    if (isPlaceholderStop(stop)) return;
     const needsPlace = !stop.lng || !stop.lat || !stop.address || isDefaultTripboardImage(stop.image);
     const keyword = stopPlaceLookupKeyword(stop);
     if (needsPlace && keyword) candidates.push({ type: "candidate", stop, keyword });
   });
+  return candidates;
+}
+
+function shouldAutoEnrichImages() {
+  return Boolean(canEdit() && !isReadonlyMode && serviceConfig.amapEndpoint && imageEnrichmentCandidates().some((item) => isDefaultTripboardImage(item.stop?.image) || !item.stop?.lng || !item.stop?.lat || !item.stop?.address));
+}
+
+async function enrichPlacesFromAmap(options = {}) {
+  const auto = Boolean(options.auto);
+  if (!auto && !requireEdit("补全地点图片")) return;
+  if (auto && (!canEdit() || isReadonlyMode)) return;
+  if (!serviceConfig.amapEndpoint) {
+    if (!auto) dom.saveState.textContent = "请先在服务配置里填写高德地点代理地址，才能自动补全地点图片和坐标。";
+    return;
+  }
+  const candidates = imageEnrichmentCandidates();
   if (!candidates.length) {
-    dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
+    if (!auto) dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
     return;
   }
   const affectedStopIds = candidates
     .filter((item) => item.type === "stop")
     .map((item) => item.stop?.id)
     .filter(Boolean);
-  if (!confirmRemoteStopEdit(affectedStopIds, "补全行程地点图片和坐标")) return;
+  if (!auto && !confirmRemoteStopEdit(affectedStopIds, "补全行程地点图片和坐标")) return;
   const affectedCandidateIds = candidates
     .filter((item) => item.type === "candidate")
     .map((item) => item.stop?.id)
     .filter(Boolean);
-  if (!confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")) return;
-  saveVersionSnapshot("补全地点图片前版本");
-  dom.saveState.textContent = `正在通过高德补全 ${Math.min(candidates.length, 12)} 个地点...`;
+  if (!auto && !confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")) return;
+  if (!auto) saveVersionSnapshot("补全地点图片前版本");
+  dom.saveState.textContent = auto ? "正在自动补全默认地点图片..." : `正在通过高德补全 ${Math.min(candidates.length, 12)} 个地点...`;
   const fallbackDayIds = new Set();
   let candidateFallback = false;
   let changedStops = 0;
@@ -11816,10 +11910,15 @@ async function enrichPlacesFromAmap() {
     try {
       const places = await lookupAmapPlaces(item.keyword, { limit: 3 });
       const place = Array.isArray(places) ? places.find((entry) => entry.image) || places[0] : null;
-      if (!place) continue;
+      const fallbackImage = isDefaultTripboardImage(item.stop.image) ? await lookupWikipediaImage(item.stop) : "";
+      if (!place && !fallbackImage) continue;
       const hadRealImage = !isDefaultTripboardImage(item.stop.image);
-      const patch = applyPlaceToStop(item.stop, place);
-      if (patch) {
+      const patch = place ? (applyPlaceToStop(item.stop, place) || {}) : {};
+      if (fallbackImage && isDefaultTripboardImage(item.stop.image)) {
+        item.stop.image = fallbackImage;
+        patch.image = fallbackImage;
+      }
+      if (Object.keys(patch).length) {
         if (patch.image && !firstNewImage) firstNewImage = patch.image;
         if (item.type === "stop") {
           if (!(await patchStopInDoc(item.stop.id, patch, "local-amap-place-enrich-stop"))) {
@@ -11851,14 +11950,24 @@ async function enrichPlacesFromAmap() {
   }
   if (candidateFallback) await syncCandidatesToDoc("local-amap-candidate-enrich-fallback");
   if (!changedStops && !changedCandidates) {
-    dom.saveState.textContent = `已查询 ${checked} 个地点，高德没有返回可写入的新坐标或图片。`;
+    if (!auto) dom.saveState.textContent = `已查询 ${checked} 个地点，高德和公开图片兜底都没有返回可写入的新坐标或图片。`;
     return;
   }
   persistCurrentPlanFromDoc("高德地点资料已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
-  await logActivity(`补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}`);
-  await saveCollaborativePlanChange("补全地点图片和坐标");
+  await logActivity(`${auto ? "自动" : ""}补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}`);
+  await saveCollaborativePlanChange(`${auto ? "自动" : ""}补全地点图片和坐标`);
   render();
-  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}；图片来自高德 POI 返回，请按需核对。`;
+  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}；图片来自高德 POI 或公开百科兜底，请按需核对。`;
+}
+
+function scheduleAutoImageEnrichment(delay = 1200) {
+  window.clearTimeout(scheduleAutoImageEnrichment.timer);
+  scheduleAutoImageEnrichment.timer = window.setTimeout(() => {
+    if (!shouldAutoEnrichImages()) return;
+    enrichPlacesFromAmap({ auto: true }).catch((error) => {
+      console.warn("Auto image enrichment failed", error);
+    });
+  }, delay);
 }
 
 function categoryBudget() {
@@ -11898,8 +12007,9 @@ function renderShell() {
   dom.tripName.textContent = state.name;
   dom.templateName.textContent = state.name;
   dom.tripDateRange.textContent = state.dateRange || "自定义日期";
-  dom.tripCover.style.setProperty("--trip-cover", `url("${state.cover || images.city}")`);
-  document.querySelector(".template-card").style.setProperty("--template-cover", `url("${state.cover || images.city}")`);
+  const coverImage = displayCoverImage();
+  dom.tripCover.style.setProperty("--trip-cover", `url("${coverImage}")`);
+  document.querySelector(".template-card").style.setProperty("--template-cover", `url("${coverImage}")`);
   dom.budgetTotal.textContent = `${money(total)} / ${money(limit)}`;
   dom.budgetMeter.style.width = `${percent}%`;
   const groups = categoryBudget();
@@ -12071,7 +12181,7 @@ function renderMap() {
 function renderDetail() {
   const stop = currentStop();
   if (!stop) return;
-  dom.placePhoto.style.setProperty("--photo", `url("${stop.image || images.city}")`);
+  dom.placePhoto.style.setProperty("--photo", `url("${displayImageForStop(stop)}")`);
   dom.placeType.textContent = stop.type || "Place";
   dom.placeTitle.textContent = stop.title;
   dom.placeAddress.textContent = stop.address || "地址待确认";
@@ -15865,8 +15975,10 @@ async function boot() {
     const pendingCount = pendingPlanUpdates().length;
     if (pendingCount) dom.collabStatus.textContent = `检测到 ${pendingCount} 条离线协作更新，连接共享计划后会自动同步。`;
     await connectSharedTrip(tripId);
+    scheduleAutoImageEnrichment();
   } else {
     saveState();
+    scheduleAutoImageEnrichment();
   }
 }
 
