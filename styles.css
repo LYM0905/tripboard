@@ -741,6 +741,114 @@ button:disabled {
   border-radius: 8px;
 }
 
+.flow-panel {
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(223, 232, 228, 0.95);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.flow-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.flow-head h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.flow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.flow-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.flow-step {
+  display: grid;
+  gap: 4px;
+  min-height: 78px;
+  padding: 11px;
+  color: #52666f;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.flow-step strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.flow-step span {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.flow-step.is-active {
+  color: var(--green);
+  background: var(--green-2);
+  border-color: rgba(36, 115, 92, 0.34);
+  box-shadow: 0 12px 26px rgba(36, 115, 92, 0.12);
+}
+
+.flow-step.is-done {
+  border-color: rgba(36, 115, 92, 0.26);
+}
+
+.flow-step.is-locked {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.flow-helper {
+  margin: 10px 0 0;
+  color: #34464f;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.guided-flow:not(.flow-show-all) .flow-stage-hidden {
+  display: none;
+}
+
+.flow-show-all .flow-stage-hidden {
+  display: block;
+}
+
+.flow-show-all .flow-stage-dimmed {
+  opacity: 0.58;
+}
+
+.flow-show-all .flow-stage-dimmed:hover,
+.flow-show-all .flow-stage-dimmed:focus-within {
+  opacity: 1;
+}
+
+.flow-hide-detail .app-shell {
+  grid-template-columns: 292px minmax(430px, 1fr);
+}
+
+.flow-hide-detail .detail-panel {
+  display: none;
+}
+
 .day-form {
   display: grid;
   grid-template-columns: 140px repeat(4, minmax(0, 1fr));
@@ -4197,6 +4305,7 @@ svg {
 
   .guide-layout,
   .guide-controls,
+  .flow-steps,
   .connector-grid,
   .day-form,
   .edit-form,

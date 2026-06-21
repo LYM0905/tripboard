@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260621-order-import" />
+    <link rel="stylesheet" href="styles.css?v=20260621-step-flow" />
   </head>
   <body>
     <div class="app-shell">
@@ -146,6 +146,21 @@
         <section class="day-summary">
           <div id="dayPills"></div>
           <button class="text-btn" id="addStopBtn"><i data-lucide="plus"></i>新增地点</button>
+        </section>
+
+        <section class="flow-panel">
+          <div class="flow-head">
+            <div>
+              <p class="eyebrow">Plan flow</p>
+              <h3 id="flowTitle">先创建计划</h3>
+            </div>
+            <div class="flow-actions">
+              <button type="button" class="primary-btn" id="flowNextBtn"><i data-lucide="arrow-right"></i>下一步</button>
+              <button type="button" class="text-btn" id="flowAdvancedToggle"><i data-lucide="sliders-horizontal"></i>显示全部</button>
+            </div>
+          </div>
+          <div class="flow-steps" id="flowSteps" aria-label="计划步骤"></div>
+          <p class="flow-helper" id="flowHelper">先填写目的地、出发地和日期，再生成推荐计划或空白模板。</p>
         </section>
 
         <section class="day-editor-panel">
@@ -787,7 +802,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260621-order-import"></script>
-    <script src="script.js?v=20260621-order-import"></script>
+    <script src="config.js?v=20260621-step-flow"></script>
+    <script src="script.js?v=20260621-step-flow"></script>
   </body>
 </html>

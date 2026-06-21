@@ -8950,6 +8950,11 @@ const dom = {
   saveState: document.querySelector("#saveState"),
   presenceText: document.querySelector("#presenceText"),
   dayPills: document.querySelector("#dayPills"),
+  flowTitle: document.querySelector("#flowTitle"),
+  flowSteps: document.querySelector("#flowSteps"),
+  flowHelper: document.querySelector("#flowHelper"),
+  flowNextBtn: document.querySelector("#flowNextBtn"),
+  flowAdvancedToggle: document.querySelector("#flowAdvancedToggle"),
   dayForm: document.querySelector("#dayForm"),
   dayEditorStatus: document.querySelector("#dayEditorStatus"),
   fieldDayDate: document.querySelector("#fieldDayDate"),
@@ -9154,6 +9159,15 @@ let transportProviderItems = [];
 let transportProviderSource = "";
 let multiOriginComparisons = [];
 let editingTransportQuoteId = "";
+const FLOW_UI_KEY = "tripboard-flow-ui-v2";
+const FLOW_STEPS = [
+  { id: "setup", title: "创建计划", short: "目的地/日期", helper: "先填写目的地、出发地和日期，再生成推荐计划或空白模板。", selectors: [".guide-panel"] },
+  { id: "itinerary", title: "安排每日路线", short: "日程/地点", helper: "查看每日路线，添加或调整当天地点。", selectors: [".timeline-wrap", ".day-editor-panel", ".day-blocks-panel", ".quick-add-panel", ".candidate-panel", ".map-panel", ".place-detail", ".editor-panel"] },
+  { id: "booking", title: "交通住宿餐饮", short: "机票/订单", helper: "筛选交通报价，导入住宿和餐饮订单，先放备选池也可以。", selectors: [".transport-panel", ".stay-food-panel", ".candidate-panel"] },
+  { id: "budget", title: "预算与协作", short: "分账/评论", helper: "检查预算组合、分账、批注和协作记录。", selectors: [".side-block", ".day-comments-panel", ".comments-panel", ".activity-panel"] },
+  { id: "share", title: "发布共享", short: "接口/分享", helper: "最后再配置高级接口、天气、AI 或复制共享链接。", selectors: [".collab-panel", ".service-panel", ".sync-panel", ".activity-panel"] },
+];
+let flowUi = safeJsonParse(localStorage.getItem(FLOW_UI_KEY), { step: "", showAll: false, pinned: false }) || { step: "", showAll: false, pinned: false };
 let editingCandidateId = "";
 let ctripConfig = safeJsonParse(localStorage.getItem(CTRIP_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
 let externalImportConfig = safeJsonParse(localStorage.getItem(EXTERNAL_IMPORT_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
@@ -13229,6 +13243,84 @@ function renderGuideResult() {
   dom.tripLengthHint.textContent = `共 ${days} 天，按出发日到返程日生成。最多支持 30 天。`;
 }
 
+function flowCompletion() {
+  const hasPlan = Boolean(state.destination && state.days?.length && !/^京都\s*6\s*日/.test(state.name || ""));
+  const stopCount = (state.days || []).reduce((sum, day) => sum + (day.stops || []).filter((stop) => !/待填写地点|新地点/.test(stop.title || "")).length, 0);
+  const hasBooking = Boolean((state.transportQuotes || []).some((item) => item.selected) || serviceBoardItems("lodging").length || serviceBoardItems("dining").length);
+  const hasBudget = Boolean(numberValue(state.budgetLimit) || (state.candidates || []).some((item) => item.selected) || (state.activities || []).length > 1);
+  return {
+    setup: hasPlan,
+    itinerary: hasPlan && stopCount > 1,
+    booking: hasBooking,
+    budget: hasBudget,
+    share: Boolean(tripId),
+  };
+}
+
+function defaultFlowStep(completion = flowCompletion()) {
+  return completion.setup ? "itinerary" : "setup";
+}
+
+function saveFlowUi() {
+  localStorage.setItem(FLOW_UI_KEY, JSON.stringify(flowUi));
+}
+
+function setFlowStep(stepId = "", options = {}) {
+  if (!FLOW_STEPS.some((step) => step.id === stepId)) return;
+  flowUi.step = stepId;
+  flowUi.pinned = options.pinned !== false;
+  if (typeof options.showAll === "boolean") flowUi.showAll = options.showAll;
+  saveFlowUi();
+  renderFlow();
+}
+
+function renderFlow() {
+  if (!dom.flowSteps) return;
+  const completion = flowCompletion();
+  const validStepIds = new Set(FLOW_STEPS.map((step) => step.id));
+  const firstIncompleteIndex = FLOW_STEPS.findIndex((step) => !completion[step.id]);
+  const maxUnlockedIndex = firstIncompleteIndex === -1 ? FLOW_STEPS.length - 1 : firstIncompleteIndex;
+  const currentIndex = FLOW_STEPS.findIndex((step) => step.id === flowUi.step);
+  if (!flowUi.pinned || !validStepIds.has(flowUi.step)) flowUi.step = defaultFlowStep(completion);
+  if (currentIndex > maxUnlockedIndex) flowUi.step = FLOW_STEPS[maxUnlockedIndex].id;
+  const activeStep = FLOW_STEPS.find((step) => step.id === flowUi.step) || FLOW_STEPS[0];
+  document.body.classList.toggle("guided-flow", true);
+  document.body.classList.toggle("flow-show-all", Boolean(flowUi.showAll));
+  FLOW_STEPS.flatMap((step) => step.selectors).forEach((selector) => {
+    document.querySelectorAll(selector).forEach((panel) => {
+      const belongsToActive = activeStep.selectors.includes(selector);
+      panel.classList.toggle("flow-stage-hidden", !flowUi.showAll && !belongsToActive);
+      panel.classList.toggle("flow-stage-dimmed", flowUi.showAll && !belongsToActive);
+    });
+  });
+  const hasVisibleDetailPanel = activeStep.selectors.some((selector) => [".map-panel", ".place-detail", ".editor-panel", ".comments-panel"].includes(selector));
+  document.body.classList.toggle("flow-hide-detail", !flowUi.showAll && !hasVisibleDetailPanel);
+  dom.flowTitle.textContent = activeStep.title;
+  dom.flowHelper.textContent = activeStep.helper;
+  const activeIndex = FLOW_STEPS.findIndex((step) => step.id === activeStep.id);
+  const nextStep = FLOW_STEPS[activeIndex + 1] || null;
+  const canContinue = Boolean(completion[activeStep.id]);
+  if (dom.flowNextBtn) {
+    dom.flowNextBtn.hidden = !nextStep;
+    dom.flowNextBtn.disabled = !canContinue;
+    dom.flowNextBtn.title = canContinue ? "" : "完成当前步骤后再进入下一步";
+    dom.flowNextBtn.innerHTML = `${icon("arrow-right")}${nextStep ? `下一步：${escapeHtml(nextStep.title)}` : "已完成"}`;
+  }
+  dom.flowAdvancedToggle.innerHTML = `${icon(flowUi.showAll ? "panel-top-close" : "sliders-horizontal")}${flowUi.showAll ? "收起到当前步骤" : "显示全部"}`;
+  dom.flowSteps.innerHTML = FLOW_STEPS.map((step, index) => {
+    const done = Boolean(completion[step.id]);
+    const active = step.id === activeStep.id;
+    const locked = index > maxUnlockedIndex && !active;
+    return `
+      <button type="button" class="flow-step${active ? " is-active" : ""}${done ? " is-done" : ""}${locked ? " is-locked" : ""}" data-flow-step="${step.id}" ${locked ? "aria-disabled=\"true\"" : ""}>
+        <span>${done ? "已完成" : active ? "当前" : `第 ${index + 1} 步`}</span>
+        <strong>${escapeHtml(step.title)}</strong>
+        <span>${escapeHtml(step.short)}</span>
+      </button>
+    `;
+  }).join("");
+}
+
 function render() {
   activeDay = Math.min(activeDay, state.days.length - 1);
   activeStop = Math.min(activeStop, currentDay().stops.length - 1);
@@ -13252,6 +13344,7 @@ function render() {
   renderDayComments(currentDay());
   renderDayBlocks(currentDay());
   renderEditorLockState();
+  renderFlow();
   bindCollabPlanDoc();
   bindCollabTextDoc();
   bindCollabDayTextDoc();
@@ -16005,6 +16098,7 @@ async function createRecommendedPlan() {
   await replacePlanCollabDoc("local-recommended-plan", { allowReplace: true, reason: "recommended-plan" });
   await saveCollaborativePlanChange("已生成推荐计划");
   await broadcastPlanReplaced("生成推荐计划", { replacementType: "recommended-plan" });
+  setFlowStep("itinerary", { showAll: false, pinned: true });
   render();
   closeCreateChoice();
 }
@@ -16032,6 +16126,7 @@ async function createBlankTemplate() {
   await replacePlanCollabDoc("local-blank-plan", { allowReplace: true, reason: "blank-plan" });
   await saveCollaborativePlanChange("已生成空白模板");
   await broadcastPlanReplaced("生成空白模板", { replacementType: "blank-plan" });
+  setFlowStep("itinerary", { showAll: false, pinned: true });
   render();
   closeCreateChoice();
 }
@@ -16406,6 +16501,27 @@ document.querySelectorAll("[data-close-import]").forEach((button) => {
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
   });
+});
+
+dom.flowSteps?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-flow-step]");
+  if (!button || button.getAttribute("aria-disabled") === "true") return;
+  setFlowStep(button.dataset.flowStep, { showAll: false, pinned: true });
+  document.querySelector(".flow-panel")?.scrollIntoView({ block: "start", behavior: "smooth" });
+});
+
+dom.flowAdvancedToggle?.addEventListener("click", () => {
+  flowUi.showAll = !flowUi.showAll;
+  saveFlowUi();
+  renderFlow();
+});
+
+dom.flowNextBtn?.addEventListener("click", () => {
+  const currentIndex = FLOW_STEPS.findIndex((step) => step.id === flowUi.step);
+  const nextStep = FLOW_STEPS[Math.max(0, currentIndex) + 1];
+  if (!nextStep) return;
+  setFlowStep(nextStep.id, { showAll: false, pinned: true });
+  document.querySelector(".flow-panel")?.scrollIntoView({ block: "start", behavior: "smooth" });
 });
 
 dom.parseImportBtn.addEventListener("click", () => {
