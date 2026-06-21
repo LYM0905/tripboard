@@ -150,8 +150,17 @@ const WIKIPEDIA_IMAGE_RULES = [
   [/嘉峪关|关城|Jiayu/i, "Jiayu_Pass"],
   [/甘肃省博物馆|Gansu.*Museum/i, "Gansu_Provincial_Museum"],
   [/中山桥|黄河铁桥|Lanzhou.*Bridge|Zhongshan/i, "Zhongshan_Bridge_(Lanzhou)"],
+  [/塔尔寺|Ta'?er|Kumbum/i, "Kumbum_Monastery"],
+  [/茶卡|Chaka/i, "Chaka_Salt_Lake"],
+  [/祁连|卓尔山|Qilian/i, "Qilian_Mountains"],
+  [/门源|Menyuan/i, "Menyuan_Hui_Autonomous_County"],
+  [/日月山|Riyue/i, "Riyue_Mountain"],
   [/甘肃|Gansu/i, "Gansu"],
   [/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i, "Qinghai_Lake"],
+  [/栈桥|Zhanqiao/i, "Zhanqiao_Pier"],
+  [/八大关|Badaguan/i, "Badaguan"],
+  [/崂山|Laoshan|Mount Lao/i, "Mount_Lao"],
+  [/五四广场|May Fourth/i, "May_Fourth_Square"],
   [/青岛|Qingdao/i, "Qingdao"],
 ];
 const wikipediaImageCache = new Map();
@@ -1433,14 +1442,272 @@ function buildGansuPlan(dayCount = 6, options = {}) {
   return plan;
 }
 
+function recommendedBudgetLimit(options = {}) {
+  return options.budget === "品质" ? 14000 : options.budget === "节省" ? 8000 : 10000;
+}
+
+function destinationDefaultImage(destination = "") {
+  const text = String(destination || "");
+  if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/i.test(text)) return images.gansu;
+  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i.test(text)) return images.qinghai;
+  if (/青岛|Qingdao/i.test(text)) return images.qingdao;
+  return images.city;
+}
+
+function fillRecommendedDays(plan, dayCount, options = {}) {
+  const destination = plan.destination || "自定义目的地";
+  while (plan.days.length < dayCount) {
+    const dayNumber = plan.days.length + 1;
+    plan.days.push({
+      id: uid(),
+      label: `D${dayNumber}`,
+      title: `第${dayNumber}天 ${destination}弹性探索`,
+      route: `${destination}深度体验 · 备选景点组合`,
+      weather: "天气待确认",
+      transport: "市内交通 + 打车",
+      stops: [
+        makeStop({
+          time: "10:00",
+          title: `${destination}当地体验`,
+          type: "Scenic",
+          address: destination,
+          note: "根据天气、营业时间和大家体力，把这段替换成更想去的景点或体验。",
+          tags: ["弹性", "可替换"],
+          budget: options.budget === "品质" ? 520 : options.budget === "节省" ? 160 : 280,
+          amapKeyword: `${destination} 必去景点`,
+          image: destinationDefaultImage(destination),
+          x: 34 + ((dayNumber * 9) % 42),
+          y: 34 + ((dayNumber * 7) % 36),
+        }),
+        makeStop({
+          time: "18:30",
+          title: `${destination}特色晚餐`,
+          type: "Dinner",
+          address: `${destination}市区`,
+          note: "作为当天收尾，适合用投票确认餐厅和预算。",
+          tags: ["美食", "可投票"],
+          budget: options.budget === "品质" ? 480 : options.budget === "节省" ? 160 : 280,
+          amapKeyword: `${destination} 特色餐厅`,
+          image: images.food,
+          x: 58 + ((dayNumber * 5) % 24),
+          y: 44 + ((dayNumber * 6) % 26),
+        }),
+      ],
+    });
+  }
+  plan.days = plan.days.slice(0, dayCount);
+  return plan;
+}
+
+function buildQinghaiPlan(dayCount = 4, options = {}) {
+  const plan = {
+    name: `青海 ${dayCount} 日同行计划`,
+    destination: "青海",
+    dateRange: "自定义日期",
+    budgetLimit: recommendedBudgetLimit(options),
+    cover: images.qinghai,
+    activities: [`生成青海 ${dayCount} 日推荐计划`, "西宁集散", "青海湖/茶卡方向"],
+    candidates: [
+      makeStop({ title: "青海省博物馆", type: "Museum", address: "西宁市城西区西关大街", note: "雨天或高原适应日可加入，适合先了解青海历史和民族文化。", tags: ["室内", "文化"], budget: 0, image: images.museum, lng: "101.744925", lat: "36.631599", amapKeyword: "青海省博物馆" }),
+      makeStop({ title: "日月山", type: "Scenic", address: "青海省西宁市湟源县", note: "西宁去青海湖路上可顺路停留，适合轻量拍照。", tags: ["顺路", "高原"], budget: 80, image: images.qinghai, lng: "100.989879", lat: "36.465324", amapKeyword: "青海 日月山" }),
+      makeStop({ title: "祁连卓尔山", type: "Scenic", address: "海北藏族自治州祁连县", note: "适合 5 天以上版本加入，需要单独预留长车程。", tags: ["自然", "长车程"], budget: 180, image: images.qinghai, lng: "100.253158", lat: "38.184351", amapKeyword: "祁连 卓尔山" }),
+      makeStop({ title: "门源油菜花海", type: "Scenic", address: "海北藏族自治州门源回族自治县", note: "花期通常在夏季，出行前确认实时花况。", tags: ["季节限定", "备选"], budget: 80, image: images.qinghai, lng: "101.615738", lat: "37.376507", amapKeyword: "门源 油菜花海" }),
+    ],
+    days: [
+      {
+        id: uid(),
+        label: "D1",
+        title: "第1天 西宁",
+        route: "抵达西宁 · 塔尔寺 · 市区适应",
+        weather: "天气待确认",
+        transport: "飞机/动车 + 打车",
+        stops: [
+          makeStop({ time: "11:30", title: "西宁抵达与入住", type: "Transit", address: "西宁曹家堡国际机场 / 西宁站", note: "第一天降低强度，先完成集合、入住和高原适应。", tags: ["集合", "高原适应"], budget: 280, image: images.train, x: 24, y: 48, lng: "101.796029", lat: "36.623385", amapKeyword: "西宁站" }),
+          makeStop({ time: "14:30", title: "塔尔寺", type: "Temple", address: "西宁市湟中区金塔路56号", note: "青海经典文化点，建议预留讲解时间；注意尊重寺院拍摄规则。", tags: ["文化", "门票"], budget: 280, image: images.museum, x: 44, y: 42, lng: "101.569402", lat: "36.489179", amapKeyword: "西宁 塔尔寺" }),
+          makeStop({ time: "19:00", title: "水井巷/莫家街晚餐", type: "Dinner", address: "西宁市城中区水井巷周边", note: "第一晚用餐以清淡和补水为主，把第二天环湖交通确认好。", tags: ["美食", "集合复盘"], budget: 320, image: images.food, x: 58, y: 54, lng: "101.784047", lat: "36.618428", amapKeyword: "西宁 水井巷 美食" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D2",
+        title: "第2天 青海湖",
+        route: "西宁 · 青海湖二郎剑 · 环湖观景",
+        weather: "天气待确认",
+        transport: "包车/拼车",
+        stops: [
+          makeStop({ time: "08:30", title: "前往青海湖", type: "Transit", address: "西宁 → 青海湖二郎剑景区", note: "车程较长，建议准备防晒、外套和补水；中途可根据体力加入日月山。", tags: ["长车程", "防晒"], budget: 520, image: images.train, x: 26, y: 46, lng: "101.778916", lat: "36.623178", amapKeyword: "西宁 到 青海湖" }),
+          makeStop({ time: "12:30", title: "青海湖二郎剑景区", type: "Lake", address: "海南藏族自治州共和县109国道旁", note: "把主要拍照和湖边停留放在中午到下午，注意风大和紫外线。", tags: ["必去", "自然"], budget: 360, image: images.qinghai, x: 52, y: 42, lng: "100.479625", lat: "36.751796", amapKeyword: "青海湖二郎剑景区" }),
+          makeStop({ time: "17:30", title: "黑马河日落备选", type: "Scenic", address: "海南藏族自治州共和县黑马河镇", note: "如果当天车程和天气允许，作为日落备选；否则直接回住宿点。", tags: ["日落", "可选"], budget: 120, image: images.qinghai, x: 62, y: 52, lng: "99.825418", lat: "36.738185", amapKeyword: "青海 黑马河 日落" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D3",
+        title: "第3天 茶卡",
+        route: "茶卡盐湖 · 环湖返程",
+        weather: "天气待确认",
+        transport: "包车",
+        stops: [
+          makeStop({ time: "09:30", title: "茶卡盐湖", type: "Scenic", address: "海西蒙古族藏族自治州乌兰县茶卡镇盐湖路9号", note: "晴天和低风更适合拍倒影，鞋套、小火车等项目现场决定。", tags: ["自然", "门票"], budget: 260, image: images.qinghai, x: 46, y: 44, lng: "99.078857", lat: "36.793847", amapKeyword: "茶卡盐湖景区" }),
+          makeStop({ time: "16:30", title: "返程补给与休整", type: "Rest", address: "茶卡镇 / 西宁方向", note: "长车程后预留休整，不把晚上排满，避免高原疲劳。", tags: ["休整", "补给"], budget: 180, image: images.food, x: 60, y: 56, amapKeyword: "茶卡镇 餐厅" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D4",
+        title: "第4天 西宁返程",
+        route: "西宁市区 · 伴手礼 · 返程",
+        weather: "天气待确认",
+        transport: "市内交通 + 飞机/动车",
+        stops: [
+          makeStop({ time: "10:00", title: "东关清真大寺周边", type: "Culture", address: "西宁市城东区东关大街", note: "根据开放情况安排外观或周边街区散步，作为返程前轻量行程。", tags: ["文化", "轻量"], budget: 0, image: images.museum, x: 40, y: 42, lng: "101.798091", lat: "36.622376", amapKeyword: "西宁 东关清真大寺" }),
+          makeStop({ time: "14:30", title: "返程缓冲", type: "Transit", address: "西宁曹家堡国际机场 / 西宁站", note: "最后一天至少预留 2 小时交通缓冲，避免市区到机场延误。", tags: ["返程", "缓冲"], budget: 420, image: images.train, x: 62, y: 50, lng: "101.796029", lat: "36.623385", amapKeyword: "西宁机场 西宁站" }),
+        ],
+      },
+    ],
+  };
+
+  if (options.pace === "高强度" && plan.days[1]) {
+    plan.days[1].stops.push(makeStop({ time: "19:20", title: "环湖住宿观星", type: "Hotel", address: "青海湖周边住宿", note: "高强度版本可住湖边，第二天去茶卡更顺；需提前确认供暖和海拔适应。", tags: ["住宿", "观星"], budget: 760, image: images.qinghai, x: 70, y: 58, amapKeyword: "青海湖 住宿" }));
+  }
+
+  return fillRecommendedDays(plan, dayCount, options);
+}
+
+function buildQingdaoPlan(dayCount = 3, options = {}) {
+  const plan = {
+    name: `青岛 ${dayCount} 日同行计划`,
+    destination: "青岛",
+    dateRange: "自定义日期",
+    budgetLimit: recommendedBudgetLimit(options),
+    cover: images.qingdao,
+    activities: [`生成青岛 ${dayCount} 日推荐计划`, "海滨城区", "崂山备选"],
+    candidates: [
+      makeStop({ title: "小鱼山公园", type: "Scenic", address: "青岛市市南区福山支路24号", note: "适合俯瞰老城红瓦绿树，和八大关可组合。", tags: ["观景", "备选"], budget: 20, image: images.qingdao, lng: "120.331719", lat: "36.061722", amapKeyword: "青岛 小鱼山公园" }),
+      makeStop({ title: "台东夜市", type: "Market", address: "青岛市市北区台东步行街", note: "适合作为晚间美食备选，注意人流和排队。", tags: ["夜市", "美食"], budget: 180, image: images.food, lng: "120.355336", lat: "36.085362", amapKeyword: "青岛 台东夜市" }),
+      makeStop({ title: "青岛啤酒博物馆", type: "Museum", address: "青岛市市北区登州路56号", note: "雨天或市区半日可加入，适合预约讲解。", tags: ["室内", "门票"], budget: 120, image: images.museum, lng: "120.342941", lat: "36.080220", amapKeyword: "青岛啤酒博物馆" }),
+    ],
+    days: [
+      {
+        id: uid(),
+        label: "D1",
+        title: "第1天 青岛老城",
+        route: "抵达青岛 · 栈桥 · 八大关",
+        weather: "天气待确认",
+        transport: "动车/飞机 + 地铁",
+        stops: [
+          makeStop({ time: "11:30", title: "青岛抵达与入住", type: "Transit", address: "青岛站 / 青岛北站", note: "先寄存行李或入住，再进入老城海滨线。", tags: ["集合", "交通"], budget: 180, image: images.train, x: 24, y: 46, lng: "120.312900", lat: "36.063438", amapKeyword: "青岛站" }),
+          makeStop({ time: "14:00", title: "栈桥", type: "Scenic", address: "青岛市市南区太平路12号", note: "适合第一站建立海滨城市印象，风大时缩短停留。", tags: ["海边", "经典"], budget: 0, image: images.qingdao, x: 42, y: 42, lng: "120.319224", lat: "36.061015", amapKeyword: "青岛 栈桥" }),
+          makeStop({ time: "16:30", title: "八大关", type: "Walk", address: "青岛市市南区汇泉角东北部", note: "傍晚散步节奏更舒服，可和第二海水浴场组合。", tags: ["散步", "拍照"], budget: 0, image: images.qingdao, x: 58, y: 46, lng: "120.353098", lat: "36.053808", amapKeyword: "青岛 八大关" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D2",
+        title: "第2天 崂山",
+        route: "崂山 · 海岸线",
+        weather: "天气待确认",
+        transport: "地铁 + 景区车/包车",
+        stops: [
+          makeStop({ time: "09:00", title: "崂山风景区", type: "Mountain", address: "青岛市崂山区崂山景区", note: "提前确认线路和门票，体力一般优先太清/仰口较轻路线。", tags: ["自然", "门票"], budget: 260, image: images.qingdao, x: 50, y: 40, lng: "120.608375", lat: "36.196595", amapKeyword: "青岛 崂山风景区" }),
+          makeStop({ time: "18:30", title: "五四广场夜景", type: "Walk", address: "青岛市市南区东海西路", note: "从崂山回市区后轻量收尾，适合看灯光和海风散步。", tags: ["夜景", "轻量"], budget: 0, image: images.qingdao, x: 62, y: 50, lng: "120.384598", lat: "36.062183", amapKeyword: "青岛 五四广场" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D3",
+        title: "第3天 市区返程",
+        route: "啤酒博物馆 · 伴手礼 · 返程",
+        weather: "天气待确认",
+        transport: "地铁 + 动车/飞机",
+        stops: [
+          makeStop({ time: "10:00", title: "青岛啤酒博物馆", type: "Museum", address: "青岛市市北区登州路56号", note: "室内行程适合作为返程日前半天，注意预约和饮酒后交通。", tags: ["室内", "门票"], budget: 120, image: images.museum, x: 42, y: 42, lng: "120.342941", lat: "36.080220", amapKeyword: "青岛啤酒博物馆" }),
+          makeStop({ time: "14:30", title: "返程缓冲", type: "Transit", address: "青岛站 / 青岛胶东国际机场", note: "预留取行李和跨城交通时间。", tags: ["返程", "缓冲"], budget: 260, image: images.train, x: 62, y: 48, amapKeyword: "青岛 返程 交通" }),
+        ],
+      },
+    ],
+  };
+
+  return fillRecommendedDays(plan, dayCount, options);
+}
+
+function buildGenericRecommendedPlan(destination, dayCount = 3, options = {}) {
+  const safeDestination = destination || "自定义目的地";
+  const cover = destinationDefaultImage(safeDestination);
+  const plan = {
+    name: `${safeDestination} ${dayCount} 日同行计划`,
+    destination: safeDestination,
+    dateRange: "自定义日期",
+    budgetLimit: recommendedBudgetLimit(options),
+    cover,
+    activities: [`生成${safeDestination}${dayCount}日推荐计划`, "可继续替换景点", "支持高德定位补全"],
+    candidates: [
+      makeStop({ title: `${safeDestination}代表性景点`, type: "Scenic", address: safeDestination, note: "把最想去但还未排进每天行程的地点先放在这里，后续可一键加入行程。", tags: ["备选", "核心景点"], budget: options.budget === "品质" ? 260 : 120, amapKeyword: `${safeDestination} 必去景点`, image: cover }),
+      makeStop({ title: `${safeDestination}特色餐厅`, type: "Food", address: safeDestination, note: "用于投票确认餐厅、团购或预约信息。", tags: ["美食", "可投票"], budget: options.budget === "品质" ? 360 : 180, amapKeyword: `${safeDestination} 特色餐厅`, image: images.food }),
+      makeStop({ title: `${safeDestination}雨天室内备选`, type: "Museum", address: safeDestination, note: "天气不好时可替换当天户外景点。", tags: ["雨天", "室内"], budget: 80, amapKeyword: `${safeDestination} 博物馆`, image: images.museum }),
+    ],
+    days: [
+      {
+        id: uid(),
+        label: "D1",
+        title: `第1天 ${safeDestination}抵达`,
+        route: `抵达${safeDestination} · 入住 · 周边轻量探索`,
+        weather: "天气待确认",
+        transport: "机票/动车 + 市内交通",
+        stops: [
+          makeStop({ time: "11:30", title: `${safeDestination}抵达与入住`, type: "Transit", address: safeDestination, note: "第一天优先完成集合、入住、行李寄存和交通确认。", tags: ["集合", "入住"], budget: 260, amapKeyword: `${safeDestination} 机场 火车站 酒店`, image: images.train, x: 24, y: 44 }),
+          makeStop({ time: "15:30", title: `${safeDestination}城市核心区`, type: "Walk", address: safeDestination, note: "安排低强度城市漫步，作为初到目的地的适应段。", tags: ["轻量", "可替换"], budget: 80, amapKeyword: `${safeDestination} 市中心 景点`, image: cover, x: 46, y: 42 }),
+          makeStop({ time: "19:00", title: `${safeDestination}特色晚餐`, type: "Dinner", address: safeDestination, note: "用投票确定第一晚餐厅，并记录订单或团购信息。", tags: ["美食", "投票"], budget: options.budget === "品质" ? 420 : 220, amapKeyword: `${safeDestination} 特色美食`, image: images.food, x: 62, y: 54 }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D2",
+        title: `第2天 ${safeDestination}核心景点`,
+        route: `核心景点 · 文化街区 · 夜间散步`,
+        weather: "天气待确认",
+        transport: "市内交通 + 打车",
+        stops: [
+          makeStop({ time: "09:30", title: `${safeDestination}核心景点`, type: "Scenic", address: safeDestination, note: "先放入推荐骨架，后续可用高德搜索替换为具体景区并补全坐标。", tags: ["核心", "门票待确认"], budget: options.budget === "品质" ? 260 : 120, amapKeyword: `${safeDestination} 必去景点`, image: cover, x: 42, y: 42 }),
+          makeStop({ time: "14:30", title: `${safeDestination}文化街区`, type: "Culture", address: safeDestination, note: "适合接在主要景点之后，补充城市文化和步行体验。", tags: ["文化", "散步"], budget: 120, amapKeyword: `${safeDestination} 历史街区`, image: images.museum, x: 58, y: 48 }),
+          makeStop({ time: "19:30", title: `${safeDestination}夜间散步`, type: "Walk", address: safeDestination, note: "晚上不排高强度项目，留给夜景、补给和自由讨论。", tags: ["夜景", "轻量"], budget: 80, amapKeyword: `${safeDestination} 夜景`, image: cover, x: 68, y: 56 }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D3",
+        title: `第3天 ${safeDestination}返程`,
+        route: `自由补完 · 伴手礼 · 返程缓冲`,
+        weather: "天气待确认",
+        transport: "市内交通 + 返程交通",
+        stops: [
+          makeStop({ time: "10:00", title: `${safeDestination}自由补完`, type: "Scenic", address: safeDestination, note: "补拍、购物或替换成还没有去成的备选景点。", tags: ["补完", "可替换"], budget: 160, amapKeyword: `${safeDestination} 伴手礼 景点`, image: cover, x: 42, y: 42 }),
+          makeStop({ time: "14:30", title: `${safeDestination}返程缓冲`, type: "Transit", address: safeDestination, note: "预留取行李、打车、车站/机场安检时间。", tags: ["返程", "缓冲"], budget: 320, amapKeyword: `${safeDestination} 机场 火车站`, image: images.train, x: 62, y: 50 }),
+        ],
+      },
+    ],
+  };
+
+  return fillRecommendedDays(plan, dayCount, options);
+}
+
+function buildRecommendedPlan(destination, dayCount = 3, options = {}) {
+  const safeDestination = destination || "甘肃";
+  if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/i.test(safeDestination)) return buildGansuPlan(dayCount, options);
+  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i.test(safeDestination)) return buildQinghaiPlan(dayCount, options);
+  if (/青岛|Qingdao/i.test(safeDestination)) return buildQingdaoPlan(dayCount, options);
+  return buildGenericRecommendedPlan(safeDestination, dayCount, options);
+}
+
 function buildBlankPlan(destination, dayCount = 3, options = {}) {
   const safeDestination = destination || "自定义目的地";
+  const cover = destinationDefaultImage(safeDestination);
   return {
     name: `${safeDestination} ${dayCount} 日空白计划`,
     destination: safeDestination,
     dateRange: "自定义日期",
-    budgetLimit: options.budget === "品质" ? 14000 : options.budget === "节省" ? 8000 : 10000,
-    cover: safeDestination.includes("甘肃") ? images.gansu : images.city,
+    budgetLimit: recommendedBudgetLimit(options),
+    cover,
     activities: [`创建${safeDestination}${dayCount}天空白模板`],
     candidates: [
       makeStop({
@@ -1451,7 +1718,7 @@ function buildBlankPlan(destination, dayCount = 3, options = {}) {
         tags: ["备选", "待确认"],
         budget: 0,
         amapKeyword: safeDestination,
-        image: safeDestination.includes("甘肃") ? images.gansu : images.city,
+        image: cover,
       }),
     ],
     days: Array.from({ length: dayCount }, (_, index) => ({
@@ -1471,7 +1738,7 @@ function buildBlankPlan(destination, dayCount = 3, options = {}) {
           tags: ["空白模板", "待填写"],
           budget: 0,
           amapKeyword: safeDestination,
-          image: safeDestination.includes("甘肃") ? images.gansu : images.city,
+          image: cover,
           x: 34 + ((index * 11) % 48),
           y: 32 + ((index * 9) % 38),
         }),
@@ -11797,13 +12064,17 @@ function isDefaultTripboardImage(value = "") {
 function displayFallbackImageForStop(stop = {}) {
   const title = wikipediaTitleForStop(stop);
   if (title && wikipediaImageCache.get(title)) return wikipediaImageCache.get(title);
-  const text = `${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${state.destination || ""}`;
-  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/.test(text)) return images.qinghai;
-  if (/青岛|Qingdao/.test(text)) return images.qingdao;
-  if (/甘肃|敦煌|张掖|嘉峪关|兰州|丝路/.test(text)) return images.gansu;
-  if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(text)) return images.food;
-  if (/交通|高铁|动车|机场|火车|Transit/.test(text)) return images.train;
-  if (/博物馆|Museum|寺|石窟|文化/.test(text)) return images.museum;
+  const stopText = `${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${stop.amapKeyword || ""}`;
+  const destinationText = String(state.destination || "");
+  if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(stopText)) return images.food;
+  if (/交通|高铁|动车|机场|火车|Transit/.test(stopText)) return images.train;
+  if (/博物馆|Museum|寺|石窟|文化/.test(stopText)) return images.museum;
+  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/.test(stopText)) return images.qinghai;
+  if (/青岛|Qingdao/.test(stopText)) return images.qingdao;
+  if (/甘肃|敦煌|张掖|嘉峪关|兰州|丝路/.test(stopText)) return images.gansu;
+  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/.test(destinationText)) return images.qinghai;
+  if (/青岛|Qingdao/.test(destinationText)) return images.qingdao;
+  if (/甘肃|敦煌|张掖|嘉峪关|兰州|丝路/.test(destinationText)) return images.gansu;
   return state.cover && !isDefaultTripboardImage(state.cover) ? state.cover : images.city;
 }
 
@@ -11870,17 +12141,13 @@ function imageEnrichmentCandidates() {
 }
 
 function shouldAutoEnrichImages() {
-  return Boolean(canEdit() && !isReadonlyMode && serviceConfig.amapEndpoint && imageEnrichmentCandidates().some((item) => isDefaultTripboardImage(item.stop?.image) || !item.stop?.lng || !item.stop?.lat || !item.stop?.address));
+  return Boolean(canEdit() && !isReadonlyMode && imageEnrichmentCandidates().some((item) => isDefaultTripboardImage(item.stop?.image) || (serviceConfig.amapEndpoint && (!item.stop?.lng || !item.stop?.lat || !item.stop?.address))));
 }
 
 async function enrichPlacesFromAmap(options = {}) {
   const auto = Boolean(options.auto);
   if (!auto && !requireEdit("补全地点图片")) return;
   if (auto && (!canEdit() || isReadonlyMode)) return;
-  if (!serviceConfig.amapEndpoint) {
-    if (!auto) dom.saveState.textContent = "请先在服务配置里填写高德地点代理地址，才能自动补全地点图片和坐标。";
-    return;
-  }
   const candidates = imageEnrichmentCandidates();
   if (!candidates.length) {
     if (!auto) dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
@@ -11897,7 +12164,9 @@ async function enrichPlacesFromAmap(options = {}) {
     .filter(Boolean);
   if (!auto && !confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")) return;
   if (!auto) saveVersionSnapshot("补全地点图片前版本");
-  dom.saveState.textContent = auto ? "正在自动补全默认地点图片..." : `正在通过高德补全 ${Math.min(candidates.length, 12)} 个地点...`;
+  dom.saveState.textContent = serviceConfig.amapEndpoint
+    ? auto ? "正在自动补全默认地点图片..." : `正在通过高德和公开图片补全 ${Math.min(candidates.length, 12)} 个地点...`
+    : `正在用公开百科图片兜底补全 ${Math.min(candidates.length, 12)} 个地点...`;
   const fallbackDayIds = new Set();
   let candidateFallback = false;
   let changedStops = 0;
@@ -11908,7 +12177,7 @@ async function enrichPlacesFromAmap(options = {}) {
   for (const item of candidates.slice(0, 12)) {
     checked += 1;
     try {
-      const places = await lookupAmapPlaces(item.keyword, { limit: 3 });
+      const places = serviceConfig.amapEndpoint ? await lookupAmapPlaces(item.keyword, { limit: 3 }) : [];
       const place = Array.isArray(places) ? places.find((entry) => entry.image) || places[0] : null;
       const fallbackImage = isDefaultTripboardImage(item.stop.image) ? await lookupWikipediaImage(item.stop) : "";
       if (!place && !fallbackImage) continue;
@@ -15366,18 +15635,7 @@ async function createRecommendedPlan() {
   syncGuideDatesFromInputs();
   const days = guideDayCount();
   if (!mutate(`生成${destination}${days}天计划`, () => {
-    if (destination.includes("甘肃")) {
-      state = buildGansuPlan(days, guideState);
-    } else {
-      state = buildBlankPlan(destination, days, guideState);
-      state.name = `${destination} ${days} 日同行计划`;
-      state.destination = destination;
-      state.activities = [`生成${destination}计划模板`];
-      state.days.forEach((day, index) => {
-        day.route = index === 0 ? `抵达${destination} · 入住与周边探索` : `${destination}自由探索 · 备选景点`;
-        day.transport = index === 0 ? "机票/动车 + 市内交通" : "市内交通";
-      });
-    }
+    state = buildRecommendedPlan(destination, days, guideState);
     applyPlanDates(state, guideState.startDate, guideState.endDate);
     state.name = `${destination} ${days} 日同行计划`;
     state.origin = origin;
