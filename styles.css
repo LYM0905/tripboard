@@ -2497,6 +2497,38 @@ button:disabled {
   gap: 10px;
 }
 
+.import-steps {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 10px;
+  color: #34464f;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.import-steps span {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.import-steps b {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: #fff;
+  background: var(--green);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+}
+
 .edit-form label,
 .import-form label {
   display: grid;

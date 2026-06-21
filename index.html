@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260621-stay-food" />
+    <link rel="stylesheet" href="styles.css?v=20260621-order-import" />
   </head>
   <body>
     <div class="app-shell">
@@ -707,8 +707,22 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
         <button class="icon-btn modal-close" data-close-import title="关闭"><i data-lucide="x"></i></button>
         <p class="eyebrow">Import</p>
         <h3 id="importTitle">导入外部记录</h3>
-        <p class="permission-copy" id="importCopy">把订单里和行程有关的信息录入计划。</p>
+        <p class="permission-copy" id="importCopy">把下单后的订单、分享链接、短信或邮件录入计划。</p>
+        <div class="import-steps" id="importSteps">
+          <span><b>1</b> 在美团/大众点评/酒店 App 下单后复制订单或分享链接</span>
+          <span><b>2</b> 粘贴原文并解析，检查金额、时间和地址</span>
+          <span><b>3</b> 导入到当天行程或先放入备选池</span>
+        </div>
         <form class="import-form" id="importForm">
+          <label>
+            来源平台
+            <select id="importProvider">
+              <option value="美团/点评">美团/点评</option>
+              <option value="民宿/酒店">民宿/酒店</option>
+              <option value="分享/截图">分享/截图</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
           <label>
             类别
             <select id="importCategory">
@@ -717,6 +731,13 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
               <option value="交通">交通</option>
               <option value="景点">景点</option>
               <option value="其他">其他</option>
+            </select>
+          </label>
+          <label>
+            导入位置
+            <select id="importTarget">
+              <option value="day">当天行程</option>
+              <option value="candidate">备选池/预算组合</option>
             </select>
           </label>
           <label>日期<input id="importDate" type="date" /></label>
@@ -733,7 +754,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
           <div class="modal-actions">
             <button type="button" class="text-btn" data-close-import>取消</button>
             <button type="button" class="text-btn" id="parseImportBtn"><i data-lucide="scan-text"></i>解析文本</button>
-            <button type="submit" class="primary-btn"><i data-lucide="file-plus-2"></i>导入到计划</button>
+            <button type="submit" class="primary-btn" id="importSubmitBtn"><i data-lucide="file-plus-2"></i>导入到当天</button>
           </div>
         </form>
       </section>
@@ -766,7 +787,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260621-stay-food"></script>
-    <script src="script.js?v=20260621-stay-food"></script>
+    <script src="config.js?v=20260621-order-import"></script>
+    <script src="script.js?v=20260621-order-import"></script>
   </body>
 </html>

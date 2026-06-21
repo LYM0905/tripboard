@@ -9094,7 +9094,9 @@ const dom = {
   importTitle: document.querySelector("#importTitle"),
   importCopy: document.querySelector("#importCopy"),
   importForm: document.querySelector("#importForm"),
+  importProvider: document.querySelector("#importProvider"),
   importCategory: document.querySelector("#importCategory"),
+  importTarget: document.querySelector("#importTarget"),
   importDate: document.querySelector("#importDate"),
   importName: document.querySelector("#importName"),
   importTime: document.querySelector("#importTime"),
@@ -9107,6 +9109,7 @@ const dom = {
   importNote: document.querySelector("#importNote"),
   importPreview: document.querySelector("#importPreview"),
   parseImportBtn: document.querySelector("#parseImportBtn"),
+  importSubmitBtn: document.querySelector("#importSubmitBtn"),
   createChoiceModal: document.querySelector("#createChoiceModal"),
   createChoiceTitle: document.querySelector("#createChoiceTitle"),
   createChoiceCopy: document.querySelector("#createChoiceCopy"),
@@ -11101,14 +11104,16 @@ function prefillServiceQuickAdd(kind = "") {
 
 function openExternalImport(provider = "") {
   if (!requireEdit("导入外部记录")) return;
-  pendingProvider = provider || "分享/截图";
+  pendingProvider = normalizeImportProvider(provider || "分享/截图");
   const defaults = providerDefaults(pendingProvider);
   lastParsedImport = null;
-  dom.importTitle.textContent = `从${pendingProvider}导入`;
+  if (dom.importProvider) dom.importProvider.value = pendingProvider;
+  dom.importTitle.textContent = `下单后导入：${pendingProvider}`;
   dom.importCopy.textContent = externalImportConfig.endpoint
-    ? "粘贴订单文本后可用 AI 解析，再写入计划；不会读取你的账号。"
-    : "这里不会读取你的账号，只把你录入或粘贴的订单信息写入计划。";
+    ? "下单完成后复制订单详情、分享链接、短信或邮件，粘贴到这里解析；不会读取你的账号。"
+    : "这里不连接或读取 App 账号，只把你粘贴的订单或分享内容写入计划。";
   dom.importCategory.value = defaults.category;
+  if (dom.importTarget) dom.importTarget.value = defaults.category === "餐饮" || defaults.category === "住宿" ? "candidate" : "day";
   dom.importDate.value = currentDay()?.date || "";
   dom.importName.value = defaults.title;
   dom.importTime.value = defaults.time;
@@ -11120,6 +11125,7 @@ function openExternalImport(provider = "") {
   dom.importSourceUrl.value = "";
   dom.importNote.value = "";
   renderImportPreview(null);
+  refreshImportTargetUi();
   dom.importModal.classList.add("is-open");
   dom.importModal.setAttribute("aria-hidden", "false");
   refreshIcons();
@@ -11320,18 +11326,39 @@ function providerDefaults(provider = "") {
   return { category, ...defaults[category] };
 }
 
+function normalizeImportProvider(provider = "") {
+  if (/美团|点评/.test(provider)) return "美团/点评";
+  if (/民宿|酒店|住宿/.test(provider)) return "民宿/酒店";
+  if (/分享|截图|短信|邮件/.test(provider)) return "分享/截图";
+  return "其他";
+}
+
 function dayIndexByDate(dateValue) {
   if (!dateValue) return activeDay;
   const index = state.days.findIndex((day) => day.date === dateValue);
   return index >= 0 ? index : activeDay;
 }
 
-function importDateOptionsText(dateValue) {
+function importTargetLabel(target = dom.importTarget?.value || "day") {
+  return target === "candidate" ? "备选池/预算组合" : "当天行程";
+}
+
+function importDateOptionsText(dateValue, target = dom.importTarget?.value || "day") {
+  if (target === "candidate") return "备选池/预算组合";
   const exactIndex = dateValue ? state.days.findIndex((day) => day.date === dateValue) : -1;
   const index = exactIndex >= 0 ? exactIndex : activeDay;
   const day = state.days[index];
   const label = day?.date ? `${day.label} · ${formatDisplayDate(day.date)}` : currentDay()?.label || "当前天";
   return dateValue && exactIndex < 0 ? `未匹配计划日期，将导入 ${label}` : label;
+}
+
+function refreshImportTargetUi() {
+  if (!dom.importSubmitBtn) return;
+  const target = dom.importTarget?.value || "day";
+  dom.importSubmitBtn.innerHTML = `${icon(target === "candidate" ? "bookmark-plus" : "file-plus-2")}导入到${target === "candidate" ? "备选池" : "当天"}`;
+  if (dom.importDate) dom.importDate.disabled = target === "candidate";
+  renderImportPreview(lastParsedImport?.parsed || null);
+  refreshIcons();
 }
 
 function parseMultiOrigins(value) {
@@ -11510,7 +11537,8 @@ function renderImportPreview(parsed) {
       <div><dt>名称</dt><dd>${escapeHtml(parsed.title || dom.importName.value || "外部记录")}</dd></div>
       <div><dt>金额</dt><dd>${money(parsed.amount ?? parsed.budget ?? dom.importBudget.value)}</dd></div>
       <div><dt>地址</dt><dd>${escapeHtml(parsed.address || dom.importAddress.value || "待确认")}</dd></div>
-      <div><dt>导入到</dt><dd>${escapeHtml(importDateOptionsText(parsed.date || dom.importDate.value))}</dd></div>
+      <div><dt>导入位置</dt><dd>${escapeHtml(importTargetLabel())}</dd></div>
+      <div><dt>导入到</dt><dd>${escapeHtml(importDateOptionsText(parsed.date || dom.importDate.value, dom.importTarget?.value))}</dd></div>
     </dl>
     ${warnings.length ? `<ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
   `;
@@ -16404,12 +16432,50 @@ dom.importCategory.addEventListener("change", () => {
   if (!dom.importName.value || ["外部记录", "餐厅预约", "住宿入住", "交通订单", "景点预约"].includes(dom.importName.value)) {
     dom.importName.value = defaults.title;
   }
+  refreshImportTargetUi();
 });
+
+dom.importProvider?.addEventListener("change", () => {
+  pendingProvider = normalizeImportProvider(dom.importProvider.value);
+  const defaults = providerDefaults(pendingProvider);
+  dom.importTitle.textContent = `下单后导入：${pendingProvider}`;
+  dom.importCategory.value = defaults.category;
+  if (!dom.importName.value || ["外部记录", "餐厅预约", "住宿入住", "交通订单", "景点预约"].includes(dom.importName.value)) {
+    dom.importName.value = defaults.title;
+  }
+  refreshImportTargetUi();
+});
+
+dom.importTarget?.addEventListener("change", refreshImportTargetUi);
+
+async function importExternalCandidate(createdStop, label) {
+  const draft = normalizeCandidateStops([{
+    ...createdStop,
+    selected: true,
+    tags: Array.from(new Set([...(createdStop.tags || []), "备选", "预算组合"])),
+  }])[0];
+  if (!draft) return false;
+  if (await addCollaborativeCandidate(draft)) {
+    persistCurrentPlanFromDoc("外部订单已导入备选池");
+    await logActivity(label, { target: candidateActivityTarget(draft.id || "", { action: "external-import" }) });
+    await saveCollaborativePlanChange(label);
+    refreshRealtimePlanViews();
+    return true;
+  }
+  state.candidates = mergedCandidatesWithPatch("add", draft);
+  await syncCandidatesToDoc("local-import-candidate-fallback");
+  await logActivity(label, { target: candidateActivityTarget(draft.id || "", { action: "external-import", fallback: true }) });
+  await saveCollaborativePlanChange(label);
+  render();
+  return true;
+}
 
 dom.importForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const title = dom.importName.value.trim() || "外部记录";
+  pendingProvider = normalizeImportProvider(dom.importProvider?.value || pendingProvider);
   const category = normalizeImportCategory(dom.importCategory.value, pendingProvider);
+  const targetMode = dom.importTarget?.value || "day";
   const targetDayIndex = dayIndexByDate(dom.importDate.value);
   const targetDay = state.days[targetDayIndex] || currentDay();
   const defaults = providerDefaults(category);
@@ -16441,10 +16507,17 @@ dom.importForm.addEventListener("submit", async (event) => {
   });
   const finishImportUi = () => {
     dom.syncBadge.textContent = "已导入";
-    dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已加入 ${targetDay.label}，可在右侧继续编辑。</span>`;
+    const targetText = targetMode === "candidate" ? "备选池，可在住宿/餐饮板块预选或加入当天" : `${targetDay.label}，可在右侧继续编辑`;
+    dom.syncStatus.innerHTML = `${icon("check-circle-2")}<span>${pendingProvider}记录已导入到${targetText}。</span>`;
     dom.importModal.classList.remove("is-open");
     dom.importModal.setAttribute("aria-hidden", "true");
   };
+  if (targetMode === "candidate") {
+    if (await importExternalCandidate(createdStop, label)) {
+      finishImportUi();
+      return;
+    }
+  }
   if (targetDay?.id && await addStopToDoc(targetDay.id, createdStop, "local-import-stop-yjs-first")) {
     await logActivity(label, { target: stopActivityTarget(targetDay.id, createdStop.id || "", { action: "external-import" }) });
     await applyStopCreateFromDoc(targetDay.id, createdStop.id, label);
