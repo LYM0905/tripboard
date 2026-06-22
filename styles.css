@@ -712,6 +712,18 @@ button {
   border: 1px solid rgba(178, 59, 59, 0.28);
 }
 
+.reset-plan-btn {
+  min-width: 124px;
+  font-weight: 900;
+  background: #fff7f5;
+  border-color: rgba(178, 59, 59, 0.42);
+}
+
+.reset-plan-btn:hover {
+  background: #fff0ed;
+  border-color: rgba(178, 59, 59, 0.68);
+}
+
 button:disabled,
 input:disabled,
 textarea:disabled,
@@ -1083,6 +1095,134 @@ button:disabled {
 .guide-apply {
   align-self: end;
   grid-column: 4;
+}
+
+.date-scout-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.date-scout-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.date-scout-head div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.date-scout-head span,
+.date-scout-head strong {
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.date-scout-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.date-scout-head strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.date-scout-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.date-scout-controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.date-scout-controls input,
+.date-scout-controls select {
+  width: 100%;
+  min-width: 0;
+  min-height: 39px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.date-scout-results {
+  display: grid;
+  gap: 8px;
+}
+
+.date-scout-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.date-scout-card.is-selected {
+  border-color: rgba(36, 115, 92, 0.52);
+  box-shadow: 0 12px 24px rgba(36, 115, 92, 0.1);
+}
+
+.date-scout-card div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.date-scout-card b {
+  width: fit-content;
+  padding: 4px 7px;
+  color: var(--green);
+  background: var(--green-2);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.date-scout-card strong,
+.date-scout-card em,
+.date-scout-card span {
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.date-scout-card strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.date-scout-card em {
+  color: var(--coral);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.date-scout-card span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .transport-summary {
@@ -4305,6 +4445,8 @@ svg {
 
   .guide-layout,
   .guide-controls,
+  .date-scout-controls,
+  .date-scout-card,
   .flow-steps,
   .connector-grid,
   .day-form,

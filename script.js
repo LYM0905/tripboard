@@ -847,12 +847,29 @@ function syncGuideStateFromPlan() {
   if (dom.originInput) dom.originInput.value = guideState.origin;
   if (dom.startDateInput) dom.startDateInput.value = guideState.startDate;
   if (dom.endDateInput) dom.endDateInput.value = guideState.endDate;
+  if (dom.dateScoutStart && !dom.dateScoutStart.value) {
+    const defaults = defaultScoutDates();
+    dom.dateScoutStart.value = guideState.startDate || defaults.startDate;
+    dom.dateScoutEnd.value = guideState.endDate && parseIsoDate(guideState.endDate) > parseIsoDate(dom.dateScoutStart.value)
+      ? guideState.endDate
+      : defaults.endDate;
+    dom.dateScoutDays.value = guideDayCount();
+  }
   if (dom.transportFrom && !dom.transportFrom.value) dom.transportFrom.value = guideState.origin;
 }
 
 function defaultGuideDates() {
   const start = addDays(new Date(), 14);
   const end = addDays(start, 5);
+  return {
+    startDate: formatIsoDate(start),
+    endDate: formatIsoDate(end),
+  };
+}
+
+function defaultScoutDates() {
+  const start = addDays(new Date(), 7);
+  const end = addDays(start, 30);
   return {
     startDate: formatIsoDate(start),
     endDate: formatIsoDate(end),
@@ -9061,6 +9078,13 @@ const dom = {
   startDateInput: document.querySelector("#startDateInput"),
   endDateInput: document.querySelector("#endDateInput"),
   tripLengthHint: document.querySelector("#tripLengthHint"),
+  dateScoutStart: document.querySelector("#dateScoutStart"),
+  dateScoutEnd: document.querySelector("#dateScoutEnd"),
+  dateScoutDays: document.querySelector("#dateScoutDays"),
+  dateScoutPriority: document.querySelector("#dateScoutPriority"),
+  dateScoutSearchBtn: document.querySelector("#dateScoutSearchBtn"),
+  dateScoutStatus: document.querySelector("#dateScoutStatus"),
+  dateScoutResults: document.querySelector("#dateScoutResults"),
   transportProviderStatus: document.querySelector("#transportProviderStatus"),
   flightAvgPrice: document.querySelector("#flightAvgPrice"),
   trainAvgPrice: document.querySelector("#trainAvgPrice"),
@@ -9159,9 +9183,11 @@ let transportProviderItems = [];
 let transportProviderSource = "";
 let multiOriginComparisons = [];
 let editingTransportQuoteId = "";
+let dateScoutOptions = [];
+let selectedDateScoutId = "";
 const FLOW_UI_KEY = "tripboard-flow-ui-v2";
 const FLOW_STEPS = [
-  { id: "setup", title: "创建计划", short: "目的地/日期", helper: "先填写目的地、出发地和日期，再生成推荐计划或空白模板。", selectors: [".guide-panel"] },
+  { id: "setup", title: "创建计划", short: "日期/目的地", helper: "先按天气和交通成本筛选出游日期，再生成推荐计划或空白模板。", selectors: [".guide-panel"] },
   { id: "itinerary", title: "安排每日路线", short: "日程/地点", helper: "查看每日路线，添加或调整当天地点。", selectors: [".timeline-wrap", ".day-editor-panel", ".day-blocks-panel", ".quick-add-panel", ".candidate-panel", ".map-panel", ".place-detail", ".editor-panel"] },
   { id: "booking", title: "交通住宿餐饮", short: "机票/订单", helper: "筛选交通报价，导入住宿和餐饮订单，先放备选池也可以。", selectors: [".transport-panel", ".stay-food-panel", ".candidate-panel"] },
   { id: "budget", title: "预算与协作", short: "分账/评论", helper: "检查预算组合、分账、批注和协作记录。", selectors: [".side-block", ".day-comments-panel", ".comments-panel", ".activity-panel"] },
@@ -10701,12 +10727,157 @@ async function requestWeatherForecast() {
   return { source: `Open-Meteo · ${place.name}${proxyHint}`, days };
 }
 
+async function requestWeatherForDateRange(startDateValue, endDateValue) {
+  const place = await geocodeDestination();
+  if (!place) throw new Error("没有找到目的地坐标，请尝试填写更具体的城市名。");
+  const start = parseIsoDate(startDateValue);
+  const end = parseIsoDate(endDateValue);
+  if (!start || !end) throw new Error("请先填写可出行日期范围。");
+  const forecastDays = Math.min(16, Math.max(1, Math.round((end - new Date()) / 86400000) + 2));
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=${forecastDays}`;
+  const response = await fetch(url);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
+  const days = (data.daily?.time || []).map((date, index) => ({
+    date,
+    code: Number(data.daily.weather_code?.[index] ?? 0),
+    precipitation: Math.round(data.daily.precipitation_probability_max?.[index] ?? 0),
+    tempMin: Math.round(data.daily.temperature_2m_min?.[index] ?? 0),
+    tempMax: Math.round(data.daily.temperature_2m_max?.[index] ?? 0),
+    text: `${Math.round(data.daily.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily.temperature_2m_max?.[index] ?? 0)}°C ${weatherLabel(data.daily.weather_code?.[index])} · 降水${Math.round(data.daily.precipitation_probability_max?.[index] ?? 0)}%`,
+  }));
+  return { source: `Open-Meteo · ${place.name}`, days };
+}
+
 function weatherForDay(forecastDays, day, index) {
   const datedForecasts = forecastDays.filter((item) => item.date);
   if (day.date && datedForecasts.length) {
     return datedForecasts.find((item) => item.date === day.date) || null;
   }
   return forecastDays[index] || null;
+}
+
+function weatherScore(day = null) {
+  if (!day) return 58;
+  const precipitation = Number(day.precipitation ?? String(day.text || "").match(/降水(\d+)%/)?.[1] ?? 35);
+  const code = Number(day.code ?? 0);
+  const tempMax = Number(day.tempMax ?? String(day.text || "").match(/-(\d+)°C/)?.[1] ?? 24);
+  let score = 100 - Math.min(70, precipitation * 0.75);
+  if ([61, 63, 65, 80, 81, 82, 95].includes(code)) score -= 18;
+  if ([71, 73, 75].includes(code)) score -= 12;
+  if (tempMax >= 32) score -= (tempMax - 31) * 4;
+  if (tempMax <= 5) score -= (6 - tempMax) * 3;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function dateScoutRange() {
+  const defaults = defaultScoutDates();
+  const startValue = dom.dateScoutStart?.value || defaults.startDate;
+  let endValue = dom.dateScoutEnd?.value || defaults.endDate;
+  const start = parseIsoDate(startValue) || parseIsoDate(defaults.startDate);
+  let end = parseIsoDate(endValue) || parseIsoDate(defaults.endDate);
+  if (end < start) {
+    end = addDays(start, 14);
+    endValue = formatIsoDate(end);
+    if (dom.dateScoutEnd) dom.dateScoutEnd.value = endValue;
+  }
+  return { start, end, startDate: formatIsoDate(start), endDate: formatIsoDate(end) };
+}
+
+function dateScoutDayCount() {
+  return clampDays(dom.dateScoutDays?.value || guideDayCount() || 3);
+}
+
+function enumerateDateScoutWindows() {
+  const { start, end } = dateScoutRange();
+  const days = dateScoutDayCount();
+  const windows = [];
+  for (let cursor = new Date(start); addDays(cursor, days - 1) <= end && windows.length < 36; cursor = addDays(cursor, 1)) {
+    const startDate = formatIsoDate(cursor);
+    const endDate = formatIsoDate(addDays(cursor, days - 1));
+    windows.push({
+      id: `${startDate}:${endDate}`,
+      startDate,
+      endDate,
+      days,
+    });
+  }
+  return windows;
+}
+
+function weatherSummaryForWindow(forecastDays = [], option = {}) {
+  const byDate = new Map((forecastDays || []).map((day) => [day.date, day]));
+  const scores = [];
+  const summaries = [];
+  for (let index = 0; index < option.days; index += 1) {
+    const date = formatIsoDate(addDays(parseIsoDate(option.startDate), index));
+    const day = byDate.get(date) || null;
+    scores.push(weatherScore(day));
+    if (day?.text) summaries.push(`${formatDisplayDate(date)} ${day.text}`);
+  }
+  return {
+    score: scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 58,
+    text: summaries.slice(0, 2).join("；") || "天气超出免费预报范围，先按季节估算",
+    coveredDays: summaries.length,
+  };
+}
+
+function localScoutTransport(option = {}) {
+  const fakeDay = { date: option.startDate, route: `抵达${guideState.destination || state.destination || "目的地"}` };
+  const options = buildTransportOptions(fakeDay, 0).filter((item) => item.type === "flight");
+  const sorted = options.sort((a, b) => Number(a.price) - Number(b.price));
+  const best = sorted[0] || null;
+  return {
+    price: best ? Number(best.price) : 0,
+    code: best?.code || "待查询",
+    depart: best?.depart || "",
+    arrive: best?.arrive || "",
+    duration: best?.duration || 0,
+    source: "本地估算",
+    confidence: "estimate",
+  };
+}
+
+function dateScoutScore(option = {}) {
+  const priority = dom.dateScoutPriority?.value || "balanced";
+  const weatherPart = Number(option.weatherScore || 0);
+  const price = Number(option.flight?.price || option.estimatedFlight?.price || 0);
+  const pricePart = price ? Math.max(0, 100 - Math.round(price / 18)) : 50;
+  const weekendPenalty = [0, 6].includes(parseIsoDate(option.startDate)?.getDay()) ? 4 : 0;
+  const weights = {
+    weather: [0.72, 0.28],
+    price: [0.32, 0.68],
+    balanced: [0.52, 0.48],
+  }[priority] || [0.52, 0.48];
+  return Math.max(0, Math.round(weatherPart * weights[0] + pricePart * weights[1] - weekendPenalty));
+}
+
+async function fetchDateScoutFlight(option = {}) {
+  if (!ctripConfig.endpoint) return null;
+  const payload = {
+    tripId,
+    date: option.startDate,
+    from: guideState.origin || state.origin || "",
+    to: guideState.destination || state.destination || "",
+    type: "flight",
+    startTime: "",
+    endTime: "",
+  };
+  const data = await fetchTransportQuotes(payload);
+  const route = { from: payload.from, to: payload.to };
+  const rawItems = Array.isArray(data.items) ? data.items : Array.isArray(data.data) ? data.data : [];
+  const items = rawItems.map((item, index) => normalizeTransportItem(item, index, route)).filter((item) => item.type === "flight");
+  const best = bestFlightOption(items);
+  if (!best) return null;
+  return {
+    price: Number(best.price || 0),
+    code: best.code || "航班",
+    depart: best.depart || "",
+    arrive: best.arrive || "",
+    duration: best.duration || 0,
+    source: data.source || best.source || "Google Flights",
+    confidence: data.source === "demo" || /示例/.test(best.source || "") ? "demo" : "live",
+  };
 }
 
 async function syncWeather() {
@@ -11861,6 +12032,76 @@ async function compareMultiOrigins() {
     setCtripStatus(`多人出发地比较保存失败：${error.message}。已保留当前页面结果，可稍后重试。`, "alert-triangle");
   } finally {
     dom.compareOriginsBtn.disabled = false;
+  }
+}
+
+async function scoutTripDates() {
+  if (!dom.dateScoutSearchBtn) return;
+  guideState.destination = dom.destinationInput.value.trim() || guideState.destination || "目的地";
+  guideState.origin = dom.originInput.value.trim() || guideState.origin || "出发城市";
+  state.destination = guideState.destination;
+  state.origin = guideState.origin;
+  const windows = enumerateDateScoutWindows();
+  if (!windows.length) {
+    dom.dateScoutStatus.textContent = "可出行范围太短";
+    dom.dateScoutResults.innerHTML = `<p class="empty-state">请扩大可出行范围，或缩短旅行天数。</p>`;
+    return;
+  }
+  dom.dateScoutSearchBtn.disabled = true;
+  dom.dateScoutStatus.textContent = "正在评估天气和交通...";
+  dom.dateScoutResults.innerHTML = `<p class="empty-state">正在筛选 ${windows.length} 个候选时间段。</p>`;
+  let forecast = { source: "", days: [] };
+  try {
+    forecast = await requestWeatherForDateRange(dateScoutRange().startDate, dateScoutRange().endDate);
+  } catch (error) {
+    forecast = { source: `天气暂不可用：${error.message}`, days: [] };
+  }
+  try {
+    let options = windows.map((window) => {
+      const weather = weatherSummaryForWindow(forecast.days, window);
+      const estimatedFlight = localScoutTransport(window);
+      return {
+        ...window,
+        weatherScore: weather.score,
+        weatherText: weather.text,
+        weatherSource: forecast.source || "天气估算",
+        estimatedFlight,
+        flight: estimatedFlight,
+      };
+    });
+    options = options
+      .map((option) => ({ ...option, score: dateScoutScore(option) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+
+    saveCtripConfig();
+    if (ctripConfig.endpoint) {
+      dom.dateScoutStatus.textContent = `正在查询前 ${Math.min(3, options.length)} 个候选日期的航班...`;
+      for (let index = 0; index < Math.min(3, options.length); index += 1) {
+        try {
+          const flight = await fetchDateScoutFlight(options[index]);
+          if (flight?.price) options[index] = { ...options[index], flight };
+        } catch (error) {
+          options[index] = {
+            ...options[index],
+            flight: {
+              ...options[index].estimatedFlight,
+              source: `接口失败，已用估算：${error.message}`,
+              confidence: "estimate",
+            },
+          };
+        }
+      }
+      options = options
+        .map((option) => ({ ...option, score: dateScoutScore(option) }))
+        .sort((a, b) => b.score - a.score);
+    }
+    dateScoutOptions = options;
+    selectedDateScoutId = "";
+    renderDateScoutResults();
+  } finally {
+    dom.dateScoutSearchBtn.disabled = false;
+    refreshIcons();
   }
 }
 
@@ -13243,6 +13484,76 @@ function renderGuideResult() {
   dom.tripLengthHint.textContent = `共 ${days} 天，按出发日到返程日生成。最多支持 30 天。`;
 }
 
+function renderDateScoutResults() {
+  if (!dom.dateScoutResults) return;
+  if (!dateScoutOptions.length) {
+    dom.dateScoutResults.innerHTML = `<p class="empty-state">先输入目的地和出发城市，再筛选适合出游的日期。</p>`;
+    if (dom.dateScoutStatus) dom.dateScoutStatus.textContent = "按天气和交通成本给出候选";
+    return;
+  }
+  const best = dateScoutOptions[0];
+  if (dom.dateScoutStatus) {
+    dom.dateScoutStatus.textContent = `推荐 ${formatDisplayDate(best.startDate)} 出发 · 综合 ${best.score} 分`;
+  }
+  dom.dateScoutResults.innerHTML = dateScoutOptions
+    .map((option, index) => {
+      const selected = option.id === selectedDateScoutId;
+      const confidenceText = option.flight?.confidence === "live"
+        ? "实时航班"
+        : option.flight?.confidence === "demo"
+          ? "代理示例"
+          : "估算";
+      const flightText = option.flight?.price
+        ? `${money(option.flight.price)} · ${escapeHtml(option.flight.code || "航班")} ${escapeHtml(option.flight.depart || "")}${option.flight.arrive ? `-${escapeHtml(option.flight.arrive)}` : ""}`
+        : "票价待查询";
+      return `
+        <article class="date-scout-card${selected ? " is-selected" : ""}" data-date-scout="${escapeHtml(option.id)}">
+          <div>
+            <b>${index === 0 ? "推荐" : `候选 ${index + 1}`}</b>
+            <strong>${escapeHtml(formatDisplayDate(option.startDate))} - ${escapeHtml(formatDisplayDate(option.endDate))}</strong>
+            <span>${option.days} 天 · 天气 ${option.weatherScore} 分 · 综合 ${option.score} 分</span>
+          </div>
+          <div>
+            <em>${flightText}</em>
+            <span>${confidenceText} · ${escapeHtml(option.weatherText || "天气待确认")}</span>
+          </div>
+          <button type="button" class="text-btn" data-apply-date-scout="${escapeHtml(option.id)}">${selected ? "已采用" : "采用日期"}</button>
+        </article>
+      `;
+    })
+    .join("");
+  refreshIcons();
+}
+
+function clearDateScoutResults(message = "按天气和交通成本给出候选") {
+  dateScoutOptions = [];
+  selectedDateScoutId = "";
+  if (dom.dateScoutStatus) dom.dateScoutStatus.textContent = message;
+  renderDateScoutResults();
+}
+
+function applyDateScoutOption(optionId = "") {
+  const option = dateScoutOptions.find((item) => item.id === optionId);
+  if (!option) return;
+  selectedDateScoutId = option.id;
+  guideState.startDate = option.startDate;
+  guideState.endDate = option.endDate;
+  if (dom.startDateInput) dom.startDateInput.value = option.startDate;
+  if (dom.endDateInput) dom.endDateInput.value = option.endDate;
+  if (dom.dateScoutDays) dom.dateScoutDays.value = option.days;
+  state.startDate = option.startDate;
+  state.endDate = option.endDate;
+  state.dateRange = dateRangeText(option.startDate, option.endDate);
+  renderGuideResult();
+  renderShell();
+  renderDateScoutResults();
+  schedulePlanMetaPatchInputSync("dateScout", {
+    startDate: option.startDate,
+    endDate: option.endDate,
+    dateRange: dateRangeText(option.startDate, option.endDate),
+  }, "采用出游日期", "startDate");
+}
+
 function flowCompletion() {
   const hasPlan = Boolean(state.destination && state.days?.length && !/^京都\s*6\s*日/.test(state.name || ""));
   const stopCount = (state.days || []).reduce((sum, day) => sum + (day.stops || []).filter((stop) => !/待填写地点|新地点/.test(stop.title || "")).length, 0);
@@ -13335,6 +13646,7 @@ function render() {
   renderStayFoodBoards();
   renderActivities();
   renderGuideResult();
+  renderDateScoutResults();
   renderAmapRouteReport(currentDay()?.amapRoute || null);
   renderMembers();
   renderVersionHistory();
@@ -15787,7 +16099,37 @@ document.querySelectorAll("[data-guide-group]").forEach((group) => {
       guideState[groupName] = option.dataset.guideOption;
     }
     renderGuideResult();
+    clearDateScoutResults("偏好已变化，请重新筛选日期");
   });
+});
+
+dom.dateScoutSearchBtn?.addEventListener("click", () => {
+  scoutTripDates().catch((error) => {
+    dom.dateScoutStatus.textContent = `筛选失败：${error.message}`;
+    dom.dateScoutResults.innerHTML = `<p class="empty-state">暂时无法筛选日期。可以先手动选择日期，再继续创建计划。</p>`;
+    dom.dateScoutSearchBtn.disabled = false;
+    refreshIcons();
+  });
+});
+
+dom.dateScoutResults?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-apply-date-scout]");
+  const card = event.target.closest("[data-date-scout]");
+  const optionId = button?.dataset.applyDateScout || card?.dataset.dateScout || "";
+  if (!optionId) return;
+  applyDateScoutOption(optionId);
+});
+
+dom.dateScoutDays?.addEventListener("input", () => {
+  clearDateScoutResults("旅行天数已变化，请重新筛选日期");
+});
+
+dom.dateScoutStart?.addEventListener("input", () => {
+  clearDateScoutResults("可出行范围已变化，请重新筛选日期");
+});
+
+dom.dateScoutEnd?.addEventListener("input", () => {
+  clearDateScoutResults("可出行范围已变化，请重新筛选日期");
 });
 
 function syncGuideDatesFromInputs() {
@@ -16043,6 +16385,7 @@ dom.destinationInput.addEventListener("input", () => {
   guideState.destination = destination;
   state.destination = destination;
   renderGuideResult();
+  clearDateScoutResults("目的地已变化，请重新筛选日期");
   renderShell();
   schedulePlanMetaInputSync("destination", destination, "更新目的地");
 });
@@ -16053,6 +16396,7 @@ dom.originInput.addEventListener("input", () => {
   state.origin = origin;
   dom.transportFrom.value = guideState.origin;
   renderGuideResult();
+  clearDateScoutResults("出发城市已变化，请重新筛选日期");
   schedulePlanMetaInputSync("origin", origin, "更新出发地");
 });
 
@@ -16476,18 +16820,45 @@ dom.ctripSpecBtn.addEventListener("click", async () => {
 });
 
 dom.resetBtn.addEventListener("click", async () => {
-  if (!requireEdit("重置计划")) return;
+  const action = "删除当前计划并新建";
+  if (!requireEdit(action)) return;
+  const tripName = state.name || state.destination || "当前计划";
+  const ok = window.confirm(`确定要删除「${tripName}」并重新开始吗？\n\n当前行程、交通报价、住宿餐饮、预算和协作内容都会被新的空白计划替换。建议确认已经导出或不再需要这份计划。`);
+  if (!ok) {
+    dom.saveState.textContent = "已取消删除当前计划";
+    return;
+  }
   if (!confirmRemotePlanReplace("重置计划")) return;
-  saveVersionSnapshot("重置前版本");
-  state = ensurePlanDates(buildKyotoPlan());
+  saveVersionSnapshot("删除当前计划前版本");
+  const defaults = defaultGuideDates();
+  Object.assign(guideState, {
+    destination: "自定义目的地",
+    origin: state.origin || guideState.origin || "上海",
+    startDate: defaults.startDate,
+    endDate: defaults.endDate,
+  });
+  state = ensurePlanDates(buildBlankPlan(guideState.destination, guideDayCount(), guideState));
+  applyPlanDates(state, guideState.startDate, guideState.endDate);
+  state.name = "新的旅行计划";
+  state.origin = guideState.origin;
   clearPlanYjsState();
   activeDay = 0;
   activeStop = 0;
   transportFilterApplied = false;
-  await replacePlanCollabDoc("local-reset-plan", { allowReplace: true, reason: "reset-plan" });
-  await saveCollaborativePlanChange("已重置示例");
-  await broadcastPlanReplaced("重置示例计划", { replacementType: "reset-plan" });
+  transportProviderItems = [];
+  transportProviderSource = "";
+  multiOriginComparisons = [];
+  clearDateScoutResults("已删除旧计划，可重新筛选出游日期");
+  if (dom.destinationInput) dom.destinationInput.value = guideState.destination;
+  if (dom.originInput) dom.originInput.value = guideState.origin;
+  if (dom.transportFrom) dom.transportFrom.value = guideState.origin;
+  if (dom.transportTo) dom.transportTo.value = "";
+  await replacePlanCollabDoc("local-delete-and-new-plan", { allowReplace: true, reason: "reset-plan" });
+  await saveCollaborativePlanChange("已删除当前计划并新建空白计划");
+  await broadcastPlanReplaced("删除当前计划并新建", { replacementType: "reset-plan" });
+  setFlowStep("setup", { showAll: false, pinned: true });
   render();
+  dom.saveState.textContent = "已删除当前计划，回到创建计划第一步";
 });
 
 document.querySelectorAll(".sync-card").forEach((card) => {

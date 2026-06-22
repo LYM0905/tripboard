@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>同行计划 - 可编辑旅行计划</title>
     <link rel="preconnect" href="https://images.unsplash.com" />
-    <link rel="stylesheet" href="styles.css?v=20260621-step-flow" />
+    <link rel="stylesheet" href="styles.css?v=20260621-date-scout" />
   </head>
   <body>
     <div class="app-shell">
@@ -135,7 +135,7 @@
             <p class="save-state" id="saveState">已保存到本地</p>
           </div>
           <div class="top-actions">
-            <button class="icon-btn" id="resetBtn" title="重置示例"><i data-lucide="rotate-ccw"></i></button>
+            <button class="danger-btn reset-plan-btn" id="resetBtn" title="删除当前计划并重新开始"><i data-lucide="trash-2"></i>删除并新建</button>
             <button class="icon-btn" id="exportBtn" title="导出 JSON"><i data-lucide="download"></i></button>
             <button class="icon-btn" id="importJsonBtn" title="导入 JSON"><i data-lucide="upload"></i></button>
             <input id="importJsonInput" type="file" accept="application/json,.json" hidden />
@@ -264,6 +264,31 @@
                 </label>
               </div>
               <p class="date-range-note" id="tripLengthHint">共 6 天，按自然日生成。</p>
+              <div class="date-scout-panel">
+                <div class="date-scout-head">
+                  <div>
+                    <span>先筛选出游日期</span>
+                    <strong id="dateScoutStatus">按天气和交通成本给出候选</strong>
+                  </div>
+                  <button type="button" class="text-btn" id="dateScoutSearchBtn"><i data-lucide="search"></i>筛选日期</button>
+                </div>
+                <div class="date-scout-controls">
+                  <label>可出行开始<input id="dateScoutStart" type="date" /></label>
+                  <label>可出行结束<input id="dateScoutEnd" type="date" /></label>
+                  <label>旅行天数<input id="dateScoutDays" type="number" min="1" max="30" value="6" /></label>
+                  <label>
+                    决策偏好
+                    <select id="dateScoutPriority">
+                      <option value="balanced">综合平衡</option>
+                      <option value="weather">优先好天气</option>
+                      <option value="price">优先低票价</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="date-scout-results" id="dateScoutResults">
+                  <p class="empty-state">先输入目的地和出发城市，再筛选适合出游的日期。</p>
+                </div>
+              </div>
               <div class="control-group">
                 <span>旅行节奏</span>
                 <div class="segmented" data-guide-group="pace">
@@ -802,7 +827,7 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260621-step-flow"></script>
-    <script src="script.js?v=20260621-step-flow"></script>
+    <script src="config.js?v=20260621-date-scout"></script>
+    <script src="script.js?v=20260621-date-scout"></script>
   </body>
 </html>
