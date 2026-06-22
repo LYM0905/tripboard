@@ -135,7 +135,12 @@
             <p class="save-state" id="saveState">已保存到本地</p>
           </div>
           <div class="top-actions">
-            <button class="danger-btn reset-plan-btn" id="resetBtn" title="删除当前计划并重新开始"><i data-lucide="trash-2"></i>删除并新建</button>
+            <label class="plan-switcher" title="切换已保存的本地计划">
+              <span>当前计划</span>
+              <select id="planSelect" aria-label="切换已保存的计划"></select>
+            </label>
+            <button class="text-btn new-plan-btn" id="newPlanBtn" title="新建一份空白计划，不覆盖已有计划"><i data-lucide="file-plus-2"></i>新建计划</button>
+            <button class="danger-btn delete-plan-btn" id="deletePlanBtn" title="只删除当前计划"><i data-lucide="trash-2"></i>删除计划</button>
             <button class="icon-btn" id="exportBtn" title="导出 JSON"><i data-lucide="download"></i></button>
             <button class="icon-btn" id="importJsonBtn" title="导入 JSON"><i data-lucide="upload"></i></button>
             <input id="importJsonInput" type="file" accept="application/json,.json" hidden />

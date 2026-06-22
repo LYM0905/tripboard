@@ -1,4 +1,6 @@
 const STORAGE_KEY = "tripboard-editable-v1";
+const PLAN_LIBRARY_KEY = "tripboard-plan-library-v1";
+const CURRENT_PLAN_ID_KEY = "tripboard-current-local-plan-id";
 const CTRIP_CONFIG_KEY = "tripboard-ctrip-connector-v1";
 const MEMBER_PROFILE_KEY = "tripboard-member-profile-v1";
 const SERVICE_CONFIG_KEY = "tripboard-service-connectors-v1";
@@ -3467,7 +3469,7 @@ async function persistCurrentTextFromDoc(label = "地点协作内容已实时同
   stop.noteYjs = nextYjs;
   await syncStopSnapshotToPlanDoc(stop.id, "local-stop-detail-snapshot");
   applyStopRealtimeFields(stop);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   if (updateStatus) setNoteCollabStatus(label);
   if (refreshViews && (textChanged || structChanged || commentsChanged)) refreshRealtimeStopViews();
   if (!scheduleSave) return;
@@ -3532,7 +3534,7 @@ async function persistCurrentDayTextFromDoc(label = "当天文本协作内容已
       console.warn("Day text meta patch failed", error);
     });
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   if (collabDayTextDayId === day.id) {
     COLLAB_DAY_TEXT_FIELDS.forEach(({ docField, domKey }) => {
       if (dom[domKey] && dom[domKey].value !== nextValues[docField]) dom[domKey].value = nextValues[docField];
@@ -3991,7 +3993,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
   });
   if (!state.dateRange && state.startDate && state.endDate) state.dateRange = dateRangeText(state.startDate, state.endDate);
   syncGuideStateFromPlan();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   if (updateStatus) dom.collabStatus.textContent = label;
   if (refreshViews && visibleChanged) {
     if (dayBlockOnlyVisibleChange && currentDayBlockChanged) {
@@ -8144,7 +8146,7 @@ async function mergeConflictPlanYjsSnapshot(remotePlan = {}, label = "已通过�
   if (!merged) return false;
   state = ensurePlanDates(state);
   state.planYjs = currentPlanYjsState();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   return true;
 }
 
@@ -8153,7 +8155,7 @@ async function applyRemoteStructureSnapshot(payload = {}, label = "收到协作�
   const applied = await mergePlanYjsStateIntoLiveDoc(payload.planYjs, label);
   if (applied) {
     syncGuideStateFromPlan();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    persistLocalState();
   }
   return applied;
 }
@@ -8193,7 +8195,7 @@ async function applyRemoteStopCreated(payload = {}) {
     currentDay();
   if (!day) return;
   day.stops = [...(day.stops || []), clone(payload.stop)];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   logActivity(`${payload.name || "协作者"} 新增地点「${payload.stop.title || "未命名地点"}」`, { ...activityOptions, target: stopActivityTarget(day.id || payload.dayId || "", payload.stop.id || "", { action: "remote-create" }) });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了「${payload.stop.title || "地点"}」`;
   render();
@@ -8224,7 +8226,7 @@ async function applyRemoteStopDeleted(payload = {}) {
   }
   if (dayIndex === activeDay) clearCurrentAmapRoute();
   destroyCollabTextDoc();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   logActivity(`${payload.name || "协作者"} 删除地点「${payload.title || "地点"}」`, { ...activityOptions, target: stopActivityTarget(day.id || payload.dayId || "", payload.stopId || "", { deleted: true, action: "remote-delete" }) });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了「${payload.title || "地点"}」`;
   render();
@@ -8254,7 +8256,7 @@ async function applyRemoteStopsReordered(payload = {}) {
     activeStop = Math.max(0, day.stops.findIndex((stop) => stop.id === activeStopId));
   }
   if (dayIndex === activeDay) clearCurrentAmapRoute();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   logActivity(`${payload.name || "协作者"} 调整地点顺序`, activityOptions);
   dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了地点顺序`;
   render();
@@ -8287,7 +8289,7 @@ async function applyRemoteDayUpdated(payload = {}) {
   guideState.origin = state.origin || guideState.origin;
   guideState.startDate = state.startDate || guideState.startDate;
   guideState.endDate = state.endDate || guideState.endDate;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   logActivity(`${payload.name || "协作者"} 更新当天设置`, activityOptions);
   dom.collabStatus.textContent = `${payload.name || "协作者"} 更新了 ${state.days[index].label}`;
   render();
@@ -8312,7 +8314,7 @@ async function applyRemoteDayCreated(payload = {}) {
   resequencePlanDays();
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   activeStop = Math.min(activeStop, currentDay()?.stops?.length - 1 || 0);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   logActivity(`${payload.name || "协作者"} 新增一天「${payload.day.title || payload.day.label || "新日期"}」`, activityOptions);
   dom.collabStatus.textContent = `${payload.name || "协作者"} 新增了 ${payload.day.title || "一天"}`;
   render();
@@ -8343,7 +8345,7 @@ async function applyRemoteDayDeleted(payload = {}) {
   } else if (activeDayId) {
     activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   logActivity(`${payload.name || "协作者"} 删除一天「${payload.title || "当天"}」`, { ...activityOptions, target: dayActivityTarget(payload.dayId || "", { deleted: true, action: "remote-delete", fallbackIndex: index }) });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 删除了 ${payload.title || "一天"}`;
   render();
@@ -8369,7 +8371,7 @@ async function applyRemoteDaysReordered(payload = {}) {
   applyPlanMeta(payload.planMeta || {});
   resequencePlanDays();
   if (activeDayId) activeDay = Math.max(0, state.days.findIndex((day) => day.id === activeDayId));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   logActivity(`${payload.name || "协作者"} 调整日期顺序`, { ...activityOptions, target: dayActivityTarget(activeDayId || currentDay()?.id || "", { action: "remote-day-reorder" }) });
   dom.collabStatus.textContent = `${payload.name || "协作者"} 调整了日期顺序`;
   render();
@@ -8402,7 +8404,7 @@ async function applyRemotePlanReplaced(payload = {}) {
   syncGuideStateFromPlan();
   destroyCollabTextDoc();
   destroyCollabDayTextDoc();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   if (!appliedYjs) {
     destroyCollabPlanDoc();
     bindCollabPlanDoc();
@@ -8809,7 +8811,7 @@ async function applyRemotePlan(remotePlan, meta = {}) {
     destroyCollabPlanDoc();
   }
   if (appliedLivePlanYjs) state.planYjs = currentPlanYjsState();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   await refreshEditAccessFromUrl();
   isApplyingRemote = false;
 }
@@ -8841,7 +8843,7 @@ async function resolveConflict(mode) {
     } else {
       state = ensurePlanDates(localPlan);
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    persistLocalState();
     lastRemoteUpdatedAt = conflict.updatedAt || lastRemoteUpdatedAt;
     hideConflictPanel();
     await logActivity(mergedWithYjsSnapshot ? "通过协作快照合并冲突" : mode === "merge" ? "合并协作冲突" : "保留本地版本解决冲突");
@@ -8882,7 +8884,7 @@ async function handleRemotePlanUpdate(next) {
       if (!localHadChanges) lastSyncedState = clone(state);
       pendingLocalRemoteUpdatedAt = "";
       await refreshEditAccessFromUrl();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      persistLocalState();
       hideConflictPanel();
       dom.saveState.textContent = "收到协作者协作快照";
       dom.collabStatus.textContent = localHadChanges
@@ -9117,7 +9119,9 @@ const dom = {
   exportBtn: document.querySelector("#exportBtn"),
   importJsonBtn: document.querySelector("#importJsonBtn"),
   importJsonInput: document.querySelector("#importJsonInput"),
-  resetBtn: document.querySelector("#resetBtn"),
+  planSelect: document.querySelector("#planSelect"),
+  newPlanBtn: document.querySelector("#newPlanBtn"),
+  deletePlanBtn: document.querySelector("#deletePlanBtn"),
   shareBtn: document.querySelector("#shareBtn"),
   importModal: document.querySelector("#importModal"),
   importTitle: document.querySelector("#importTitle"),
@@ -9172,6 +9176,10 @@ const dom = {
   activityList: document.querySelector("#activityList"),
 };
 
+const urlParams = new URLSearchParams(window.location.search);
+const forceLocalMode = urlParams.get("local") === "1";
+let tripId = urlParams.get("trip") || (forceLocalMode ? "" : localStorage.getItem("tripboard-current-trip-id")) || "";
+let forcedReadonlyMode = urlParams.get("mode") === "readonly";
 let state = ensurePlanDates(loadState());
 let activeDay = 0;
 let activeStop = 0;
@@ -9212,10 +9220,6 @@ let onlineMembers = [];
 const sessionId = crypto.randomUUID ? crypto.randomUUID() : uid();
 let supabaseClient = null;
 let realtimeChannel = null;
-const urlParams = new URLSearchParams(window.location.search);
-const forceLocalMode = urlParams.get("local") === "1";
-let tripId = urlParams.get("trip") || (forceLocalMode ? "" : localStorage.getItem("tripboard-current-trip-id")) || "";
-const forcedReadonlyMode = urlParams.get("mode") === "readonly";
 let editAccessGranted = false;
 let editAccessRequired = false;
 let isReadonlyMode = forcedReadonlyMode;
@@ -9304,13 +9308,184 @@ const guideState = {
 };
 
 function loadState() {
+  const library = ensurePlanLibrary();
+  const selectedId = currentLocalPlanId();
+  const selected = library.find((record) => record.id === selectedId) || library[0];
+  if (selected?.data?.days?.length) return clone(selected.data);
+  const fallback = buildKyotoPlan();
+  savePlanLibrary([planRecordFromState(fallback, newLocalPlanId(), { label: "京都示例计划" })]);
+  setCurrentLocalPlanId(currentLocalPlanId() || planLibrary()[0]?.id || "");
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback));
+  return fallback;
+}
+
+function newLocalPlanId() {
+  return `local-${Date.now()}-${uid()}`;
+}
+
+function sharedLocalPlanId(id = tripId) {
+  return id ? `shared-${id}` : "";
+}
+
+function currentLocalPlanId() {
+  const sharedId = sharedLocalPlanId();
+  if (sharedId) return sharedId;
+  return localStorage.getItem(CURRENT_PLAN_ID_KEY) || "";
+}
+
+function setCurrentLocalPlanId(id = "") {
+  if (id) localStorage.setItem(CURRENT_PLAN_ID_KEY, id);
+  else localStorage.removeItem(CURRENT_PLAN_ID_KEY);
+}
+
+function planLibrary() {
+  const list = safeJsonParse(localStorage.getItem(PLAN_LIBRARY_KEY), []);
+  return normalizePlanLibrary(list);
+}
+
+function savePlanLibrary(list = []) {
+  const normalized = normalizePlanLibrary(list);
+  localStorage.setItem(PLAN_LIBRARY_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
+function normalizePlanLibrary(list = []) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .filter((record) => record?.data?.days?.length)
+    .map((record) => {
+      const id = String(record.id || newLocalPlanId());
+      const data = ensurePlanDates(clone(record.data));
+      return {
+        id,
+        label: String(record.label || data.name || data.destination || "未命名计划"),
+        tripId: String(record.tripId || ""),
+        createdAt: record.createdAt || new Date().toISOString(),
+        updatedAt: record.updatedAt || new Date().toISOString(),
+        data,
+      };
+    })
+    .filter((record) => {
+      if (seen.has(record.id)) return false;
+      seen.add(record.id);
+      return true;
+    })
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+}
+
+function planRecordFromState(plan = state, id = currentLocalPlanId() || newLocalPlanId(), options = {}) {
+  const data = ensurePlanDates(clone(plan));
+  return {
+    id,
+    label: options.label || data.name || data.destination || "未命名计划",
+    tripId: options.tripId !== undefined ? options.tripId : (id === sharedLocalPlanId() ? tripId : data.tripId || ""),
+    createdAt: options.createdAt || new Date().toISOString(),
+    updatedAt: options.updatedAt || new Date().toISOString(),
+    data,
+  };
+}
+
+function ensurePlanLibrary() {
+  const library = planLibrary();
+  const selectedId = localStorage.getItem(CURRENT_PLAN_ID_KEY) || "";
+  if (library.length) {
+    if (!selectedId || !library.some((record) => record.id === selectedId)) setCurrentLocalPlanId(library[0].id);
+    return library;
+  }
+  let migrated = null;
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (stored?.days?.length) return stored;
+    if (stored?.days?.length) migrated = stored;
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
-  return buildKyotoPlan();
+  const initialPlan = migrated || buildKyotoPlan();
+  const initialId = sharedLocalPlanId() || selectedId || newLocalPlanId();
+  const initialRecord = planRecordFromState(initialPlan, initialId, {
+    label: migrated?.name || initialPlan.name || "本地计划",
+    tripId: sharedLocalPlanId() ? tripId : "",
+  });
+  savePlanLibrary([initialRecord]);
+  if (!sharedLocalPlanId()) setCurrentLocalPlanId(initialRecord.id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(initialRecord.data));
+  return [initialRecord];
+}
+
+function persistLocalState(plan = state, options = {}) {
+  const id = options.id || currentLocalPlanId() || newLocalPlanId();
+  const library = planLibrary();
+  const previous = library.find((record) => record.id === id);
+  const record = planRecordFromState(plan, id, {
+    label: options.label || plan.name || previous?.label,
+    tripId: options.tripId !== undefined ? options.tripId : previous?.tripId || (id === sharedLocalPlanId() ? tripId : ""),
+    createdAt: previous?.createdAt,
+  });
+  const next = [record, ...library.filter((item) => item.id !== id)];
+  savePlanLibrary(next);
+  if (!sharedLocalPlanId()) setCurrentLocalPlanId(id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(record.data));
+  return record;
+}
+
+function renderPlanSwitcher() {
+  if (!dom.planSelect) return;
+  const library = planLibrary();
+  const currentId = currentLocalPlanId();
+  dom.planSelect.innerHTML = library
+    .map((record) => {
+      const suffix = record.tripId ? " · 共享" : " · 本地";
+      const label = `${record.label || record.data?.name || "未命名计划"}${suffix}`;
+      return `<option value="${escapeHtml(record.id)}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  if (currentId && library.some((record) => record.id === currentId)) dom.planSelect.value = currentId;
+  if (dom.deletePlanBtn) dom.deletePlanBtn.disabled = isReadonlyMode || !library.length;
+}
+
+function resetUrlForLocalPlan() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("trip");
+  url.searchParams.delete("mode");
+  url.searchParams.delete("editKey");
+  window.history.replaceState({}, "", url.toString());
+  forcedReadonlyMode = false;
+  isReadonlyMode = false;
+}
+
+function disconnectSharedSessionForLocalPlan() {
+  if (realtimeChannel && supabaseClient) {
+    supabaseClient.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+  tripId = "";
+  localStorage.removeItem("tripboard-current-trip-id");
+  lastRemoteUpdatedAt = "";
+  lastSyncedState = null;
+  pendingLocalRemoteUpdatedAt = "";
+  pendingConflict = null;
+  editAccessGranted = false;
+  editAccessRequired = false;
+  if (!forcedReadonlyMode) isReadonlyMode = false;
+  destroyCollabTextDoc();
+  destroyCollabDayTextDoc();
+  destroyCollabPlanDoc();
+  hideConflictPanel();
+}
+
+function resetTransientPlanUi(message = "已切换计划") {
+  activeDay = 0;
+  activeStop = 0;
+  transportFilterApplied = false;
+  transportProviderItems = [];
+  transportProviderSource = "";
+  multiOriginComparisons = [];
+  editingTransportQuoteId = "";
+  lastAmapRouteRequest = null;
+  clearDateScoutResults(message);
+  collapsedDayBlockIds = loadCollapsedDayBlocks();
+  syncGuideStateFromPlan();
+  if (dom.transportFrom) dom.transportFrom.value = state.origin || guideState.origin || "";
+  if (dom.transportTo) dom.transportTo.value = "";
 }
 
 function historyKey() {
@@ -9541,7 +9716,7 @@ async function saveState(label = "已保存到本地") {
     dom.saveState.textContent = "只读模式未保存修改";
     return;
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  persistLocalState();
   dom.saveState.textContent = label;
   if (!isApplyingRemote && !isResolvingConflict && supabaseClient && tripId) {
     await pushRemoteState(label);
@@ -9756,7 +9931,8 @@ function applyReadonlyUi() {
     dom.favoriteBtn,
     dom.mustVote,
     dom.ctripSyncTransportBtn,
-    dom.resetBtn,
+    dom.newPlanBtn,
+    dom.deletePlanBtn,
     dom.saveServiceConfigBtn,
     dom.syncWeatherBtn,
   ];
@@ -10312,6 +10488,7 @@ async function loadRemoteState() {
       });
     }
     dom.saveState.textContent = `已载入共享计划`;
+    persistLocalState(state, { id: sharedLocalPlanId(), label: state.name || "共享计划", tripId });
     dom.collabStatus.textContent = isReadonlyMode
       ? data.updated_by
         ? `只读查看，最近由 ${data.updated_by} 更新`
@@ -10454,6 +10631,7 @@ async function connectSharedTrip(id) {
   destroyCollabPlanDoc();
   hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
+  setCurrentLocalPlanId(sharedLocalPlanId());
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
   window.history.replaceState({}, "", url.toString());
@@ -10480,10 +10658,12 @@ async function createSharedTrip() {
   destroyCollabPlanDoc();
   hideConflictPanel();
   localStorage.setItem("tripboard-current-trip-id", tripId);
+  setCurrentLocalPlanId(sharedLocalPlanId());
   editAccessGranted = true;
   editAccessRequired = Boolean(state.editKeyHash);
   isReadonlyMode = false;
   await pushRemoteState("已创建共享计划");
+  persistLocalState(state, { id: sharedLocalPlanId(), label: state.name || "共享计划", tripId });
   subscribeRemoteState();
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
@@ -12752,6 +12932,7 @@ function categoryBudget() {
 
 function renderShell() {
   ensurePlanOrigin(state);
+  renderPlanSwitcher();
   const total = totalPlannedBudget();
   const confirmedTotal = totalBudget();
   const paid = totalPlannedPaid();
@@ -16498,6 +16679,111 @@ document.querySelectorAll("[data-close-create]").forEach((button) => {
   button.addEventListener("click", closeCreateChoice);
 });
 
+async function switchLocalPlan(recordId = "") {
+  const record = planLibrary().find((item) => item.id === recordId);
+  if (!record?.data?.days?.length) return;
+  if (canEdit()) persistLocalState();
+  if (record.tripId) {
+    await connectSharedTrip(record.tripId);
+    return;
+  }
+  disconnectSharedSessionForLocalPlan();
+  resetUrlForLocalPlan();
+  setCurrentLocalPlanId(record.id);
+  state = ensurePlanDates(clone(record.data));
+  resetTransientPlanUi("已切换到本地计划");
+  setFlowStep(defaultFlowStep(), { showAll: false, pinned: true });
+  render();
+  dom.saveState.textContent = `已切换到「${record.label || state.name || "计划"}」`;
+}
+
+function createNewLocalPlan() {
+  if (!requireEdit("新建计划")) return;
+  if (canEdit()) persistLocalState();
+  disconnectSharedSessionForLocalPlan();
+  resetUrlForLocalPlan();
+  const defaults = defaultGuideDates();
+  Object.assign(guideState, {
+    destination: "自定义目的地",
+    origin: state.origin || guideState.origin || "上海",
+    startDate: defaults.startDate,
+    endDate: defaults.endDate,
+  });
+  state = ensurePlanDates(buildBlankPlan(guideState.destination, guideDayCount(), guideState));
+  applyPlanDates(state, guideState.startDate, guideState.endDate);
+  state.name = "新的旅行计划";
+  state.origin = guideState.origin;
+  clearPlanYjsState();
+  const record = persistLocalState(state, { id: newLocalPlanId(), label: state.name, tripId: "" });
+  setCurrentLocalPlanId(record.id);
+  resetTransientPlanUi("已新建空白计划，可重新筛选出游日期");
+  setFlowStep("setup", { showAll: false, pinned: true });
+  render();
+  dom.saveState.textContent = "已新建计划；旧计划仍保存在下拉列表中";
+}
+
+function deleteCurrentLocalPlan() {
+  if (!requireEdit("删除计划")) return;
+  const library = planLibrary();
+  const currentId = currentLocalPlanId();
+  const currentRecord = library.find((record) => record.id === currentId);
+  const planName = currentRecord?.label || state.name || state.destination || "当前计划";
+  const sharedWarning = currentRecord?.tripId
+    ? "\n\n这是共享计划。本操作只会从这个浏览器的计划列表移除，不会删除 Supabase 云端协作记录或别人手里的链接。"
+    : "";
+  const ok = window.confirm(`确定要删除「${planName}」吗？\n\n删除和新建已经分开：此操作只删除当前计划，不会自动新建覆盖旧内容。${sharedWarning}`);
+  if (!ok) {
+    dom.saveState.textContent = "已取消删除计划";
+    return;
+  }
+  const remaining = library.filter((record) => record.id !== currentId);
+  savePlanLibrary(remaining);
+  if (currentRecord?.tripId) {
+    disconnectSharedSessionForLocalPlan();
+    resetUrlForLocalPlan();
+  }
+  const nextRecord = remaining[0];
+  if (nextRecord?.data?.days?.length) {
+    if (nextRecord.tripId) {
+      connectSharedTrip(nextRecord.tripId).catch((error) => {
+        dom.saveState.textContent = `切换共享计划失败：${error.message}`;
+      });
+      return;
+    }
+    setCurrentLocalPlanId(nextRecord.id);
+    state = ensurePlanDates(clone(nextRecord.data));
+  } else {
+    disconnectSharedSessionForLocalPlan();
+    resetUrlForLocalPlan();
+    const defaults = defaultGuideDates();
+    Object.assign(guideState, {
+      destination: "自定义目的地",
+      origin: guideState.origin || "上海",
+      startDate: defaults.startDate,
+      endDate: defaults.endDate,
+    });
+    state = ensurePlanDates(buildBlankPlan(guideState.destination, guideDayCount(), guideState));
+    applyPlanDates(state, guideState.startDate, guideState.endDate);
+    state.name = "新的旅行计划";
+    const record = persistLocalState(state, { id: newLocalPlanId(), label: state.name, tripId: "" });
+    setCurrentLocalPlanId(record.id);
+  }
+  resetTransientPlanUi("已删除当前计划");
+  setFlowStep(defaultFlowStep(), { showAll: false, pinned: true });
+  render();
+  dom.saveState.textContent = "已删除当前计划；没有覆盖其他已保存计划";
+}
+
+dom.planSelect?.addEventListener("change", () => {
+  switchLocalPlan(dom.planSelect.value).catch((error) => {
+    dom.saveState.textContent = `切换计划失败：${error.message}`;
+    renderPlanSwitcher();
+  });
+});
+
+dom.newPlanBtn?.addEventListener("click", createNewLocalPlan);
+dom.deletePlanBtn?.addEventListener("click", deleteCurrentLocalPlan);
+
 dom.exportBtn.addEventListener("click", async () => {
   await refreshLiveCollabStateBeforeRemoteSave("导出前已刷新协作快照");
   const exportState = planVersionSnapshot(state);
@@ -16817,48 +17103,6 @@ dom.ctripSpecBtn.addEventListener("click", async () => {
   } catch {
     setCtripStatus("浏览器未允许复制，你可以直接选中规范文本。", "info");
   }
-});
-
-dom.resetBtn.addEventListener("click", async () => {
-  const action = "删除当前计划并新建";
-  if (!requireEdit(action)) return;
-  const tripName = state.name || state.destination || "当前计划";
-  const ok = window.confirm(`确定要删除「${tripName}」并重新开始吗？\n\n当前行程、交通报价、住宿餐饮、预算和协作内容都会被新的空白计划替换。建议确认已经导出或不再需要这份计划。`);
-  if (!ok) {
-    dom.saveState.textContent = "已取消删除当前计划";
-    return;
-  }
-  if (!confirmRemotePlanReplace("重置计划")) return;
-  saveVersionSnapshot("删除当前计划前版本");
-  const defaults = defaultGuideDates();
-  Object.assign(guideState, {
-    destination: "自定义目的地",
-    origin: state.origin || guideState.origin || "上海",
-    startDate: defaults.startDate,
-    endDate: defaults.endDate,
-  });
-  state = ensurePlanDates(buildBlankPlan(guideState.destination, guideDayCount(), guideState));
-  applyPlanDates(state, guideState.startDate, guideState.endDate);
-  state.name = "新的旅行计划";
-  state.origin = guideState.origin;
-  clearPlanYjsState();
-  activeDay = 0;
-  activeStop = 0;
-  transportFilterApplied = false;
-  transportProviderItems = [];
-  transportProviderSource = "";
-  multiOriginComparisons = [];
-  clearDateScoutResults("已删除旧计划，可重新筛选出游日期");
-  if (dom.destinationInput) dom.destinationInput.value = guideState.destination;
-  if (dom.originInput) dom.originInput.value = guideState.origin;
-  if (dom.transportFrom) dom.transportFrom.value = guideState.origin;
-  if (dom.transportTo) dom.transportTo.value = "";
-  await replacePlanCollabDoc("local-delete-and-new-plan", { allowReplace: true, reason: "reset-plan" });
-  await saveCollaborativePlanChange("已删除当前计划并新建空白计划");
-  await broadcastPlanReplaced("删除当前计划并新建", { replacementType: "reset-plan" });
-  setFlowStep("setup", { showAll: false, pinned: true });
-  render();
-  dom.saveState.textContent = "已删除当前计划，回到创建计划第一步";
 });
 
 document.querySelectorAll(".sync-card").forEach((card) => {

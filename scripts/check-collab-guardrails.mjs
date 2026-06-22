@@ -146,7 +146,11 @@ assert(functionBody("restoreVersion").includes('confirmRemotePlanReplace("恢复
 assert(functionBody("createRecommendedPlan").includes('confirmRemotePlanReplace("生成推荐计划")'), "Recommended plan generation must confirm when another member is actively editing the plan.");
 assert(functionBody("createBlankTemplate").includes('confirmRemotePlanReplace("生成空白模板")'), "Blank template generation must confirm when another member is actively editing the plan.");
 assert(functionBody("importPlanJsonFile").includes('confirmRemotePlanReplace("导入 JSON")'), "JSON import must confirm when another member is actively editing the plan.");
-assert(source.includes('confirmRemotePlanReplace("重置计划")'), "Resetting the plan must confirm when another member is actively editing the plan.");
+assert(source.includes("function createNewLocalPlan"), "Creating a separate local plan must remain a distinct flow from deleting a plan.");
+assert(source.includes("function deleteCurrentLocalPlan"), "Deleting a local plan must remain a distinct flow from creating a plan.");
+assert(!functionBody("createNewLocalPlan").includes("replacePlanCollabDoc("), "Creating a separate local plan must not replace the active shared plan document.");
+assert(!functionBody("deleteCurrentLocalPlan").includes("replacePlanCollabDoc("), "Deleting a local plan must not replace the active shared plan document.");
+assert(functionBody("deleteCurrentLocalPlan").includes("不会删除 Supabase 云端协作记录"), "Deleting a shared plan from the local library must warn that the remote record is preserved.");
 assert(source.includes('confirmRemoteTextFieldEdit(changedDayTextFields, "day", "保存当天设置")'), "Saving day text fields must confirm when another member is editing the same changed day field.");
 assert(source.includes('confirmRemoteTextFieldEdit(changedStopFields, "stop", "保存地点详情")'), "Saving stop detail fields must confirm when another member is editing the same changed stop field.");
 assert(functionBody("syncPlanMetaFieldInput").includes('confirmRemoteTextFieldEdit(planFieldMeta.field, "plan"'), "Saving a single plan meta text field must confirm when another member is editing the same plan field.");

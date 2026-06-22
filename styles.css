@@ -712,14 +712,44 @@ button {
   border: 1px solid rgba(178, 59, 59, 0.28);
 }
 
-.reset-plan-btn {
-  min-width: 124px;
+.plan-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.plan-switcher select {
+  max-width: 220px;
+  min-width: 150px;
+  height: 30px;
+  padding: 0 26px 0 8px;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-weight: 800;
+}
+
+.new-plan-btn,
+.delete-plan-btn {
   font-weight: 900;
+  white-space: nowrap;
+}
+
+.delete-plan-btn {
+  min-width: 104px;
   background: #fff7f5;
   border-color: rgba(178, 59, 59, 0.42);
 }
 
-.reset-plan-btn:hover {
+.delete-plan-btn:hover {
   background: #fff0ed;
   border-color: rgba(178, 59, 59, 0.68);
 }
@@ -4516,6 +4546,9 @@ svg {
   }
 
   .top-actions .primary-btn,
+  .top-actions .text-btn,
+  .top-actions .danger-btn,
+  .top-actions .plan-switcher,
   .form-actions .primary-btn,
   .form-actions .text-btn,
   .form-actions .danger-btn,
@@ -4525,6 +4558,12 @@ svg {
   .quick-actions .text-btn,
   .amap-route-tools select,
   .amap-route-tools .text-btn {
+    flex: 1;
+  }
+
+  .top-actions .plan-switcher select {
+    min-width: 0;
+    max-width: none;
     flex: 1;
   }
 
