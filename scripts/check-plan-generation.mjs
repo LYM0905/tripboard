@@ -5,7 +5,7 @@ const source = readFileSync(new URL("../script.js", import.meta.url), "utf8");
 const constantsSource = readFileSync(new URL("../tripboard-constants.js", import.meta.url), "utf8");
 const utilsSource = readFileSync(new URL("../tripboard-utils.js", import.meta.url), "utf8");
 const start = source.indexOf("const images = ");
-const end = source.indexOf("function applyPlanDates", start);
+const end = source.indexOf("function hasLocalChanges", start);
 const displayStart = source.indexOf("function isPlaceholderStop");
 const displayEnd = source.indexOf("function applyPlaceToStop", displayStart);
 
@@ -36,6 +36,7 @@ vm.runInContext(
   globalThis.tripboardImages = images;
   globalThis.buildRecommendedPlan = buildRecommendedPlan;
   globalThis.buildBlankPlan = buildBlankPlan;
+  globalThis.ensurePlanDates = ensurePlanDates;
   `,
   sandbox,
   { filename: "script.js" },
@@ -108,6 +109,14 @@ const renderedJilinFirstStopImage = sandbox.displayImageForStop({
   ...jilinFirstStop,
   image: sandbox.tripboardImages.train,
 });
+const renderedJilinCoverWithBadSavedImage = (() => {
+  sandbox.state = {
+    ...jilin,
+    cover: "8",
+  };
+  return sandbox.displayCoverImage();
+})();
+sandbox.state = jilin;
 
 if (renderedJilinCover === sandbox.tripboardImages.city || renderedJilinCover === sandbox.tripboardImages.kyoto) {
   throw new Error(`Rendered Jilin cover still used a generic template image: ${renderedJilinCover}`);
@@ -115,6 +124,39 @@ if (renderedJilinCover === sandbox.tripboardImages.city || renderedJilinCover ==
 
 if (renderedJilinFirstStopImage === sandbox.tripboardImages.train || renderedJilinFirstStopImage === sandbox.tripboardImages.city || renderedJilinFirstStopImage === sandbox.tripboardImages.kyoto) {
   throw new Error(`Rendered Jilin detail still used a generic transit/template image: ${renderedJilinFirstStopImage}`);
+}
+
+if (renderedJilinCoverWithBadSavedImage === "8" || !/^https?:\/\/|^data:image\//.test(renderedJilinCoverWithBadSavedImage)) {
+  throw new Error(`Rendered Jilin cover did not recover from a bad saved image: ${renderedJilinCoverWithBadSavedImage}`);
+}
+
+const dirtyJilin = sandbox.ensurePlanDates({
+  ...sandbox.buildBlankPlan("鍚夋灄", 2, { budget: "鑸掗€?" }),
+  cover: "8",
+  days: [
+    {
+      id: "dirty-day",
+      label: "D1",
+      title: "dirty",
+      date: "2026-07-12",
+      route: "",
+      weather: "",
+      transport: "",
+      stops: [
+        {
+          id: "dirty-stop",
+          title: "鍚夋灄抵达",
+          type: "Transit",
+          address: "鍚夋灄",
+          image: "8",
+        },
+      ],
+    },
+  ],
+});
+
+if (dirtyJilin.cover === "8" || dirtyJilin.days[0].stops[0].image === "8") {
+  throw new Error("Plan image sanitizer did not remove bad saved image values");
 }
 
 for (const required of ["长白山天池", "净月潭国家森林公园"]) {

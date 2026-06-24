@@ -1777,14 +1777,30 @@ function ensurePlanOrigin(plan) {
   return plan;
 }
 
+function sanitizePlanImages(plan) {
+  if (!plan || typeof plan !== "object") return plan;
+  const destination = plan.destination || plan.name || "";
+  const fallbackCover = destinationDefaultImage(destination) || images.city;
+  plan.cover = cleanImageUrl(plan.cover) || fallbackCover;
+  const normalizeStopImage = (stop) => {
+    if (!stop || typeof stop !== "object") return;
+    const fallback = destinationImageForText(stop.title, stop.address, stop.type, stop.amapKeyword, destination) || plan.cover || fallbackCover;
+    stop.image = cleanImageUrl(stop.image) || fallback;
+  };
+  (plan.days || []).forEach((day) => (day.stops || []).forEach(normalizeStopImage));
+  (plan.candidates || []).forEach(normalizeStopImage);
+  return plan;
+}
+
 function ensurePlanDates(plan) {
   if (!plan?.days?.length) return plan;
   ensurePlanOrigin(plan);
+  sanitizePlanImages(plan);
   if (plan.startDate && plan.endDate && plan.days.every((day) => day.date)) return plan;
   const defaults = defaultGuideDates();
   const startDate = plan.startDate || defaults.startDate;
   const endDate = plan.endDate || formatIsoDate(addDays(parseIsoDate(startDate), plan.days.length - 1));
-  return applyPlanDates(plan, startDate, endDate);
+  return sanitizePlanImages(applyPlanDates(plan, startDate, endDate));
 }
 
 function hasLocalChanges() {
@@ -6352,7 +6368,13 @@ function applyStopRealtimeFields(stop) {
   dom.placeAddress.textContent = stop.address || "地址待确认";
   dom.placeNote.textContent = stop.note || "";
   dom.commentTitle.textContent = stop.title || "当前地点";
-  dom.placePhoto.style.setProperty("--photo", `url("${displayImageForStop(stop)}")`);
+  setVerifiedBackgroundImage(
+    dom.placePhoto,
+    "--photo",
+    displayImageForStop(stop),
+    displayFallbackImageForStop(stop) || destinationDefaultImage(state.destination),
+    stop.title || state.destination || state.name,
+  );
   dom.favoriteBtn.classList.toggle("selected", Boolean(stop.favorite));
   dom.mustVote.classList.toggle("is-active", Boolean(stop.userVoted));
   dom.voteCount.textContent = stop.votes || 0;
@@ -12640,8 +12662,109 @@ async function lookupCommonsImage(stop = {}) {
 
 function isDefaultTripboardImage(value = "") {
   const url = String(value || "").trim();
-  if (!url) return true;
+  if (!isUsableImageUrl(url)) return true;
   return Object.values(images).includes(url) || /images\.unsplash\.com/.test(url);
+}
+
+function isUsableImageUrl(value = "") {
+  const url = String(value || "").trim();
+  if (!url) return false;
+  if (/^(undefined|null|nan|false|true)$/i.test(url)) return false;
+  if (/^\d{1,3}$/.test(url)) return false;
+  if (/\s/.test(url) && !/^data:image\//i.test(url)) return false;
+  if (/^data:image\/(svg\+xml|png|jpe?g|webp|gif);/i.test(url)) return true;
+  if (/^blob:/i.test(url)) return true;
+  if (/^https?:\/\/[^/]+\/.+/i.test(url)) return true;
+  if (/^(\/|\.\/|\.\.\/|assets\/).+\.(svg|png|jpe?g|webp|gif)(\?|#|$)/i.test(url)) return true;
+  return false;
+}
+
+function cleanImageUrl(value = "") {
+  const url = String(value || "").trim();
+  return isUsableImageUrl(url) ? url : "";
+}
+
+function cssImageUrl(value = "") {
+  return `url("${String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")`;
+}
+
+function svgText(value = "") {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .slice(0, 36);
+}
+
+function fallbackIllustrationImage(label = "", sublabel = "") {
+  const title = svgText(label || state.destination || state.name || "Tripboard");
+  const subtitle = svgText(sublabel || state.dateRange || "Travel plan");
+  let hash = 0;
+  `${title} ${subtitle}`.split("").forEach((char) => {
+    hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  });
+  const hue = hash || 206;
+  const accent = (hue + 34) % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${hue} 58% 26%)"/><stop offset=".55" stop-color="hsl(${accent} 54% 42%)"/><stop offset="1" stop-color="hsl(${(hue + 92) % 360} 48% 72%)"/></linearGradient><filter id="soft"><feGaussianBlur stdDeviation="18"/></filter></defs><rect width="900" height="540" fill="url(#bg)"/><path d="M0 396 C150 290 256 320 386 246 C520 170 672 116 900 178 L900 540 L0 540 Z" fill="rgba(255,255,255,.28)"/><path d="M0 430 C160 352 312 362 470 300 C622 241 754 224 900 278 L900 540 L0 540 Z" fill="rgba(255,255,255,.18)"/><circle cx="706" cy="112" r="76" fill="rgba(255,255,255,.23)" filter="url(#soft)"/><text x="54" y="90" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="700" letter-spacing="2" fill="rgba(255,255,255,.72)">TRIPBOARD</text><text x="54" y="406" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="56" font-weight="800" fill="white">${title}</text><text x="58" y="462" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="600" fill="rgba(255,255,255,.82)">${subtitle}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function testImageLoad(url = "", timeout = 3200) {
+  const candidate = cleanImageUrl(url);
+  if (!candidate || /^data:image\//i.test(candidate)) return Promise.resolve(Boolean(candidate));
+  if (typeof Image === "undefined") return Promise.resolve(true);
+  if (!testImageLoad.cache) testImageLoad.cache = new Map();
+  if (testImageLoad.cache.has(candidate)) return testImageLoad.cache.get(candidate);
+  const promise = new Promise((resolve) => {
+    const image = new Image();
+    let settled = false;
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const timer = setTimeout(() => done(false), timeout);
+    image.onload = () => {
+      clearTimeout(timer);
+      done(Boolean(image.naturalWidth || image.width));
+    };
+    image.onerror = () => {
+      clearTimeout(timer);
+      done(false);
+    };
+    image.referrerPolicy = "no-referrer";
+    image.src = candidate;
+  });
+  testImageLoad.cache.set(candidate, promise);
+  return promise;
+}
+
+function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl, label = "") {
+  if (!element) return "";
+  const finalFallback = fallbackIllustrationImage(label);
+  const fallback = cleanImageUrl(fallbackUrl) || finalFallback;
+  const candidate = cleanImageUrl(imageUrl) || fallback;
+  const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  element.dataset.imageToken = token;
+  element.dataset.imageUrl = candidate;
+  element.style.setProperty(cssVariable, cssImageUrl(candidate));
+  if (/^data:image\//i.test(candidate)) return candidate;
+  testImageLoad(candidate).then((ok) => {
+    if (!ok && element.dataset.imageToken === token) {
+      element.dataset.imageUrl = fallback;
+      element.style.setProperty(cssVariable, cssImageUrl(fallback));
+      if (fallback !== finalFallback && !/^data:image\//i.test(fallback)) {
+        testImageLoad(fallback).then((fallbackOk) => {
+          if (!fallbackOk && element.dataset.imageToken === token) {
+            element.dataset.imageUrl = finalFallback;
+            element.style.setProperty(cssVariable, cssImageUrl(finalFallback));
+          }
+        });
+      }
+    }
+  });
+  return candidate;
 }
 
 function displayFallbackImageForStop(stop = {}) {
@@ -12660,7 +12783,7 @@ function displayFallbackImageForStop(stop = {}) {
 }
 
 function displayImageForStop(stop = {}) {
-  return isDefaultTripboardImage(stop.image) ? displayFallbackImageForStop(stop) : stop.image;
+  return isDefaultTripboardImage(stop.image) ? displayFallbackImageForStop(stop) : cleanImageUrl(stop.image);
 }
 
 function displayCoverImage() {
@@ -12672,7 +12795,7 @@ function displayCoverImage() {
     .flatMap((day) => day.stops || [])
     .map((stop) => displayImageForStop(stop))
     .find((image) => image && !isDefaultTripboardImage(image));
-  return firstStopImage || state.cover || images.city;
+  return firstStopImage || destinationDefaultImage(destination) || images.city;
 }
 
 function applyPlaceToStop(stop, place) {
@@ -12860,8 +12983,9 @@ function renderShell() {
   dom.templateName.textContent = state.name;
   dom.tripDateRange.textContent = state.dateRange || "自定义日期";
   const coverImage = displayCoverImage();
-  dom.tripCover.style.setProperty("--trip-cover", `url("${coverImage}")`);
-  document.querySelector(".template-card").style.setProperty("--template-cover", `url("${coverImage}")`);
+  const coverFallback = destinationDefaultImage(state.destination) || fallbackIllustrationImage(state.destination || state.name, state.dateRange);
+  setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", coverImage, coverFallback, state.destination || state.name);
+  setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", coverImage, coverFallback, state.destination || state.name);
   dom.budgetTotal.textContent = `${money(total)} / ${money(limit)}`;
   dom.budgetMeter.style.width = `${percent}%`;
   const groups = categoryBudget();
@@ -13033,7 +13157,13 @@ function renderMap() {
 function renderDetail() {
   const stop = currentStop();
   if (!stop) return;
-  dom.placePhoto.style.setProperty("--photo", `url("${displayImageForStop(stop)}")`);
+  setVerifiedBackgroundImage(
+    dom.placePhoto,
+    "--photo",
+    displayImageForStop(stop),
+    displayFallbackImageForStop(stop) || destinationDefaultImage(state.destination),
+    stop.title || state.destination || state.name,
+  );
   dom.placeType.textContent = stop.type || "Place";
   dom.placeTitle.textContent = stop.title;
   dom.placeAddress.textContent = stop.address || "地址待确认";
