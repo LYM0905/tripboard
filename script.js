@@ -51,9 +51,13 @@ const images = {
   museum:
     "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=900&q=80",
   qinghai:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Qinghai_Lake_from_space_1989.jpg/900px-Qinghai_Lake_from_space_1989.jpg",
+    "https://images.unsplash.com/photo-1516981879613-9f5da904015f?auto=format&fit=crop&w=900&q=80",
   qingdao:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Qingdao_skyline_2021.jpg/900px-Qingdao_skyline_2021.jpg",
+    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
+  innerMongolia:
+    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=900&q=80",
+  nature:
+    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80",
 };
 
 const WIKIPEDIA_IMAGE_RULES = [
@@ -70,6 +74,7 @@ const WIKIPEDIA_IMAGE_RULES = [
   [/日月山|Riyue/i, "Riyue_Mountain"],
   [/甘肃|Gansu/i, "Gansu"],
   [/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i, "Qinghai_Lake"],
+  [/呼伦贝尔|额尔古纳|满洲里|阿尔山|草原|Inner.?Mongolia/i, "Hulunbuir"],
   [/栈桥|Zhanqiao/i, "Zhanqiao_Pier"],
   [/八大关|Badaguan/i, "Badaguan"],
   [/崂山|Laoshan|Mount Lao/i, "Mount_Lao"],
@@ -1263,7 +1268,60 @@ function destinationDefaultImage(destination = "") {
   if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/i.test(text)) return images.gansu;
   if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i.test(text)) return images.qinghai;
   if (/青岛|Qingdao/i.test(text)) return images.qingdao;
+  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/i.test(text)) return images.innerMongolia;
+  if (/成都|四川|重庆|杭州|苏州|云南|大理|丽江|桂林|厦门|西安|北京|上海|广州|深圳/i.test(text)) return images.city;
+  if (/山|湖|海|岛|草原|森林|峡谷|沙漠|自然|户外/i.test(text)) return images.nature;
   return images.city;
+}
+
+function destinationProfile(destination = "") {
+  const text = String(destination || "").trim();
+  const cover = destinationDefaultImage(text);
+  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/i.test(text)) {
+    return {
+      cover,
+      scenic: [
+        { title: "呼伦贝尔大草原", type: "Grassland", note: "草原核心体验，适合安排骑马、牧场和日落。", tags: ["草原", "必去"], budget: 260, keyword: "呼伦贝尔大草原" },
+        { title: "额尔古纳湿地", type: "Wetland", note: "俯瞰湿地和河谷曲线，晴天观景效果更好。", tags: ["自然", "观景"], budget: 160, keyword: "额尔古纳湿地景区" },
+        { title: "满洲里套娃广场", type: "Scenic", note: "边境城市特色地标，适合夜景和轻量打卡。", tags: ["地标", "夜景"], budget: 120, keyword: "满洲里套娃广场" },
+        { title: "阿尔山国家森林公园", type: "Forest", note: "适合 5 天以上版本加入，需要预留长车程和住宿。", tags: ["森林", "长车程"], budget: 380, keyword: "阿尔山国家森林公园" },
+      ],
+      food: "内蒙古手把肉/奶茶晚餐",
+      cityWalk: "海拉尔或满洲里市区轻量探索",
+      culture: "草原民俗体验",
+      night: "满洲里夜景或草原星空",
+      transit: "海拉尔/呼和浩特抵达与入住",
+      routeFocus: "草原 · 湿地 · 边境城市",
+    };
+  }
+  return {
+    cover,
+    scenic: [
+      { title: `${text}核心景区`, type: "Scenic", note: "作为首个核心景点候选，建议用高德搜索替换为具体景区后再排入当天。", tags: ["核心", "待确认"], budget: 160, keyword: `${text} 必去景点` },
+      { title: `${text}博物馆/文化馆`, type: "Museum", note: "雨天或低强度备选，适合了解当地历史文化。", tags: ["文化", "雨天"], budget: 80, keyword: `${text} 博物馆` },
+      { title: `${text}老街/夜景`, type: "Walk", note: "适合作为晚间轻量行程，和餐饮或散步组合。", tags: ["散步", "夜景"], budget: 80, keyword: `${text} 老街 夜景` },
+    ],
+    food: `${text}当地特色餐厅`,
+    cityWalk: `${text}城市核心区`,
+    culture: `${text}文化街区`,
+    night: `${text}夜间散步`,
+    transit: `${text}抵达与入住`,
+    routeFocus: "核心景点 · 文化街区 · 夜间散步",
+  };
+}
+
+function profileStop(profile, item, overrides = {}) {
+  return makeStop({
+    title: item.title,
+    type: item.type || "Scenic",
+    address: item.address || item.keyword || item.title,
+    note: item.note,
+    tags: item.tags || ["备选"],
+    budget: item.budget || 0,
+    amapKeyword: item.keyword || item.title,
+    image: item.image || profile.cover,
+    ...overrides,
+  });
 }
 
 function fillRecommendedDays(plan, dayCount, options = {}) {
@@ -1443,9 +1501,107 @@ function buildQingdaoPlan(dayCount = 3, options = {}) {
   return fillRecommendedDays(plan, dayCount, options);
 }
 
+function buildInnerMongoliaPlan(dayCount = 6, options = {}) {
+  const profile = destinationProfile("内蒙古");
+  const plan = {
+    name: `内蒙古 ${dayCount} 日同行计划`,
+    destination: "内蒙古",
+    dateRange: "自定义日期",
+    budgetLimit: recommendedBudgetLimit(options),
+    cover: profile.cover,
+    activities: [`生成内蒙古 ${dayCount} 日推荐计划`, "草原/湿地/边境城市", "长车程需确认包车"],
+    candidates: [
+      profileStop(profile, profile.scenic[2], { x: 68, y: 42 }),
+      profileStop(profile, profile.scenic[3], { x: 54, y: 56 }),
+      makeStop({ title: "草原骑马/牧场体验", type: "Experience", address: "呼伦贝尔草原", note: "适合作为半日活动，出行前确认安全、保险和天气。", tags: ["体验", "备选"], budget: 280, amapKeyword: "呼伦贝尔 草原 骑马 牧场", image: profile.cover, x: 42, y: 48 }),
+    ],
+    days: [
+      {
+        id: uid(),
+        label: "D1",
+        title: "第1天 海拉尔抵达",
+        route: "抵达海拉尔 · 市区适应 · 草原准备",
+        weather: "天气待确认",
+        transport: "飞机/动车 + 市内交通",
+        stops: [
+          makeStop({ time: "11:30", title: "海拉尔抵达与入住", type: "Transit", address: "呼伦贝尔海拉尔机场 / 海拉尔站", note: "先完成集合、入住和包车确认，准备防晒、防风衣物。", tags: ["集合", "入住"], budget: 260, image: images.train, x: 24, y: 44, amapKeyword: "海拉尔机场 海拉尔站" }),
+          makeStop({ time: "15:30", title: "海拉尔市区轻量探索", type: "Walk", address: "呼伦贝尔市海拉尔区", note: "第一天不排长线，适合补给、确认路线和适应天气。", tags: ["轻量", "补给"], budget: 80, image: profile.cover, x: 46, y: 42, amapKeyword: "海拉尔 市区 景点" }),
+          makeStop({ time: "19:00", title: "内蒙古手把肉/奶茶晚餐", type: "Dinner", address: "海拉尔区", note: "第一晚用餐确认口味和次日出发时间。", tags: ["美食", "投票"], budget: 320, image: images.food, x: 62, y: 54, amapKeyword: "海拉尔 手把肉 奶茶" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D2",
+        title: "第2天 呼伦贝尔草原",
+        route: "呼伦贝尔大草原 · 莫日格勒河 · 草原日落",
+        weather: "天气待确认",
+        transport: "包车",
+        stops: [
+          makeStop({ time: "09:00", title: "呼伦贝尔大草原", type: "Grassland", address: "呼伦贝尔草原", note: "草原线核心日，预留拍照、牧场和午餐时间。", tags: ["草原", "必去"], budget: 260, image: profile.cover, x: 38, y: 42, amapKeyword: "呼伦贝尔大草原" }),
+          makeStop({ time: "14:30", title: "莫日格勒河观景", type: "River", address: "陈巴尔虎旗", note: "看草原河曲线，天气好时适合长焦和无人机视角。", tags: ["观景", "自然"], budget: 120, image: profile.cover, x: 58, y: 48, amapKeyword: "莫日格勒河" }),
+          makeStop({ time: "18:30", title: "草原日落/星空备选", type: "Scenic", address: "呼伦贝尔草原住宿区", note: "根据天气决定是否等日落或星空，不强行排满。", tags: ["日落", "可选"], budget: 120, image: profile.cover, x: 68, y: 56, amapKeyword: "呼伦贝尔 草原 日落 星空" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D3",
+        title: "第3天 额尔古纳湿地",
+        route: "额尔古纳湿地 · 白桦林 · 边境小城",
+        weather: "天气待确认",
+        transport: "包车",
+        stops: [
+          makeStop({ time: "10:00", title: "额尔古纳湿地", type: "Wetland", address: "额尔古纳市拉布大林街道", note: "湿地观景台适合上午或下午光线，注意防风。", tags: ["湿地", "观景"], budget: 160, image: profile.cover, x: 42, y: 42, amapKeyword: "额尔古纳湿地景区" }),
+          makeStop({ time: "14:30", title: "白桦林景区", type: "Forest", address: "额尔古纳市", note: "作为湿地之后的轻量自然点，雨天视情况替换。", tags: ["森林", "轻量"], budget: 120, image: profile.cover, x: 58, y: 48, amapKeyword: "额尔古纳 白桦林景区" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D4",
+        title: "第4天 满洲里",
+        route: "满洲里 · 套娃广场 · 国门外观",
+        weather: "天气待确认",
+        transport: "包车/动车",
+        stops: [
+          makeStop({ time: "10:30", title: "满洲里套娃广场", type: "Scenic", address: "满洲里市华埠大街", note: "边境城市地标，傍晚或夜景更有辨识度。", tags: ["地标", "夜景"], budget: 120, image: profile.cover, x: 44, y: 42, amapKeyword: "满洲里套娃广场" }),
+          makeStop({ time: "15:30", title: "满洲里国门景区外观", type: "Scenic", address: "满洲里市五道街", note: "根据开放、票价和时间决定是否入内。", tags: ["边境", "可选"], budget: 160, image: profile.cover, x: 62, y: 48, amapKeyword: "满洲里国门景区" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D5",
+        title: "第5天 阿尔山备选",
+        route: "阿尔山森林线或返程缓冲",
+        weather: "天气待确认",
+        transport: "包车/长途交通",
+        stops: [
+          makeStop({ time: "09:00", title: "阿尔山国家森林公园", type: "Forest", address: "兴安盟阿尔山市", note: "车程较长，适合 6 天以上且体力充足的版本；否则作为备选。", tags: ["森林", "长车程"], budget: 380, image: profile.cover, x: 42, y: 42, amapKeyword: "阿尔山国家森林公园" }),
+          makeStop({ time: "17:00", title: "返程前休整", type: "Rest", address: "阿尔山/海拉尔方向", note: "长线后留足休息和交通缓冲。", tags: ["休整", "缓冲"], budget: 180, image: images.food, x: 62, y: 50, amapKeyword: "阿尔山 海拉尔 餐厅" }),
+        ],
+      },
+      {
+        id: uid(),
+        label: "D6",
+        title: "第6天 返程",
+        route: "海拉尔/呼和浩特返程",
+        weather: "天气待确认",
+        transport: "飞机/动车",
+        stops: [
+          makeStop({ time: "10:00", title: "返程缓冲", type: "Transit", address: "海拉尔机场 / 呼和浩特白塔机场", note: "最后一天至少预留 2 小时交通缓冲，避免长距离转场延误。", tags: ["返程", "缓冲"], budget: 520, image: images.train, x: 48, y: 50, amapKeyword: "海拉尔机场 呼和浩特机场" }),
+        ],
+      },
+    ],
+  };
+
+  return fillRecommendedDays(plan, dayCount, options);
+}
+
 function buildGenericRecommendedPlan(destination, dayCount = 3, options = {}) {
   const safeDestination = destination || "自定义目的地";
-  const cover = destinationDefaultImage(safeDestination);
+  const profile = destinationProfile(safeDestination);
+  const cover = profile.cover;
+  const primary = profile.scenic[0];
+  const secondary = profile.scenic[1] || profile.scenic[0];
+  const tertiary = profile.scenic[2] || profile.scenic[0];
   const plan = {
     name: `${safeDestination} ${dayCount} 日同行计划`,
     destination: safeDestination,
@@ -1454,9 +1610,9 @@ function buildGenericRecommendedPlan(destination, dayCount = 3, options = {}) {
     cover,
     activities: [`生成${safeDestination}${dayCount}日推荐计划`, "可继续替换景点", "支持高德定位补全"],
     candidates: [
-      makeStop({ title: `${safeDestination}代表性景点`, type: "Scenic", address: safeDestination, note: "把最想去但还未排进每天行程的地点先放在这里，后续可一键加入行程。", tags: ["备选", "核心景点"], budget: options.budget === "品质" ? 260 : 120, amapKeyword: `${safeDestination} 必去景点`, image: cover }),
-      makeStop({ title: `${safeDestination}特色餐厅`, type: "Food", address: safeDestination, note: "用于投票确认餐厅、团购或预约信息。", tags: ["美食", "可投票"], budget: options.budget === "品质" ? 360 : 180, amapKeyword: `${safeDestination} 特色餐厅`, image: images.food }),
-      makeStop({ title: `${safeDestination}雨天室内备选`, type: "Museum", address: safeDestination, note: "天气不好时可替换当天户外景点。", tags: ["雨天", "室内"], budget: 80, amapKeyword: `${safeDestination} 博物馆`, image: images.museum }),
+      profileStop(profile, tertiary, { budget: options.budget === "品质" ? Math.max(tertiary.budget || 0, 260) : tertiary.budget || 120 }),
+      makeStop({ title: profile.food, type: "Food", address: safeDestination, note: "用于投票确认餐厅、团购或预约信息。", tags: ["美食", "可投票"], budget: options.budget === "品质" ? 360 : 180, amapKeyword: `${safeDestination} 特色餐厅 美食`, image: images.food }),
+      profileStop(profile, secondary, { tags: Array.from(new Set([...(secondary.tags || []), "备选"])), image: secondary.image || (secondary.type === "Museum" ? images.museum : cover) }),
     ],
     days: [
       {
@@ -1467,22 +1623,22 @@ function buildGenericRecommendedPlan(destination, dayCount = 3, options = {}) {
         weather: "天气待确认",
         transport: "机票/动车 + 市内交通",
         stops: [
-          makeStop({ time: "11:30", title: `${safeDestination}抵达与入住`, type: "Transit", address: safeDestination, note: "第一天优先完成集合、入住、行李寄存和交通确认。", tags: ["集合", "入住"], budget: 260, amapKeyword: `${safeDestination} 机场 火车站 酒店`, image: images.train, x: 24, y: 44 }),
-          makeStop({ time: "15:30", title: `${safeDestination}城市核心区`, type: "Walk", address: safeDestination, note: "安排低强度城市漫步，作为初到目的地的适应段。", tags: ["轻量", "可替换"], budget: 80, amapKeyword: `${safeDestination} 市中心 景点`, image: cover, x: 46, y: 42 }),
-          makeStop({ time: "19:00", title: `${safeDestination}特色晚餐`, type: "Dinner", address: safeDestination, note: "用投票确定第一晚餐厅，并记录订单或团购信息。", tags: ["美食", "投票"], budget: options.budget === "品质" ? 420 : 220, amapKeyword: `${safeDestination} 特色美食`, image: images.food, x: 62, y: 54 }),
+          makeStop({ time: "11:30", title: profile.transit, type: "Transit", address: safeDestination, note: "第一天优先完成集合、入住、行李寄存和交通确认。", tags: ["集合", "入住"], budget: 260, amapKeyword: `${safeDestination} 机场 火车站 酒店`, image: images.train, x: 24, y: 44 }),
+          makeStop({ time: "15:30", title: profile.cityWalk, type: "Walk", address: safeDestination, note: "安排低强度城市漫步，作为初到目的地的适应段。", tags: ["轻量", "可替换"], budget: 80, amapKeyword: `${safeDestination} 市中心 景点`, image: cover, x: 46, y: 42 }),
+          makeStop({ time: "19:00", title: profile.food, type: "Dinner", address: safeDestination, note: "用投票确定第一晚餐厅，并记录订单或团购信息。", tags: ["美食", "投票"], budget: options.budget === "品质" ? 420 : 220, amapKeyword: `${safeDestination} 特色美食`, image: images.food, x: 62, y: 54 }),
         ],
       },
       {
         id: uid(),
         label: "D2",
         title: `第2天 ${safeDestination}核心景点`,
-        route: `核心景点 · 文化街区 · 夜间散步`,
+        route: profile.routeFocus,
         weather: "天气待确认",
         transport: "市内交通 + 打车",
         stops: [
-          makeStop({ time: "09:30", title: `${safeDestination}核心景点`, type: "Scenic", address: safeDestination, note: "先放入推荐骨架，后续可用高德搜索替换为具体景区并补全坐标。", tags: ["核心", "门票待确认"], budget: options.budget === "品质" ? 260 : 120, amapKeyword: `${safeDestination} 必去景点`, image: cover, x: 42, y: 42 }),
-          makeStop({ time: "14:30", title: `${safeDestination}文化街区`, type: "Culture", address: safeDestination, note: "适合接在主要景点之后，补充城市文化和步行体验。", tags: ["文化", "散步"], budget: 120, amapKeyword: `${safeDestination} 历史街区`, image: images.museum, x: 58, y: 48 }),
-          makeStop({ time: "19:30", title: `${safeDestination}夜间散步`, type: "Walk", address: safeDestination, note: "晚上不排高强度项目，留给夜景、补给和自由讨论。", tags: ["夜景", "轻量"], budget: 80, amapKeyword: `${safeDestination} 夜景`, image: cover, x: 68, y: 56 }),
+          profileStop(profile, primary, { time: "09:30", x: 42, y: 42 }),
+          makeStop({ time: "14:30", title: profile.culture, type: "Culture", address: safeDestination, note: "适合接在主要景点之后，补充当地文化和步行体验。", tags: ["文化", "散步"], budget: 120, amapKeyword: `${safeDestination} 历史街区 文化`, image: images.museum, x: 58, y: 48 }),
+          makeStop({ time: "19:30", title: profile.night, type: "Walk", address: safeDestination, note: "晚上不排高强度项目，留给夜景、补给和自由讨论。", tags: ["夜景", "轻量"], budget: 80, amapKeyword: `${safeDestination} 夜景`, image: cover, x: 68, y: 56 }),
         ],
       },
       {
@@ -1508,6 +1664,7 @@ function buildRecommendedPlan(destination, dayCount = 3, options = {}) {
   if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/i.test(safeDestination)) return buildGansuPlan(dayCount, options);
   if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i.test(safeDestination)) return buildQinghaiPlan(dayCount, options);
   if (/青岛|Qingdao/i.test(safeDestination)) return buildQingdaoPlan(dayCount, options);
+  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/i.test(safeDestination)) return buildInnerMongoliaPlan(dayCount, options);
   return buildGenericRecommendedPlan(safeDestination, dayCount, options);
 }
 
@@ -12422,9 +12579,11 @@ function displayFallbackImageForStop(stop = {}) {
   if (/博物馆|Museum|寺|石窟|文化/.test(stopText)) return images.museum;
   if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/.test(stopText)) return images.qinghai;
   if (/青岛|Qingdao/.test(stopText)) return images.qingdao;
+  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|湿地|牧场|Inner.?Mongolia/.test(stopText)) return images.innerMongolia;
   if (/甘肃|敦煌|张掖|嘉峪关|兰州|丝路/.test(stopText)) return images.gansu;
   if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/.test(destinationText)) return images.qinghai;
   if (/青岛|Qingdao/.test(destinationText)) return images.qingdao;
+  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/.test(destinationText)) return images.innerMongolia;
   if (/甘肃|敦煌|张掖|嘉峪关|兰州|丝路/.test(destinationText)) return images.gansu;
   return state.cover && !isDefaultTripboardImage(state.cover) ? state.cover : images.city;
 }
@@ -12442,6 +12601,7 @@ function displayCoverImage() {
   const destination = String(state.destination || "");
   if (/青海|西宁|茶卡|青海湖|Qinghai/.test(destination)) return images.qinghai;
   if (/青岛|Qingdao/.test(destination)) return images.qingdao;
+  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/.test(destination)) return images.innerMongolia;
   if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/.test(destination)) return images.gansu;
   return firstStopImage || state.cover || images.city;
 }

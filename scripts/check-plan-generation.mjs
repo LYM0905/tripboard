@@ -55,6 +55,28 @@ for (const required of ["塔尔寺", "青海湖二郎剑景区", "茶卡盐湖"]
   }
 }
 
+if (/unsplash\.com\/photo-1493976040374/.test(qinghai.cover)) {
+  throw new Error("Recommended Qinghai plan used the generic city cover image");
+}
+
+const innerMongolia = sandbox.buildRecommendedPlan("内蒙古", 6, { budget: "舒适", pace: "轻松" });
+const innerMongoliaTitles = innerMongolia.days.flatMap((day) => day.stops.map((stop) => stop.title));
+const innerMongoliaCandidateTitles = innerMongolia.candidates.map((stop) => stop.title);
+
+if (innerMongoliaCandidateTitles.some((title) => /代表性景点|雨天室内备选/.test(title))) {
+  throw new Error(`Inner Mongolia candidates are still generic: ${innerMongoliaCandidateTitles.join(", ")}`);
+}
+
+for (const required of ["呼伦贝尔大草原", "额尔古纳湿地", "满洲里套娃广场"]) {
+  if (![...innerMongoliaTitles, ...innerMongoliaCandidateTitles].includes(required)) {
+    throw new Error(`Recommended Inner Mongolia plan is missing ${required}`);
+  }
+}
+
+if (/unsplash\.com\/photo-1493976040374/.test(innerMongolia.cover)) {
+  throw new Error("Recommended Inner Mongolia plan used the generic city cover image");
+}
+
 const blank = sandbox.buildBlankPlan("青海", 2, { budget: "舒适" });
 const blankTitles = blank.days.flatMap((day) => day.stops.map((stop) => stop.title));
 
