@@ -80,6 +80,10 @@ const DESTINATION_IMAGE_RULES = [
 ];
 
 const WIKIPEDIA_IMAGE_RULES = [
+  [/青海省博物馆/i, { title: "青海省博物馆", lang: "zh" }],
+  [/门源|油菜花/i, { title: "门源回族自治县", lang: "zh" }],
+  [/黑马河/i, { title: "黑马河乡", lang: "zh" }],
+  [/东关清真大寺/i, { title: "东关清真大寺", lang: "zh" }],
   [/莫高窟|敦煌.*石窟|Mogao/i, "Mogao_Caves"],
   [/七彩丹霞|张掖.*丹霞|丹霞.*张掖|Zhangye.*Danxia|Danxia/i, "Zhangye_National_Geopark"],
   [/鸣沙山|月牙泉|Mingsha|Crescent/i, "Crescent_Lake_(Dunhuang)"],
@@ -101,8 +105,61 @@ const WIKIPEDIA_IMAGE_RULES = [
   [/五四广场|May Fourth/i, "May_Fourth_Square"],
   [/青岛|Qingdao/i, "Qingdao"],
 ];
+
+function commonsFileImage(fileName = "", width = 1200) {
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fileName)}?width=${width}`;
+}
+
+const SPECIFIC_IMAGE_RULES = [
+  [/长白山|天池|Changbai/i, commonsFileImage("Changbai Mountain,China.jpg")],
+  [/净月潭|Jingyue|Jingyuetan/i, commonsFileImage("净月潭 jing yue tan - panoramio (1).jpg")],
+  [/雾凇|Rime/i, commonsFileImage("Rime Island Hantun Village 13 outside of an agritainment.jpg")],
+  [/青海省博物馆|Qinghai Provincial Museum/i, commonsFileImage("Qinghai Provincial Museum.jpg")],
+  [/青海湖|二郎剑|Qinghai Lake/i, commonsFileImage("Qinghai lake.jpg")],
+  [/黑马河|环湖住宿|Qinghai Lake.*2016/i, commonsFileImage("Qinghai Lake 2016 01.jpg")],
+  [/茶卡|盐湖|Chaka/i, commonsFileImage("Chaka Salt Lake 1.jpg")],
+  [/塔尔寺|Kumbum|Ta'?er/i, commonsFileImage("Kumbum Monastery.jpg")],
+  [/祁连|卓尔山|Qilian/i, commonsFileImage("Qilian in Qilian Qinghai.jpg")],
+  [/日月山|Riyue/i, commonsFileImage("Riyue Mountain.jpg")],
+  [/东关清真大寺|Dongguan.*Mosque/i, commonsFileImage("Dongguan Mosque in Xining (2025).jpg")],
+  [/莫高窟|Mogao/i, commonsFileImage("Mogao Caves.jpg")],
+  [/七彩丹霞|张掖.*丹霞|丹霞.*张掖|Zhangye.*Danxia/i, commonsFileImage("Colourful mountains of the Zhangye National Geopark.jpg")],
+  [/鸣沙山|月牙泉|Mingsha|Crescent/i, commonsFileImage("Crescent_Lake_(Dunhuang).jpg")],
+  [/嘉峪关|关城|Jiayu/i, commonsFileImage("Jiayuguan fort.jpg")],
+  [/甘肃省博物馆|Gansu.*Museum/i, commonsFileImage("Gansu Provincial Museum 2008.jpg")],
+  [/中山桥|黄河铁桥|Zhongshan/i, commonsFileImage("Lanzhou Zhongshan Bridge 2019.jpg")],
+  [/栈桥|Zhanqiao/i, commonsFileImage("Zhanqiao pier with Little Qingdao Isle.jpg")],
+  [/八大关|Badaguan/i, commonsFileImage("Badaguan Scenic Area.jpg")],
+  [/崂山|Laoshan|Mount Lao/i, commonsFileImage("Laoshan mountain.jpg")],
+  [/五四广场|May Fourth/i, commonsFileImage("May Fourth Square Qingdao.jpg")],
+  [/呼伦贝尔|草原|Hulunbuir/i, commonsFileImage("Hulunbuir Grassland.jpg")],
+  [/额尔古纳|湿地|Ergun/i, commonsFileImage("Ergun Wetland.jpg")],
+  [/满洲里|套娃|Manzhouli/i, commonsFileImage("Manzhouli Matryoshka Square.jpg")],
+  [/阿尔山|森林|Arxan/i, commonsFileImage("Arxan National Forest Park.jpg")],
+];
+
+function specificRuleImageForText(...values) {
+  const text = values.map((value) => String(value || "")).filter(Boolean).join(" ");
+  const matched = SPECIFIC_IMAGE_RULES.find(([pattern]) => pattern.test(text));
+  return matched ? cleanImageUrl(matched[1]) : "";
+}
+
+function specificRuleImageForStop(stop = {}) {
+  return specificRuleImageForText(
+    state.destination,
+    stop.title,
+    stop.address,
+    stop.type,
+    stop.amapKeyword,
+  );
+}
+
 const wikipediaImageCache = new Map();
+const wikipediaSearchImageCache = new Map();
 const commonsImageCache = new Map();
+const specificImageLookupCache = new Map();
+const specificImageLookupPending = new Set();
+const coverImageLookupPending = new Set();
 const {
   uid,
   clone,
@@ -1784,8 +1841,8 @@ function sanitizePlanImages(plan) {
   plan.cover = cleanImageUrl(plan.cover) || fallbackCover;
   const normalizeStopImage = (stop) => {
     if (!stop || typeof stop !== "object") return;
-    const fallback = destinationImageForText(stop.title, stop.address, stop.type, stop.amapKeyword, destination) || plan.cover || fallbackCover;
-    stop.image = cleanImageUrl(stop.image) || fallback;
+    const image = cleanImageUrl(stop.image);
+    stop.image = image || "";
   };
   (plan.days || []).forEach((day) => (day.stops || []).forEach(normalizeStopImage));
   (plan.candidates || []).forEach(normalizeStopImage);
@@ -6375,6 +6432,7 @@ function applyStopRealtimeFields(stop) {
     displayFallbackImageForStop(stop) || destinationDefaultImage(state.destination),
     stop.title || state.destination || state.name,
   );
+  scheduleSpecificImageForStop(stop, { render: false, reason: "specific-image-realtime-stop" });
   dom.favoriteBtn.classList.toggle("selected", Boolean(stop.favorite));
   dom.mustVote.classList.toggle("is-active", Boolean(stop.userVoted));
   dom.voteCount.textContent = stop.votes || 0;
@@ -11520,6 +11578,9 @@ async function addCandidateToCurrentDay(candidateId = "", sourceLabel = "备选"
   if (createdDayId && await addStopToDoc(createdDayId, candidate, "local-candidate-to-stop-yjs-first")) {
     await logActivity(label, { target: stopActivityTarget(createdDayId, candidate.id || "", { action: "candidate-add" }) });
     await applyStopCreateFromDoc(createdDayId, candidate.id, label);
+    const syncedDay = currentDay();
+    const insertedIndex = (syncedDay?.stops || []).findIndex((stop) => stop.id === candidate.id);
+    if (insertedIndex >= 0) activeStop = insertedIndex;
     await saveCollaborativePlanChange(label);
     broadcastStopCreated(createdDayId, candidate);
     render();
@@ -12600,14 +12661,17 @@ function isPlaceholderStop(stop = {}) {
 function wikipediaTitleForStop(stop = {}) {
   const text = `${stop.amapKeyword || ""} ${stop.address || ""} ${stop.title || ""} ${stop.type || ""}`;
   const matched = WIKIPEDIA_IMAGE_RULES.find(([pattern]) => pattern.test(text));
-  return matched ? matched[1] : "";
+  if (!matched) return null;
+  const entry = matched[1];
+  return typeof entry === "string" ? { title: entry, lang: "en" } : { title: entry.title || "", lang: entry.lang || "en" };
 }
 
 async function lookupWikipediaImage(stop = {}) {
-  const title = wikipediaTitleForStop(stop);
-  if (!title) return "";
-  if (wikipediaImageCache.has(title)) return wikipediaImageCache.get(title);
-  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+  const entry = wikipediaTitleForStop(stop);
+  if (!entry?.title) return "";
+  const key = `${entry.lang}:${entry.title}`;
+  if (wikipediaImageCache.has(key)) return wikipediaImageCache.get(key);
+  const url = `https://${entry.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(entry.title)}`;
   try {
     const response = await fetchWithTimeout(url, {
       headers: { Accept: "application/json" },
@@ -12615,11 +12679,63 @@ async function lookupWikipediaImage(stop = {}) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
     const image = data?.originalimage?.source || data?.thumbnail?.source || "";
-    wikipediaImageCache.set(title, image || "");
+    wikipediaImageCache.set(key, image || "");
     return image || "";
   } catch (error) {
-    console.warn("Wikipedia image lookup failed", title, error);
-    wikipediaImageCache.set(title, "");
+    console.warn("Wikipedia image lookup failed", key, error);
+    wikipediaImageCache.set(key, "");
+    return "";
+  }
+}
+
+function stopImageLookupKey(stop = {}) {
+  return uniqueTexts([stop.title, stop.amapKeyword, stop.address, state.destination])
+    .join(" ")
+    .trim();
+}
+
+function wikipediaSearchQueryForStop(stop = {}) {
+  return uniqueTexts([stop.title, stop.amapKeyword, stop.address])
+    .join(" ")
+    .replace(/\b(Transit|Draft|Idea|Walk|Dinner|Lunch|Market|Scenic|Museum|Place)\b/gi, "")
+    .trim();
+}
+
+async function lookupWikipediaSearchImage(stop = {}, lang = "zh") {
+  const query = wikipediaSearchQueryForStop(stop);
+  if (!query || query.length < 2) return "";
+  const cacheKey = `${lang}:${query}`;
+  if (wikipediaSearchImageCache.has(cacheKey)) return wikipediaSearchImageCache.get(cacheKey);
+  const searchParams = new URLSearchParams({
+    action: "query",
+    list: "search",
+    srsearch: query,
+    srlimit: "1",
+    format: "json",
+    origin: "*",
+  });
+  try {
+    const searchResponse = await fetchWithTimeout(`https://${lang}.wikipedia.org/w/api.php?${searchParams.toString()}`, {
+      headers: { Accept: "application/json" },
+    }, 5000);
+    const searchData = await searchResponse.json().catch(() => ({}));
+    if (!searchResponse.ok) throw new Error(searchData.error?.info || `HTTP ${searchResponse.status}`);
+    const title = searchData?.query?.search?.[0]?.title || "";
+    if (!title) {
+      wikipediaSearchImageCache.set(cacheKey, "");
+      return "";
+    }
+    const summaryResponse = await fetchWithTimeout(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`, {
+      headers: { Accept: "application/json" },
+    }, 5000);
+    const summaryData = await summaryResponse.json().catch(() => ({}));
+    if (!summaryResponse.ok) throw new Error(summaryData.detail || `HTTP ${summaryResponse.status}`);
+    const image = cleanImageUrl(summaryData?.originalimage?.source || summaryData?.thumbnail?.source || "");
+    wikipediaSearchImageCache.set(cacheKey, image || "");
+    return image || "";
+  } catch (error) {
+    console.warn("Wikipedia search image lookup failed", cacheKey, error);
+    wikipediaSearchImageCache.set(cacheKey, "");
     return "";
   }
 }
@@ -12660,10 +12776,38 @@ async function lookupCommonsImage(stop = {}) {
   }
 }
 
+async function lookupSpecificImageForStop(stop = {}) {
+  const key = stopImageLookupKey(stop);
+  if (!key) return "";
+  if (specificImageLookupCache.has(key)) return specificImageLookupCache.get(key);
+  const image =
+    cleanImageUrl(specificRuleImageForStop(stop)) ||
+    cleanImageUrl(await lookupWikipediaImage(stop)) ||
+    cleanImageUrl(await lookupWikipediaSearchImage(stop, "zh")) ||
+    cleanImageUrl(await lookupWikipediaSearchImage(stop, "en")) ||
+    cleanImageUrl(await lookupCommonsImage(stop));
+  specificImageLookupCache.set(key, image || "");
+  return image || "";
+}
+
 function isDefaultTripboardImage(value = "") {
   const url = String(value || "").trim();
   if (!isUsableImageUrl(url)) return true;
   return Object.values(images).includes(url) || /images\.unsplash\.com/.test(url);
+}
+
+function isSpecificRuleImage(value = "") {
+  const url = cleanImageUrl(value);
+  return Boolean(url && SPECIFIC_IMAGE_RULES.some(([, image]) => image === url));
+}
+
+function isGeneratedFallbackImage(value = "") {
+  return /^data:image\/svg\+xml/i.test(String(value || "").trim());
+}
+
+function hasSpecificImage(value = "") {
+  const url = cleanImageUrl(value);
+  return Boolean(url && !isDefaultTripboardImage(url) && !isGeneratedFallbackImage(url));
 }
 
 function isUsableImageUrl(value = "") {
@@ -12708,6 +12852,38 @@ function fallbackIllustrationImage(label = "", sublabel = "") {
   const accent = (hue + 34) % 360;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${hue} 58% 26%)"/><stop offset=".55" stop-color="hsl(${accent} 54% 42%)"/><stop offset="1" stop-color="hsl(${(hue + 92) % 360} 48% 72%)"/></linearGradient><filter id="soft"><feGaussianBlur stdDeviation="18"/></filter></defs><rect width="900" height="540" fill="url(#bg)"/><path d="M0 396 C150 290 256 320 386 246 C520 170 672 116 900 178 L900 540 L0 540 Z" fill="rgba(255,255,255,.28)"/><path d="M0 430 C160 352 312 362 470 300 C622 241 754 224 900 278 L900 540 L0 540 Z" fill="rgba(255,255,255,.18)"/><circle cx="706" cy="112" r="76" fill="rgba(255,255,255,.23)" filter="url(#soft)"/><text x="54" y="90" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="700" letter-spacing="2" fill="rgba(255,255,255,.72)">TRIPBOARD</text><text x="54" y="406" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="56" font-weight="800" fill="white">${title}</text><text x="58" y="462" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="600" fill="rgba(255,255,255,.82)">${subtitle}</text></svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function fallbackIllustrationForStop(stop = {}, sublabel = "地点图片待补全") {
+  return fallbackIllustrationImage(
+    stop.title || stop.amapKeyword || stop.address || state.destination || state.name || "Tripboard",
+    sublabel,
+  );
+}
+
+function bindImageFallbacks(root = document) {
+  root.querySelectorAll?.("img[data-fallback-src]").forEach((image) => {
+    const applyFallback = () => {
+      const fallback = cleanImageUrl(image.dataset.fallbackSrc);
+      if (!fallback || image.getAttribute("src") === fallback) return;
+      image.setAttribute("src", fallback);
+    };
+    if (image.dataset.fallbackBound !== "true") {
+      image.dataset.fallbackBound = "true";
+      image.addEventListener("error", applyFallback);
+    }
+    if (image.complete && !image.naturalWidth) {
+      applyFallback();
+      return;
+    }
+    const source = cleanImageUrl(image.getAttribute("src"));
+    const fallback = cleanImageUrl(image.dataset.fallbackSrc);
+    if (!source || source === fallback || /^data:image\//i.test(source) || image.dataset.fallbackCheckedSrc === source) return;
+    image.dataset.fallbackCheckedSrc = source;
+    testImageLoad(source, 4200).then((ok) => {
+      if (!ok && image.isConnected && image.getAttribute("src") === source) applyFallback();
+    });
+  });
 }
 
 function testImageLoad(url = "", timeout = 3200) {
@@ -12768,34 +12944,137 @@ function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl,
 }
 
 function displayFallbackImageForStop(stop = {}) {
-  const title = wikipediaTitleForStop(stop);
-  if (title && wikipediaImageCache.get(title)) return wikipediaImageCache.get(title);
   const stopText = `${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${stop.amapKeyword || ""}`;
   const destinationText = String(state.destination || "");
   if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(stopText)) return images.food;
-  if (/博物馆|Museum|寺|石窟|文化/.test(stopText)) return images.museum;
   const destinationImage = destinationImageForText(stopText, destinationText);
   if (/交通|高铁|动车|机场|火车|Transit|抵达|入住|返程/.test(stopText)) return destinationImage || destinationDefaultImage(destinationText) || images.train;
-  if (destinationImage) return destinationImage;
-  const stopNatureImage = /山|湖|海|岛|草原|森林|峡谷|沙漠|湿地|牧场|自然|户外/.test(stopText) ? images.nature : "";
-  if (stopNatureImage) return stopNatureImage;
-  return state.cover && !isDefaultTripboardImage(state.cover) ? state.cover : images.city;
+  const ruleImage = specificRuleImageForStop(stop);
+  if (ruleImage) return ruleImage;
+  const wikipediaEntry = wikipediaTitleForStop(stop);
+  const wikipediaCacheKey = wikipediaEntry?.title ? `${wikipediaEntry.lang}:${wikipediaEntry.title}` : "";
+  if (wikipediaCacheKey && wikipediaImageCache.get(wikipediaCacheKey)) return wikipediaImageCache.get(wikipediaCacheKey);
+  const fallbackLabel = stop.title || stop.amapKeyword || state.destination || state.name || "Tripboard";
+  const fallbackSubLabel = /博物馆|Museum|寺|石窟|文化/.test(stopText)
+    ? "文化地点 · 图片待补全"
+    : /山|湖|海|岛|草原|森林|峡谷|沙漠|湿地|牧场|自然|户外/.test(stopText)
+      ? "自然景点 · 图片待补全"
+      : "地点图片待补全";
+  return fallbackIllustrationImage(fallbackLabel, fallbackSubLabel);
 }
 
 function displayImageForStop(stop = {}) {
   return isDefaultTripboardImage(stop.image) ? displayFallbackImageForStop(stop) : cleanImageUrl(stop.image);
 }
 
+function shouldLookupSpecificStopImage(stop = {}) {
+  if (!stop || isPlaceholderStop(stop)) return false;
+  if (specificRuleImageForStop(stop)) return false;
+  const text = `${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${stop.amapKeyword || ""}`;
+  if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(text)) return false;
+  if (/交通|高铁|动车|机场|火车|Transit|抵达|入住|返程|缓冲/.test(text)) return false;
+  return !hasSpecificImage(stop.image);
+}
+
+async function updateStopImageAfterLookup(stop, image, reason = "specific-image-lookup") {
+  if (!stop?.id || !hasSpecificImage(image) || hasSpecificImage(stop.image)) return false;
+  stop.image = image;
+  if (canEdit() && !isReadonlyMode) {
+    try {
+      if (findStopLocation(stop.id)) {
+        if (!(await patchStopInDoc(stop.id, { image }, reason))) {
+          await syncStopListToDoc(findStopLocation(stop.id)?.day?.id, `${reason}-fallback`);
+        }
+      } else if ((state.candidates || []).some((item) => item.id === stop.id)) {
+        if (!(await updateCandidateInDoc(stop.id, { image }))) {
+          state.candidates = mergedCandidatesWithPatch("update", { image }, stop.id);
+          await syncCandidatesToDoc(`${reason}-candidate-fallback`);
+        }
+      }
+    } catch (error) {
+      console.warn("Specific image sync failed", stop.title, error);
+    }
+  }
+  return true;
+}
+
+function scheduleSpecificImageForStop(stop = {}, options = {}) {
+  if (!shouldLookupSpecificStopImage(stop)) return;
+  const key = stopImageLookupKey(stop);
+  if (!key || specificImageLookupPending.has(key)) return;
+  specificImageLookupPending.add(key);
+  lookupSpecificImageForStop(stop)
+    .then(async (image) => {
+      if (!hasSpecificImage(image)) return;
+      const changed = await updateStopImageAfterLookup(stop, image, options.reason || "specific-image-lookup");
+      if (changed && currentStop()?.id === stop.id) {
+        setVerifiedBackgroundImage(
+          dom.placePhoto,
+          "--photo",
+          image,
+          displayFallbackImageForStop(stop) || destinationDefaultImage(state.destination),
+          stop.title || state.destination || state.name,
+        );
+        if (dom.fieldImage && dom.fieldImage.value !== image) dom.fieldImage.value = image;
+      }
+      if (changed && options.render !== false) {
+        renderDays();
+        renderTimeline();
+        renderMap();
+      }
+    })
+    .finally(() => specificImageLookupPending.delete(key));
+}
+
+function scheduleSpecificCoverImage() {
+  const stops = (state.days || [])
+    .flatMap((day) => day.stops || [])
+    .filter((stop) => shouldLookupSpecificStopImage(stop));
+  const stop = stops.find((item) => /景区|Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage/i.test(`${item.type || ""} ${item.title || ""}`)) || stops[0];
+  if (!stop) return;
+  const ruleCover = specificRuleImageForStop(stop);
+  if (isSpecificRuleImage(state.cover) && state.cover === ruleCover) return;
+  const key = `cover:${stopImageLookupKey(stop)}`;
+  if (coverImageLookupPending.has(key)) return;
+  coverImageLookupPending.add(key);
+  lookupSpecificImageForStop(stop)
+    .then(async (image) => {
+      if (!hasSpecificImage(image) || isSpecificRuleImage(state.cover)) return;
+      state.cover = image;
+      const fallback = fallbackIllustrationForStop(stop, "旅行封面图片待补全");
+      setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", image, fallback, stop.title || state.destination || state.name);
+      setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", image, fallback, stop.title || state.destination || state.name);
+      if (canEdit() && !isReadonlyMode) {
+        if (!(await syncPlanSettingToDoc("cover", image))) await syncPlanMetaToDoc("specific-cover-image-fallback");
+      }
+    })
+    .finally(() => coverImageLookupPending.delete(key));
+}
+
 function displayCoverImage() {
-  if (!isDefaultTripboardImage(state.cover)) return state.cover;
+  if (isSpecificRuleImage(state.cover)) return state.cover;
   const destination = String(state.destination || "");
+  const stops = (state.days || [])
+    .flatMap((day) => day.stops || [])
+    .filter((stop) => !isPlaceholderStop(stop));
+  const firstRuleImage = stops
+    .map((stop) => specificRuleImageForStop(stop))
+    .find(Boolean);
+  if (firstRuleImage) return firstRuleImage;
+  if (hasSpecificImage(state.cover)) return state.cover;
+  const firstStopImage = stops
+    .map((stop) => displayImageForStop(stop))
+    .find((image) => image && hasSpecificImage(image));
+  if (firstStopImage) return firstStopImage;
   const destinationImage = destinationImageForText(destination, state.name, state.dateRange);
   if (destinationImage) return destinationImage;
-  const firstStopImage = (state.days || [])
-    .flatMap((day) => day.stops || [])
-    .map((stop) => displayImageForStop(stop))
-    .find((image) => image && !isDefaultTripboardImage(image));
   return firstStopImage || destinationDefaultImage(destination) || images.city;
+}
+
+function firstMeaningfulStopIndex(day = {}) {
+  const stops = day?.stops || [];
+  const index = stops.findIndex((stop) => shouldLookupSpecificStopImage(stop) || specificRuleImageForStop(stop));
+  return index >= 0 ? index : 0;
 }
 
 function applyPlaceToStop(stop, place) {
@@ -12829,14 +13108,14 @@ function imageEnrichmentCandidates() {
   state.days.forEach((day) => {
     (day.stops || []).forEach((stop) => {
       if (isPlaceholderStop(stop)) return;
-      const needsPlace = !stop.lng || !stop.lat || !stop.address || isDefaultTripboardImage(stop.image);
+      const needsPlace = !stop.lng || !stop.lat || !stop.address || !hasSpecificImage(stop.image);
       const keyword = stopPlaceLookupKeyword(stop);
       if (needsPlace && keyword) candidates.push({ type: "stop", day, stop, keyword });
     });
   });
   (state.candidates || []).forEach((stop) => {
     if (isPlaceholderStop(stop)) return;
-    const needsPlace = !stop.lng || !stop.lat || !stop.address || isDefaultTripboardImage(stop.image);
+    const needsPlace = !stop.lng || !stop.lat || !stop.address || !hasSpecificImage(stop.image);
     const keyword = stopPlaceLookupKeyword(stop);
     if (needsPlace && keyword) candidates.push({ type: "candidate", stop, keyword });
   });
@@ -12844,7 +13123,7 @@ function imageEnrichmentCandidates() {
 }
 
 function shouldAutoEnrichImages() {
-  return Boolean(canEdit() && !isReadonlyMode && imageEnrichmentCandidates().some((item) => isDefaultTripboardImage(item.stop?.image) || (serviceConfig.amapEndpoint && (!item.stop?.lng || !item.stop?.lat || !item.stop?.address))));
+  return Boolean(canEdit() && !isReadonlyMode && imageEnrichmentCandidates().some((item) => !hasSpecificImage(item.stop?.image) || (serviceConfig.amapEndpoint && (!item.stop?.lng || !item.stop?.lat || !item.stop?.address))));
 }
 
 async function enrichPlacesFromAmap(options = {}) {
@@ -12882,13 +13161,13 @@ async function enrichPlacesFromAmap(options = {}) {
     try {
       const places = serviceConfig.amapEndpoint ? await lookupAmapPlaces(item.keyword, { limit: 3 }) : [];
       const place = Array.isArray(places) ? places.find((entry) => entry.image) || places[0] : null;
-      const fallbackImage = isDefaultTripboardImage(item.stop.image)
-        ? (await lookupWikipediaImage(item.stop)) || (await lookupCommonsImage(item.stop))
+      const fallbackImage = !hasSpecificImage(item.stop.image)
+        ? await lookupSpecificImageForStop(item.stop)
         : "";
       if (!place && !fallbackImage) continue;
-      const hadRealImage = !isDefaultTripboardImage(item.stop.image);
+      const hadRealImage = hasSpecificImage(item.stop.image);
       const patch = place ? (applyPlaceToStop(item.stop, place) || {}) : {};
-      if (fallbackImage && isDefaultTripboardImage(item.stop.image)) {
+      if (fallbackImage && !hasSpecificImage(item.stop.image)) {
         item.stop.image = fallbackImage;
         patch.image = fallbackImage;
       }
@@ -12906,7 +13185,7 @@ async function enrichPlacesFromAmap(options = {}) {
           }
           changedCandidates += 1;
         }
-        if (!hadRealImage && item.stop.image && !isDefaultTripboardImage(item.stop.image)) imageCount += 1;
+        if (!hadRealImage && hasSpecificImage(item.stop.image)) imageCount += 1;
       }
     } catch (error) {
       console.warn("Amap place enrichment failed", item.keyword, error);
@@ -12986,6 +13265,7 @@ function renderShell() {
   const coverFallback = destinationDefaultImage(state.destination) || fallbackIllustrationImage(state.destination || state.name, state.dateRange);
   setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", coverImage, coverFallback, state.destination || state.name);
   setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", coverImage, coverFallback, state.destination || state.name);
+  scheduleSpecificCoverImage();
   dom.budgetTotal.textContent = `${money(total)} / ${money(limit)}`;
   dom.budgetMeter.style.width = `${percent}%`;
   const groups = categoryBudget();
@@ -13120,6 +13400,7 @@ function applyDayEditorDraftToState(nextValues = null) {
 
 function renderTimeline() {
   const day = currentDay();
+  const editable = canEdit();
   dom.timeline.innerHTML = day.stops
     .map(
       (stop, index) => `
@@ -13136,6 +13417,7 @@ function renderTimeline() {
           <div class="stop-actions">
             <span>${icon("thumbs-up")} ${stop.votes || 0}</span>
             <span>${icon("message-square")} ${(stop.comments || []).length}</span>
+            ${editable ? `<button type="button" class="icon-btn subtle danger-icon stop-delete-btn" data-delete-stop-index="${index}" aria-label="删除${escapeHtml(stop.title || "地点")}" title="删除地点">${icon("trash-2")}</button>` : ""}
           </div>
         </article>
       `,
@@ -13164,6 +13446,7 @@ function renderDetail() {
     displayFallbackImageForStop(stop) || destinationDefaultImage(state.destination),
     stop.title || state.destination || state.name,
   );
+  scheduleSpecificImageForStop(stop, { render: false, reason: "specific-image-detail" });
   dom.placeType.textContent = stop.type || "Place";
   dom.placeTitle.textContent = stop.title;
   dom.placeAddress.textContent = stop.address || "地址待确认";
@@ -13237,10 +13520,12 @@ function renderCandidates() {
         const estimateText = !numberValue(stop.budget) && estimatedTicket ? " 估" : "";
         const remoteEditors = remoteRecordEditorNames("candidate", stop.id);
         const candidateImage = displayImageForStop(stop);
+        const candidateFallback = fallbackIllustrationForStop(stop, "景点图片待补全");
         const referenceUrl = candidateReferenceUrl(stop);
+        scheduleSpecificImageForStop(stop, { render: true, reason: "specific-image-candidate-card" });
         return `
         <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
-          <img class="candidate-photo" src="${escapeHtml(candidateImage)}" alt="" loading="lazy" aria-hidden="true">
+          <img class="candidate-photo" src="${escapeHtml(candidateImage)}" data-fallback-src="${escapeHtml(candidateFallback)}" alt="" loading="lazy" aria-hidden="true">
           <span class="candidate-main">
             <span class="candidate-kicker">${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}${escapeHtml(category)}</span>
             <span class="candidate-title">${escapeHtml(stop.title)}</span>
@@ -13259,6 +13544,7 @@ function renderCandidates() {
       },
     )
     .join("");
+  bindImageFallbacks(dom.candidateGrid);
 }
 
 function serviceBoardItems(kind = "") {
@@ -13983,7 +14269,14 @@ dom.dayList.addEventListener("click", (event) => {
   trackPresence();
 });
 
-dom.timeline.addEventListener("click", (event) => {
+dom.timeline.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest("[data-delete-stop-index]");
+  if (deleteButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await deleteStopAtIndex(Number(deleteButton.dataset.deleteStopIndex));
+    return;
+  }
   const card = event.target.closest("[data-stop]");
   if (!card) return;
   switchActiveStop(Number(card.dataset.stop));
@@ -14575,24 +14868,30 @@ dom.amapRouteRetryBtn?.addEventListener("click", () => {
   planAmapRouteForCurrentDay({ retry: true });
 });
 
-dom.deleteStopBtn.addEventListener("click", async () => {
+async function deleteStopAtIndex(stopIndex = activeStop) {
   const day = currentDay();
   if (day.stops.length <= 1) {
     dom.saveState.textContent = "每天至少保留一个地点";
     return;
   }
-  const deletedStop = clone(currentStop());
+  const index = Math.max(0, Math.min(Number(stopIndex) || 0, day.stops.length - 1));
+  const deletedStop = clone(day.stops[index]);
+  if (!deletedStop) return;
   const label = `删除「${deletedStop.title}」`;
   if (!confirmRemoteStopEdit(deletedStop.id, "删除地点")) return;
   if (!mutate(label, () => {
-    day.stops.splice(activeStop, 1);
-    activeStop = Math.max(0, activeStop - 1);
+    day.stops.splice(index, 1);
+    activeStop = Math.max(0, Math.min(index, day.stops.length - 1));
     clearCurrentAmapRoute();
   }, { save: false, render: false, activityTarget: stopActivityTarget(day.id, deletedStop.id || "", { deleted: true }) })) return;
   await deleteStopFromDoc(day.id, deletedStop.id, "local-stop-delete");
   await saveCollaborativePlanChange(label);
   broadcastStopDeleted(day.id, deletedStop);
   render();
+}
+
+dom.deleteStopBtn.addEventListener("click", async () => {
+  await deleteStopAtIndex(activeStop);
 });
 
 dom.moveUpBtn.addEventListener("click", async () => {
@@ -16666,7 +16965,7 @@ async function createRecommendedPlan() {
     state.origin = origin;
     state.activities = [`${origin}出发`, ...(state.activities || [])].slice(0, 6);
     activeDay = 0;
-    activeStop = 0;
+    activeStop = firstMeaningfulStopIndex(state.days?.[0]);
     dom.transportFrom.value = origin;
     dom.transportTo.value = "";
     transportFilterApplied = false;
