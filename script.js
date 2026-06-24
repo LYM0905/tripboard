@@ -43,7 +43,7 @@ const images = {
   gansu:
     "https://images.unsplash.com/photo-1509316785289-025f5b846b35?auto=format&fit=crop&w=900&q=80",
   city:
-    "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=900&q=80",
+    "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&w=900&q=80",
   food:
     "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=900&q=80",
   train:
@@ -58,7 +58,26 @@ const images = {
     "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=900&q=80",
   nature:
     "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80",
+  mountainLake:
+    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=900&q=80",
+  forest:
+    "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80",
+  jilin:
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Changbai_Mountain%2CChina.jpg/1280px-Changbai_Mountain%2CChina.jpg",
 };
+
+const DESTINATION_IMAGE_RULES = [
+  [/吉林|长春|长白山|天池|净月潭|雾凇|延吉|Jilin|Changbai/i, images.jilin],
+  [/黑龙江|哈尔滨|雪乡|亚布力|漠河|东北|Harbin/i, images.forest],
+  [/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/i, images.innerMongolia],
+  [/甘肃|敦煌|张掖|嘉峪关|兰州|沙漠|丹霞|丝路|Gansu|Dunhuang/i, images.gansu],
+  [/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i, images.qinghai],
+  [/青岛|厦门|三亚|海南|海口|舟山|珠海|海岛|海滨|Qingdao|Xiamen|Sanya/i, images.qingdao],
+  [/云南|大理|丽江|香格里拉|昆明|桂林|阳朔|漓江|贵州|张家界|九寨沟|川西|稻城|Yunnan|Guilin|Zhangjiajie/i, images.nature],
+  [/西藏|拉萨|林芝|新疆|喀纳斯|伊犁|赛里木湖|可可托海|Tibet|Xinjiang/i, images.mountainLake],
+  [/北京|西安|洛阳|南京|开封|平遥|故宫|兵马俑|古城|Beijing|Xi.?an/i, images.museum],
+  [/成都|重庆|四川|杭州|苏州|上海|广州|深圳|长沙|武汉|城市|Chengdu|Chongqing|Hangzhou|Shanghai/i, images.city],
+];
 
 const WIKIPEDIA_IMAGE_RULES = [
   [/莫高窟|敦煌.*石窟|Mogao/i, "Mogao_Caves"],
@@ -74,6 +93,7 @@ const WIKIPEDIA_IMAGE_RULES = [
   [/日月山|Riyue/i, "Riyue_Mountain"],
   [/甘肃|Gansu/i, "Gansu"],
   [/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i, "Qinghai_Lake"],
+  [/吉林|长白山|天池|Changbai/i, "Changbai_Mountains"],
   [/呼伦贝尔|额尔古纳|满洲里|阿尔山|草原|Inner.?Mongolia/i, "Hulunbuir"],
   [/栈桥|Zhanqiao/i, "Zhanqiao_Pier"],
   [/八大关|Badaguan/i, "Badaguan"],
@@ -82,6 +102,7 @@ const WIKIPEDIA_IMAGE_RULES = [
   [/青岛|Qingdao/i, "Qingdao"],
 ];
 const wikipediaImageCache = new Map();
+const commonsImageCache = new Map();
 const {
   uid,
   clone,
@@ -1263,20 +1284,38 @@ function recommendedBudgetLimit(options = {}) {
   return options.budget === "品质" ? 14000 : options.budget === "节省" ? 8000 : 10000;
 }
 
+function destinationImageForText(...values) {
+  const text = values.map((value) => String(value || "")).filter(Boolean).join(" ");
+  const matched = DESTINATION_IMAGE_RULES.find(([pattern]) => pattern.test(text));
+  return matched ? matched[1] : "";
+}
+
 function destinationDefaultImage(destination = "") {
-  const text = String(destination || "");
-  if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/i.test(text)) return images.gansu;
-  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i.test(text)) return images.qinghai;
-  if (/青岛|Qingdao/i.test(text)) return images.qingdao;
-  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/i.test(text)) return images.innerMongolia;
-  if (/成都|四川|重庆|杭州|苏州|云南|大理|丽江|桂林|厦门|西安|北京|上海|广州|深圳/i.test(text)) return images.city;
-  if (/山|湖|海|岛|草原|森林|峡谷|沙漠|自然|户外/i.test(text)) return images.nature;
+  const image = destinationImageForText(destination);
+  if (image) return image;
   return images.city;
 }
 
 function destinationProfile(destination = "") {
   const text = String(destination || "").trim();
   const cover = destinationDefaultImage(text);
+  if (/吉林|长春|长白山|天池|净月潭|雾凇|延吉|Jilin|Changbai/i.test(text)) {
+    return {
+      cover,
+      scenic: [
+        { title: "长白山天池", type: "MountainLake", note: "吉林自然景观核心，强依赖天气，建议优先放在晴天窗口。", tags: ["自然", "必去"], budget: 260, keyword: "长白山天池" },
+        { title: "净月潭国家森林公园", type: "Forest", note: "适合作为城市周边轻量自然线，冬季也可替换为冰雪项目。", tags: ["森林", "轻量"], budget: 120, keyword: "长春 净月潭国家森林公园" },
+        { title: "吉林雾凇岛", type: "Scenic", note: "冬季特色明显，非冬季可替换为松花江沿线或市区文化点。", tags: ["季节性", "备选"], budget: 160, keyword: "吉林 雾凇岛" },
+        { title: "延吉朝鲜族民俗园", type: "Culture", note: "适合加入餐饮、写真和城市文化体验。", tags: ["文化", "美食"], budget: 180, keyword: "延吉 朝鲜族民俗园" },
+      ],
+      food: "吉林铁锅炖/延吉冷面晚餐",
+      cityWalk: "吉林市或长春核心区轻量探索",
+      culture: "吉林地方文化街区",
+      night: "松花江沿线夜间散步",
+      transit: "吉林抵达与入住",
+      routeFocus: "长白山 · 森林湖泊 · 东北城市体验",
+    };
+  }
   if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/i.test(text)) {
     return {
       cover,
@@ -1623,7 +1662,7 @@ function buildGenericRecommendedPlan(destination, dayCount = 3, options = {}) {
         weather: "天气待确认",
         transport: "机票/动车 + 市内交通",
         stops: [
-          makeStop({ time: "11:30", title: profile.transit, type: "Transit", address: safeDestination, note: "第一天优先完成集合、入住、行李寄存和交通确认。", tags: ["集合", "入住"], budget: 260, amapKeyword: `${safeDestination} 机场 火车站 酒店`, image: images.train, x: 24, y: 44 }),
+          makeStop({ time: "11:30", title: profile.transit, type: "Transit", address: safeDestination, note: "第一天优先完成集合、入住、行李寄存和交通确认。", tags: ["集合", "入住"], budget: 260, amapKeyword: `${safeDestination} 机场 火车站 酒店`, image: cover, x: 24, y: 44 }),
           makeStop({ time: "15:30", title: profile.cityWalk, type: "Walk", address: safeDestination, note: "安排低强度城市漫步，作为初到目的地的适应段。", tags: ["轻量", "可替换"], budget: 80, amapKeyword: `${safeDestination} 市中心 景点`, image: cover, x: 46, y: 42 }),
           makeStop({ time: "19:00", title: profile.food, type: "Dinner", address: safeDestination, note: "用投票确定第一晚餐厅，并记录订单或团购信息。", tags: ["美食", "投票"], budget: options.budget === "品质" ? 420 : 220, amapKeyword: `${safeDestination} 特色美食`, image: images.food, x: 62, y: 54 }),
         ],
@@ -1650,7 +1689,7 @@ function buildGenericRecommendedPlan(destination, dayCount = 3, options = {}) {
         transport: "市内交通 + 返程交通",
         stops: [
           makeStop({ time: "10:00", title: `${safeDestination}自由补完`, type: "Scenic", address: safeDestination, note: "补拍、购物或替换成还没有去成的备选景点。", tags: ["补完", "可替换"], budget: 160, amapKeyword: `${safeDestination} 伴手礼 景点`, image: cover, x: 42, y: 42 }),
-          makeStop({ time: "14:30", title: `${safeDestination}返程缓冲`, type: "Transit", address: safeDestination, note: "预留取行李、打车、车站/机场安检时间。", tags: ["返程", "缓冲"], budget: 320, amapKeyword: `${safeDestination} 机场 火车站`, image: images.train, x: 62, y: 50 }),
+          makeStop({ time: "14:30", title: `${safeDestination}返程缓冲`, type: "Transit", address: safeDestination, note: "预留取行李、打车、车站/机场安检时间。", tags: ["返程", "缓冲"], budget: 320, amapKeyword: `${safeDestination} 机场 火车站`, image: cover, x: 62, y: 50 }),
         ],
       },
     ],
@@ -12563,6 +12602,42 @@ async function lookupWikipediaImage(stop = {}) {
   }
 }
 
+async function lookupCommonsImage(stop = {}) {
+  const keyword = uniqueTexts([state.destination, stop.title, stop.amapKeyword, stop.address])
+    .slice(0, 3)
+    .join(" ");
+  if (!keyword) return "";
+  if (commonsImageCache.has(keyword)) return commonsImageCache.get(keyword);
+  const params = new URLSearchParams({
+    action: "query",
+    generator: "search",
+    gsrnamespace: "6",
+    gsrsearch: keyword,
+    gsrlimit: "6",
+    prop: "imageinfo",
+    iiprop: "url",
+    iiurlwidth: "900",
+    format: "json",
+    origin: "*",
+  });
+  const url = `https://commons.wikimedia.org/w/api.php?${params.toString()}`;
+  try {
+    const response = await fetchWithTimeout(url, { headers: { Accept: "application/json" } }, 6000);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error?.info || `HTTP ${response.status}`);
+    const pages = Object.values(data?.query?.pages || {});
+    const image = pages
+      .map((page) => page?.imageinfo?.[0]?.thumburl || page?.imageinfo?.[0]?.url || "")
+      .find((value) => /\.(jpg|jpeg|png|webp)(\?|$)/i.test(value));
+    commonsImageCache.set(keyword, image || "");
+    return image || "";
+  } catch (error) {
+    console.warn("Commons image lookup failed", keyword, error);
+    commonsImageCache.set(keyword, "");
+    return "";
+  }
+}
+
 function isDefaultTripboardImage(value = "") {
   const url = String(value || "").trim();
   if (!url) return true;
@@ -12575,16 +12650,12 @@ function displayFallbackImageForStop(stop = {}) {
   const stopText = `${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${stop.amapKeyword || ""}`;
   const destinationText = String(state.destination || "");
   if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(stopText)) return images.food;
-  if (/交通|高铁|动车|机场|火车|Transit/.test(stopText)) return images.train;
   if (/博物馆|Museum|寺|石窟|文化/.test(stopText)) return images.museum;
-  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/.test(stopText)) return images.qinghai;
-  if (/青岛|Qingdao/.test(stopText)) return images.qingdao;
-  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|湿地|牧场|Inner.?Mongolia/.test(stopText)) return images.innerMongolia;
-  if (/甘肃|敦煌|张掖|嘉峪关|兰州|丝路/.test(stopText)) return images.gansu;
-  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/.test(destinationText)) return images.qinghai;
-  if (/青岛|Qingdao/.test(destinationText)) return images.qingdao;
-  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/.test(destinationText)) return images.innerMongolia;
-  if (/甘肃|敦煌|张掖|嘉峪关|兰州|丝路/.test(destinationText)) return images.gansu;
+  const destinationImage = destinationImageForText(stopText, destinationText);
+  if (/交通|高铁|动车|机场|火车|Transit|抵达|入住|返程/.test(stopText)) return destinationImage || destinationDefaultImage(destinationText) || images.train;
+  if (destinationImage) return destinationImage;
+  const stopNatureImage = /山|湖|海|岛|草原|森林|峡谷|沙漠|湿地|牧场|自然|户外/.test(stopText) ? images.nature : "";
+  if (stopNatureImage) return stopNatureImage;
   return state.cover && !isDefaultTripboardImage(state.cover) ? state.cover : images.city;
 }
 
@@ -12594,15 +12665,13 @@ function displayImageForStop(stop = {}) {
 
 function displayCoverImage() {
   if (!isDefaultTripboardImage(state.cover)) return state.cover;
+  const destination = String(state.destination || "");
+  const destinationImage = destinationImageForText(destination, state.name, state.dateRange);
+  if (destinationImage) return destinationImage;
   const firstStopImage = (state.days || [])
     .flatMap((day) => day.stops || [])
     .map((stop) => displayImageForStop(stop))
     .find((image) => image && !isDefaultTripboardImage(image));
-  const destination = String(state.destination || "");
-  if (/青海|西宁|茶卡|青海湖|Qinghai/.test(destination)) return images.qinghai;
-  if (/青岛|Qingdao/.test(destination)) return images.qingdao;
-  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/.test(destination)) return images.innerMongolia;
-  if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/.test(destination)) return images.gansu;
   return firstStopImage || state.cover || images.city;
 }
 
@@ -12690,7 +12759,9 @@ async function enrichPlacesFromAmap(options = {}) {
     try {
       const places = serviceConfig.amapEndpoint ? await lookupAmapPlaces(item.keyword, { limit: 3 }) : [];
       const place = Array.isArray(places) ? places.find((entry) => entry.image) || places[0] : null;
-      const fallbackImage = isDefaultTripboardImage(item.stop.image) ? await lookupWikipediaImage(item.stop) : "";
+      const fallbackImage = isDefaultTripboardImage(item.stop.image)
+        ? (await lookupWikipediaImage(item.stop)) || (await lookupCommonsImage(item.stop))
+        : "";
       if (!place && !fallbackImage) continue;
       const hadRealImage = !isDefaultTripboardImage(item.stop.image);
       const patch = place ? (applyPlaceToStop(item.stop, place) || {}) : {};
@@ -16476,6 +16547,7 @@ async function createRecommendedPlan() {
   await broadcastPlanReplaced("生成推荐计划", { replacementType: "recommended-plan" });
   setFlowStep("itinerary", { showAll: false, pinned: true });
   render();
+  scheduleAutoImageEnrichment(600);
   closeCreateChoice();
 }
 
@@ -16504,6 +16576,7 @@ async function createBlankTemplate() {
   await broadcastPlanReplaced("生成空白模板", { replacementType: "blank-plan" });
   setFlowStep("itinerary", { showAll: false, pinned: true });
   render();
+  scheduleAutoImageEnrichment(600);
   closeCreateChoice();
 }
 
