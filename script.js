@@ -144,9 +144,9 @@ function specificRuleImageForText(...values) {
   return matched ? cleanImageUrl(matched[1]) : "";
 }
 
-function specificRuleImageForStop(stop = {}) {
+function specificRuleImageForStop(stop = {}, destination = state.destination) {
   return specificRuleImageForText(
-    state.destination,
+    destination,
     stop.title,
     stop.address,
     stop.type,
@@ -1757,17 +1757,22 @@ function buildGenericRecommendedPlan(destination, dayCount = 3, options = {}) {
 
 function buildRecommendedPlan(destination, dayCount = 3, options = {}) {
   const safeDestination = destination || "甘肃";
-  if (/甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/i.test(safeDestination)) return buildGansuPlan(dayCount, options);
-  if (/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i.test(safeDestination)) return buildQinghaiPlan(dayCount, options);
-  if (/青岛|Qingdao/i.test(safeDestination)) return buildQingdaoPlan(dayCount, options);
-  if (/内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/i.test(safeDestination)) return buildInnerMongoliaPlan(dayCount, options);
-  return buildGenericRecommendedPlan(safeDestination, dayCount, options);
+  const plan = /甘肃|敦煌|张掖|嘉峪关|兰州|Gansu/i.test(safeDestination)
+    ? buildGansuPlan(dayCount, options)
+    : /青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i.test(safeDestination)
+      ? buildQinghaiPlan(dayCount, options)
+      : /青岛|Qingdao/i.test(safeDestination)
+        ? buildQingdaoPlan(dayCount, options)
+        : /内蒙古|呼和浩特|呼伦贝尔|满洲里|额尔古纳|阿尔山|草原|Inner.?Mongolia/i.test(safeDestination)
+          ? buildInnerMongoliaPlan(dayCount, options)
+          : buildGenericRecommendedPlan(safeDestination, dayCount, options);
+  return normalizePlanCover(sanitizePlanImages(plan));
 }
 
 function buildBlankPlan(destination, dayCount = 3, options = {}) {
   const safeDestination = destination || "自定义目的地";
   const cover = destinationDefaultImage(safeDestination);
-  return {
+  return normalizePlanCover({
     name: `${safeDestination} ${dayCount} 日空白计划`,
     destination: safeDestination,
     dateRange: "自定义日期",
@@ -1809,7 +1814,7 @@ function buildBlankPlan(destination, dayCount = 3, options = {}) {
         }),
       ],
     })),
-  };
+  });
 }
 
 function applyPlanDates(plan, startDateValue) {
@@ -1846,6 +1851,36 @@ function sanitizePlanImages(plan) {
   };
   (plan.days || []).forEach((day) => (day.stops || []).forEach(normalizeStopImage));
   (plan.candidates || []).forEach(normalizeStopImage);
+  return plan;
+}
+
+function planStopsForCover(plan = {}) {
+  const destination = plan.destination || plan.name || "";
+  return [
+    ...(plan.days || []).flatMap((day) => day.stops || []),
+    ...(plan.candidates || []),
+  ].filter((stop) => !isPlaceholderStop(stop, destination));
+}
+
+function preferredCoverForPlan(plan = {}) {
+  const destination = plan.destination || plan.name || "";
+  const stops = planStopsForCover(plan);
+  const scenicStop = stops.find((stop) => /景区|Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage|Grassland|Wetland|Desert/i.test(`${stop.type || ""} ${stop.title || ""}`));
+  const orderedStops = scenicStop ? [scenicStop, ...stops.filter((stop) => stop !== scenicStop)] : stops;
+  const ruleImage = orderedStops
+    .map((stop) => specificRuleImageForStop(stop, destination))
+    .find(Boolean);
+  if (ruleImage) return ruleImage;
+  const stopImage = orderedStops
+    .map((stop) => cleanImageUrl(stop.image))
+    .find((image) => image && hasSpecificImage(image));
+  if (stopImage) return stopImage;
+  return destinationImageForText(destination, plan.name, plan.dateRange) || destinationDefaultImage(destination) || images.city;
+}
+
+function normalizePlanCover(plan = {}) {
+  if (!plan || typeof plan !== "object") return plan;
+  plan.cover = preferredCoverForPlan(plan);
   return plan;
 }
 
@@ -12651,11 +12686,11 @@ function stopPlaceLookupKeyword(stop = {}) {
     .find(Boolean) || "";
 }
 
-function isPlaceholderStop(stop = {}) {
+function isPlaceholderStop(stop = {}, destination = state.destination) {
   const title = String(stop.title || "").trim();
   const keyword = String(stop.amapKeyword || "").trim();
   const type = String(stop.type || "").trim();
-  return /待填写地点|备选景点|自由探索时段|返程缓冲|外部记录/.test(title) || /Draft|Idea|Flexible/.test(type) || (keyword && keyword === String(state.destination || "").trim());
+  return /待填写地点|备选景点|自由探索时段|返程缓冲|外部记录/.test(title) || /Draft|Idea|Flexible/.test(type) || (keyword && keyword === String(destination || "").trim());
 }
 
 function wikipediaTitleForStop(stop = {}) {
@@ -13029,8 +13064,8 @@ function scheduleSpecificImageForStop(stop = {}, options = {}) {
 function scheduleSpecificCoverImage() {
   const stops = (state.days || [])
     .flatMap((day) => day.stops || [])
-    .filter((stop) => shouldLookupSpecificStopImage(stop));
-  const stop = stops.find((item) => /景区|Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage/i.test(`${item.type || ""} ${item.title || ""}`)) || stops[0];
+    .filter((stop) => !isPlaceholderStop(stop) && (specificRuleImageForStop(stop) || shouldLookupSpecificStopImage(stop)));
+  const stop = stops.find((item) => /景区|Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage|Grassland|Wetland|Desert/i.test(`${item.type || ""} ${item.title || ""}`)) || stops[0];
   if (!stop) return;
   const ruleCover = specificRuleImageForStop(stop);
   if (isSpecificRuleImage(state.cover) && state.cover === ruleCover) return;
@@ -13052,23 +13087,7 @@ function scheduleSpecificCoverImage() {
 }
 
 function displayCoverImage() {
-  if (isSpecificRuleImage(state.cover)) return state.cover;
-  const destination = String(state.destination || "");
-  const stops = (state.days || [])
-    .flatMap((day) => day.stops || [])
-    .filter((stop) => !isPlaceholderStop(stop));
-  const firstRuleImage = stops
-    .map((stop) => specificRuleImageForStop(stop))
-    .find(Boolean);
-  if (firstRuleImage) return firstRuleImage;
-  if (hasSpecificImage(state.cover)) return state.cover;
-  const firstStopImage = stops
-    .map((stop) => displayImageForStop(stop))
-    .find((image) => image && hasSpecificImage(image));
-  if (firstStopImage) return firstStopImage;
-  const destinationImage = destinationImageForText(destination, state.name, state.dateRange);
-  if (destinationImage) return destinationImage;
-  return firstStopImage || destinationDefaultImage(destination) || images.city;
+  return preferredCoverForPlan(state);
 }
 
 function firstMeaningfulStopIndex(day = {}) {

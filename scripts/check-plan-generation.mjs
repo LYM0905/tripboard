@@ -111,6 +111,23 @@ if (sandbox.firstMeaningfulStopIndex(qinghai.days[0]) !== 1) {
   throw new Error("Recommended Qinghai plan should focus the first real attraction instead of the arrival/transit stop");
 }
 
+const qinghaiCoverWithStaleSavedImage = (() => {
+  sandbox.state = {
+    ...qinghai,
+    cover: sandbox.specificRuleImageForStop({ title: "长白山天池", type: "MountainLake", amapKeyword: "长白山天池" }),
+  };
+  return sandbox.displayCoverImage();
+})();
+sandbox.state = qinghai;
+
+if (/Changbai/i.test(qinghaiCoverWithStaleSavedImage)) {
+  throw new Error(`Qinghai cover reused a stale previous-destination image: ${qinghaiCoverWithStaleSavedImage}`);
+}
+
+if (!/Kumbum|Qinghai|Chaka|Riyue|Qilian/i.test(qinghaiCoverWithStaleSavedImage)) {
+  throw new Error(`Qinghai cover did not recover to a destination-specific image: ${qinghaiCoverWithStaleSavedImage}`);
+}
+
 const innerMongolia = sandbox.buildRecommendedPlan("内蒙古", 6, { budget: "舒适", pace: "轻松" });
 const innerMongoliaTitles = innerMongolia.days.flatMap((day) => day.stops.map((stop) => stop.title));
 const innerMongoliaCandidateTitles = innerMongolia.candidates.map((stop) => stop.title);
