@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = fs.readFileSync(path.join(rootDir, "script.js"), "utf8");
+const constantsSource = fs.readFileSync(path.join(rootDir, "tripboard-constants.js"), "utf8");
 const html = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
 const reasons = ["recommended-plan", "blank-plan", "json-import", "reset-plan", "version-restore", "conflict-merge", "conflict-keep"];
 const failures = [];
@@ -63,7 +64,7 @@ function calls(name) {
   return result;
 }
 
-const setMatch = source.match(/const\s+PLAN_REPLACE_REASONS\s*=\s*new\s+Set\(\[([\s\S]*?)\]\);/);
+const setMatch = constantsSource.match(/const\s+PLAN_REPLACE_REASONS\s*=\s*new\s+Set\(\[([\s\S]*?)\]\);/);
 assert(setMatch, "PLAN_REPLACE_REASONS is missing.");
 if (setMatch) {
   for (const reason of reasons) assert(setMatch[1].includes(`"${reason}"`), `PLAN_REPLACE_REASONS is missing ${reason}.`);
@@ -155,8 +156,8 @@ assert(source.includes('confirmRemoteTextFieldEdit(changedDayTextFields, "day", 
 assert(source.includes('confirmRemoteTextFieldEdit(changedStopFields, "stop", "保存地点详情")'), "Saving stop detail fields must confirm when another member is editing the same changed stop field.");
 assert(functionBody("syncPlanMetaFieldInput").includes('confirmRemoteTextFieldEdit(planFieldMeta.field, "plan"'), "Saving a single plan meta text field must confirm when another member is editing the same plan field.");
 assert(functionBody("syncPlanMetaPatchInput").includes('confirmRemoteTextFieldEdit(changedPlanFields, "plan"'), "Saving plan meta patches must confirm when another member is editing the same plan fields.");
-assert(source.includes('field: "plan:partySize"') && source.includes('presenceId: "partySizeInputPresence"'), "Party size must publish plan-level presence.");
-assert(source.includes('field: "plan:budgetLimit"') && source.includes('presenceId: "budgetLimitInputPresence"'), "Budget limit must publish plan-level presence.");
+assert(constantsSource.includes('field: "plan:partySize"') && constantsSource.includes('presenceId: "partySizeInputPresence"'), "Party size must publish plan-level presence.");
+assert(constantsSource.includes('field: "plan:budgetLimit"') && constantsSource.includes('presenceId: "budgetLimitInputPresence"'), "Budget limit must publish plan-level presence.");
 assert(html.includes('id="partySizeInputPresence"'), "Party size presence container must exist in the UI.");
 assert(html.includes('id="budgetLimitInputPresence"'), "Budget limit presence container must exist in the UI.");
 assert(source.includes('confirmRemotePlanSettingEdit("更新同行人数")'), "Updating party size must confirm when another member is actively editing the plan.");

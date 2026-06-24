@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const source = readFileSync(new URL("../script.js", import.meta.url), "utf8");
+const constantsSource = readFileSync(new URL("../tripboard-constants.js", import.meta.url), "utf8");
+const utilsSource = readFileSync(new URL("../tripboard-utils.js", import.meta.url), "utf8");
 const start = source.indexOf("const images = ");
 const end = source.indexOf("function applyPlanDates", start);
 
@@ -11,14 +13,21 @@ if (start < 0 || end < 0) {
 
 const sandbox = {
   console,
+  AbortController,
   Date,
+  fetch,
   Math,
   Number,
   RegExp,
   String,
+  setTimeout,
+  clearTimeout,
 };
+sandbox.window = sandbox;
 
 vm.createContext(sandbox);
+vm.runInContext(constantsSource, sandbox, { filename: "tripboard-constants.js" });
+vm.runInContext(utilsSource, sandbox, { filename: "tripboard-utils.js" });
 vm.runInContext(
   `
   ${source.slice(start, end)}

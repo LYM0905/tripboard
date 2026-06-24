@@ -1,130 +1,41 @@
-const STORAGE_KEY = "tripboard-editable-v1";
-const PLAN_LIBRARY_KEY = "tripboard-plan-library-v1";
-const CURRENT_PLAN_ID_KEY = "tripboard-current-local-plan-id";
-const CTRIP_CONFIG_KEY = "tripboard-ctrip-connector-v1";
-const MEMBER_PROFILE_KEY = "tripboard-member-profile-v1";
-const SERVICE_CONFIG_KEY = "tripboard-service-connectors-v1";
-const EXTERNAL_IMPORT_CONFIG_KEY = "tripboard-external-import-v1";
-const EDIT_ACCESS_PREFIX = "tripboard-edit-access:";
-const EDIT_KEY_VALUE_PREFIX = "tripboard-edit-key-value:";
-const VERSION_PREFIX = "tripboard-version-history:";
-const PENDING_PLAN_UPDATES_PREFIX = "tripboard-pending-plan-yjs:";
-const COLLAPSED_BLOCKS_PREFIX = "tripboard-collapsed-day-blocks:";
-const MAX_VERSION_HISTORY = 12;
-const MAX_PENDING_PLAN_UPDATES = 160;
-const PLAN_REPLACE_REASONS = new Set([
-  "recommended-plan",
-  "blank-plan",
-  "json-import",
-  "reset-plan",
-  "version-restore",
-  "conflict-merge",
-  "conflict-keep",
-]);
-const EXTERNAL_IMPORT_TIMEOUT_MS = 12000;
-const YJS_MODULE_URL = "https://cdn.jsdelivr.net/npm/yjs@13.6.27/+esm";
-const COLLAB_TEXT_FIELDS = [
-  { field: "title", domKey: "fieldTitle", label: "名称", presenceId: "fieldTitlePresence" },
-  { field: "type", domKey: "fieldType", label: "类型", presenceId: "fieldTypePresence" },
-  { field: "address", domKey: "fieldAddress", label: "地址", presenceId: "fieldAddressPresence" },
-  { field: "amapKeyword", domKey: "fieldAmapKeyword", label: "高德关键词", presenceId: "fieldAmapKeywordPresence" },
-  { field: "note", domKey: "fieldNote", label: "备注", presenceId: "fieldNotePresence" },
-];
-const COLLAB_TEXT_FIELD_BY_FIELD = new Map(COLLAB_TEXT_FIELDS.map((item) => [item.field, item]));
-const COMMENT_FILTERS = [
-  { value: "all", label: "全部" },
-  { value: "open", label: "未解决" },
-  { value: "resolved", label: "已解决" },
-];
-const COMMENT_INDEX_FILTERS = [
-  { value: "open", label: "未解决" },
-  { value: "all", label: "全部" },
-  { value: "resolved", label: "已解决" },
-];
-const ACTIVITY_FILTERS = [
-  { value: "all", label: "全部" },
-  { value: "restore", label: "恢复" },
-  { value: "conflict", label: "冲突" },
-  { value: "comment", label: "批注" },
-  { value: "transport", label: "交通" },
-  { value: "map", label: "路线" },
-  { value: "edit", label: "编辑" },
-];
-const ACTIVITY_TYPE_LABELS = {
-  restore: "恢复",
-  conflict: "冲突",
-  comment: "批注",
-  transport: "交通",
-  map: "路线",
-  edit: "编辑",
-};
-const COLLAB_DAY_TEXT_FIELDS = [
-  { field: "day:title", docField: "title", domKey: "fieldDayTitle", label: "当天标题", presenceId: "fieldDayTitlePresence", scope: "day" },
-  { field: "day:route", docField: "route", domKey: "fieldDayRoute", label: "当天路线", presenceId: "fieldDayRoutePresence", scope: "day" },
-  { field: "day:weather", docField: "weather", domKey: "fieldDayWeather", label: "天气", presenceId: "fieldDayWeatherPresence", scope: "day" },
-  { field: "day:transport", docField: "transport", domKey: "fieldDayTransport", label: "交通", presenceId: "fieldDayTransportPresence", scope: "day" },
-];
-const COLLAB_PLAN_TEXT_PRESENCE_FIELDS = [
-  { field: "plan:destination", planField: "destination", domKey: "destinationInput", label: "目的地", presenceId: "destinationInputPresence", scope: "plan" },
-  { field: "plan:origin", planField: "origin", domKey: "originInput", label: "出发城市", presenceId: "originInputPresence", scope: "plan" },
-  { field: "plan:startDate", planField: "startDate", domKey: "startDateInput", label: "出发日期", presenceId: "startDateInputPresence", scope: "plan" },
-  { field: "plan:endDate", planField: "endDate", domKey: "endDateInput", label: "返程日期", presenceId: "endDateInputPresence", scope: "plan" },
-  { field: "plan:partySize", planField: "partySize", domKey: "partySizeInput", label: "同行人数", presenceId: "partySizeInputPresence", scope: "plan" },
-  { field: "plan:budgetLimit", planField: "budgetLimit", domKey: "budgetLimitInput", label: "预算上限", presenceId: "budgetLimitInputPresence", scope: "plan" },
-];
-const COLLAB_STRUCT_FIELDS = [
-  { field: "time", domKey: "fieldTime", type: "string", label: "时间", presenceId: "fieldTimePresence" },
-  { field: "budget", domKey: "fieldBudget", type: "number", label: "预算", presenceId: "fieldBudgetPresence" },
-  { field: "paid", domKey: "fieldPaid", type: "number", label: "已付", presenceId: "fieldPaidPresence" },
-  { field: "payer", domKey: "fieldPayer", type: "string", label: "付款人", presenceId: "fieldPayerPresence" },
-  { field: "budgetSelected", domKey: "fieldBudgetSelected", type: "boolean" },
-  { field: "lng", domKey: "fieldLng", type: "string", label: "经度", presenceId: "fieldLngPresence" },
-  { field: "lat", domKey: "fieldLat", type: "string", label: "纬度", presenceId: "fieldLatPresence" },
-  { field: "image", domKey: "fieldImage", type: "string", label: "图片 URL", presenceId: "fieldImagePresence" },
-  { field: "tags", domKey: "fieldTags", type: "tags", label: "标签", presenceId: "fieldTagsPresence" },
-  { field: "voters", type: "list" },
-  { field: "votes", type: "number" },
-  { field: "userVoted", type: "boolean" },
-  { field: "favorite", type: "boolean" },
-];
-const COLLAB_STRUCT_PRESENCE_FIELDS = COLLAB_STRUCT_FIELDS
-  .filter((field) => field.domKey && field.presenceId)
-  .map((field) => ({ ...field, field: `struct:${field.field}`, structField: field.field, scope: "stop" }));
-const COLLAB_PRESENCE_TEXT_FIELDS = [
-  ...COLLAB_TEXT_FIELDS.map((field) => ({ ...field, scope: "stop" })),
-  ...COLLAB_STRUCT_PRESENCE_FIELDS,
-  ...COLLAB_DAY_TEXT_FIELDS,
-  ...COLLAB_PLAN_TEXT_PRESENCE_FIELDS,
-];
-const COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD = new Map(COLLAB_PRESENCE_TEXT_FIELDS.map((item) => [item.field, item]));
-const COLLAB_COMMENT_ANCHOR_FIELDS = COLLAB_PRESENCE_TEXT_FIELDS.filter((item) => item.domKey && item.presenceId);
-const COLLAB_STOP_COMMENT_ANCHOR_FIELDS = COLLAB_COMMENT_ANCHOR_FIELDS.filter((item) => item.scope === "stop");
-const COLLAB_DAY_COMMENT_ANCHOR_FIELDS = COLLAB_COMMENT_ANCHOR_FIELDS.filter((item) => item.scope === "day");
-const PLAN_SETTING_FIELDS = [
-  { field: "name", type: "string" },
-  { field: "destination", type: "string" },
-  { field: "origin", type: "string" },
-  { field: "dateRange", type: "string" },
-  { field: "startDate", type: "string" },
-  { field: "endDate", type: "string" },
-  { field: "cover", type: "string" },
-  { field: "partySize", type: "integer" },
-  { field: "budgetLimit", type: "number" },
-  { field: "editKeyHash", type: "string" },
-  { field: "editKeyHint", type: "string" },
-];
-const PLAN_TEXT_SETTING_FIELDS = ["name", "destination", "origin", "dateRange", "startDate", "endDate", "cover", "editKeyHint"];
-const DAY_BLOCK_TYPES = ["todo", "note", "decision", "heading", "callout", "quote", "divider", "checklist"];
-const DAY_BLOCK_COMMANDS = [
-  { type: "todo", command: "/todo", aliases: ["/待办", "/task"], label: "待办", description: "确认事项、清单、办理步骤", keywords: ["待办", "任务", "清单", "todo", "task"] },
-  { type: "note", command: "/note", aliases: ["/备注", "/memo"], label: "备注", description: "普通文字、补充信息、想法", keywords: ["备注", "笔记", "文字", "note", "memo"] },
-  { type: "decision", command: "/decision", aliases: ["/决定", "/决策"], label: "决定", description: "已经确认的选择和结论", keywords: ["决定", "决策", "选择", "decision"] },
-  { type: "heading", command: "/heading", aliases: ["/h", "/h2", "/标题"], label: "标题", description: "分隔当天行程段落", keywords: ["标题", "分组", "heading", "h2"] },
-  { type: "callout", command: "/callout", aliases: ["/tip", "/提醒", "/提示", "/注意"], label: "提醒", description: "证件、预约、天气、避峰提示", keywords: ["提醒", "提示", "注意", "callout", "tip"] },
-  { type: "quote", command: "/quote", aliases: ["/引用", "/摘录"], label: "引用", description: "资料摘录、攻略原文、参考信息", keywords: ["引用", "摘录", "攻略", "quote"] },
-  { type: "divider", command: "/divider", aliases: ["/line", "/hr", "/分隔线", "/分割线"], label: "分隔线", description: "把当天行程拆成清晰段落", keywords: ["分隔", "分割", "段落", "divider", "line", "hr"] },
-  { type: "checklist", command: "/checklist", aliases: ["/check", "/清单", "/检查清单"], label: "检查清单", description: "一块内记录多项准备事项", keywords: ["检查", "清单", "子任务", "checklist", "check"] },
-];
+const {
+  STORAGE_KEY,
+  PLAN_LIBRARY_KEY,
+  CURRENT_PLAN_ID_KEY,
+  CTRIP_CONFIG_KEY,
+  MEMBER_PROFILE_KEY,
+  SERVICE_CONFIG_KEY,
+  EXTERNAL_IMPORT_CONFIG_KEY,
+  EDIT_ACCESS_PREFIX,
+  EDIT_KEY_VALUE_PREFIX,
+  VERSION_PREFIX,
+  PENDING_PLAN_UPDATES_PREFIX,
+  COLLAPSED_BLOCKS_PREFIX,
+  MAX_VERSION_HISTORY,
+  MAX_PENDING_PLAN_UPDATES,
+  PLAN_REPLACE_REASONS,
+  EXTERNAL_IMPORT_TIMEOUT_MS,
+  YJS_MODULE_URL,
+  COLLAB_TEXT_FIELDS,
+  COLLAB_TEXT_FIELD_BY_FIELD,
+  COMMENT_FILTERS,
+  COMMENT_INDEX_FILTERS,
+  ACTIVITY_FILTERS,
+  ACTIVITY_TYPE_LABELS,
+  COLLAB_DAY_TEXT_FIELDS,
+  COLLAB_PLAN_TEXT_PRESENCE_FIELDS,
+  COLLAB_STRUCT_FIELDS,
+  COLLAB_STRUCT_PRESENCE_FIELDS,
+  COLLAB_PRESENCE_TEXT_FIELDS,
+  COLLAB_PRESENCE_TEXT_FIELD_BY_FIELD,
+  COLLAB_COMMENT_ANCHOR_FIELDS,
+  COLLAB_STOP_COMMENT_ANCHOR_FIELDS,
+  COLLAB_DAY_COMMENT_ANCHOR_FIELDS,
+  PLAN_SETTING_FIELDS,
+  PLAN_TEXT_SETTING_FIELDS,
+  DAY_BLOCK_TYPES,
+  DAY_BLOCK_COMMANDS,
+} = window.TripboardConstants;
 
 const images = {
   kyoto:
@@ -166,31 +77,28 @@ const WIKIPEDIA_IMAGE_RULES = [
   [/青岛|Qingdao/i, "Qingdao"],
 ];
 const wikipediaImageCache = new Map();
-
-function uid() {
-  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function clone(value) {
-  if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
-}
-
-function safeJsonParse(value, fallback = null) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
-
-function serializePlan(plan) {
-  return JSON.stringify(plan || {});
-}
-
-function sameSerialized(a, b) {
-  return serializePlan(a) === serializePlan(b);
-}
+const {
+  uid,
+  clone,
+  safeJsonParse,
+  serializePlan,
+  sameSerialized,
+  money,
+  escapeHtml,
+  numberValue,
+  normalizeList,
+  fetchWithTimeout,
+  normalizeTags,
+  clampDays,
+  addDays,
+  parseIsoDate,
+  formatIsoDate,
+  weekdayName,
+  formatDisplayDate,
+  formatDatedTitle,
+  daysBetweenInclusive,
+  dateRangeText,
+} = window.TripboardUtils;
 
 function planContentSnapshot(plan) {
   const snapshot = clone(plan || {});
@@ -582,56 +490,6 @@ async function sha256Text(value) {
   return `fnv-${Math.abs(hash).toString(16)}`;
 }
 
-function money(value) {
-  return `¥${Number(value || 0).toLocaleString("zh-CN")}`;
-}
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[char]);
-}
-
-function numberValue(value) {
-  const parsed = Number(value || 0);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeList(value) {
-  if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
-  return String(value || "")
-    .split(/[,，]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      throw new Error("请求超时，请稍后重试。");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function normalizeTags(value) {
-  if (Array.isArray(value)) return value.filter(Boolean);
-  return String(value || "")
-    .split(/[,，]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function stopVoters(stop = {}) {
   return normalizeList(stop.voters);
 }
@@ -666,66 +524,6 @@ function toggleVoteValues(values = {}, actorId = collabActorId()) {
     votes: currentVotes + 1,
     userVoted: true,
   };
-}
-
-function clampDays(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (Number.isNaN(parsed)) return 1;
-  return Math.min(30, Math.max(1, parsed));
-}
-
-function addDays(date, amount) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + amount);
-  return next;
-}
-
-function parseIsoDate(value) {
-  if (!value) return null;
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return null;
-  return new Date(year, month - 1, day);
-}
-
-function formatIsoDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function weekdayName(date) {
-  return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
-}
-
-function formatDisplayDate(value) {
-  const date = typeof value === "string" ? parseIsoDate(value) : value;
-  if (!date) return "";
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
-}
-
-function formatDatedTitle(dateValue, originalTitle, index) {
-  const date = parseIsoDate(dateValue);
-  const suffix = String(originalTitle || "")
-    .replace(/^第\d+天\s*/, "")
-    .replace(/^\d+月\d+日\s*周[一二三四五六日]\s*[·-]?\s*/, "")
-    .trim();
-  return `${formatDisplayDate(date)} ${weekdayName(date)}${suffix ? ` · ${suffix}` : ` · 第${index + 1}天`}`;
-}
-
-function daysBetweenInclusive(startValue, endValue) {
-  const start = parseIsoDate(startValue);
-  const end = parseIsoDate(endValue);
-  if (!start || !end) return 1;
-  const diff = Math.round((end - start) / 86400000) + 1;
-  return clampDays(diff);
-}
-
-function dateRangeText(startValue, endValue) {
-  const start = parseIsoDate(startValue);
-  const end = parseIsoDate(endValue);
-  if (!start || !end) return "自定义日期";
-  return `${formatDisplayDate(start)} - ${formatDisplayDate(end)}`;
 }
 
 function resequencePlanDays(plan = state) {
@@ -900,6 +698,13 @@ function officialImageSearchUrl(stopOrKeyword = "") {
   return `https://www.baidu.com/s?wd=${encodeURIComponent(keyword || "景点 官方 图片")}`;
 }
 
+function candidateReferenceUrl(stop = {}) {
+  const keyword = [state.destination, stop.address, stop.title || stop.amapKeyword, "景点 介绍 攻略 门票"]
+    .filter(Boolean)
+    .join(" ");
+  return `https://www.baidu.com/s?wd=${encodeURIComponent(keyword || "景点 介绍 攻略")}`;
+}
+
 function uniqueTexts(values = []) {
   const seen = new Set();
   return values
@@ -971,13 +776,7 @@ async function lookupAmapPlaces(keyword, { limit = 6 } = {}) {
   for (const variant of variants) {
     for (const city of cityHints) {
       try {
-        const response = await fetchWithTimeout(serviceConfig.amapEndpoint, {
-          method: "POST",
-          headers: serviceHeaders("", serviceConfig.amapEndpoint),
-          body: JSON.stringify({ keyword: variant, city, limit }),
-        }, 6000);
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+        const data = await serviceApi.amap.lookupPlaces(serviceConfig.amapEndpoint, { keyword: variant, city, limit }, { timeoutMs: 6000 });
         const places = (Array.isArray(data.places) ? data.places : [data.place || data].filter(Boolean))
           .map((place) => normalizeAmapPlace(place, variant))
           .filter(Boolean)
@@ -1186,22 +985,13 @@ async function requestAmapRoute(day, mode = "walking", strategy = "default") {
   if (stops.length < 2) {
     throw new Error("至少需要 2 个地点才能规划路线。");
   }
-  const response = await fetch(serviceConfig.amapRouteEndpoint, {
-    method: "POST",
-    headers: serviceHeaders("", serviceConfig.amapRouteEndpoint),
-    body: JSON.stringify({
+  return serviceApi.amap.route(serviceConfig.amapRouteEndpoint, {
       mode,
       strategy,
       destination: state.destination || "",
       city: state.destination || "",
       stops,
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.message || data.error || `HTTP ${response.status}`);
-  }
-  return data;
+    });
 }
 
 function pointForStop(stop) {
@@ -9180,6 +8970,18 @@ const urlParams = new URLSearchParams(window.location.search);
 const forceLocalMode = urlParams.get("local") === "1";
 let tripId = urlParams.get("trip") || (forceLocalMode ? "" : localStorage.getItem("tripboard-current-trip-id")) || "";
 let forcedReadonlyMode = urlParams.get("mode") === "readonly";
+const planStore = window.createTripboardPlanStore({
+  localStorage,
+  storageKey: STORAGE_KEY,
+  libraryKey: PLAN_LIBRARY_KEY,
+  currentPlanIdKey: CURRENT_PLAN_ID_KEY,
+  clone,
+  uid,
+  safeJsonParse,
+  ensurePlanDates,
+  buildFallbackPlan: buildKyotoPlan,
+  getTripId: () => tripId,
+});
 let state = ensurePlanDates(loadState());
 let activeDay = 0;
 let activeStop = 0;
@@ -9203,18 +9005,24 @@ const FLOW_STEPS = [
 ];
 let flowUi = safeJsonParse(localStorage.getItem(FLOW_UI_KEY), { step: "", showAll: false, pinned: false }) || { step: "", showAll: false, pinned: false };
 let editingCandidateId = "";
-let ctripConfig = safeJsonParse(localStorage.getItem(CTRIP_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
-let externalImportConfig = safeJsonParse(localStorage.getItem(EXTERNAL_IMPORT_CONFIG_KEY), { endpoint: "", token: "" }) || { endpoint: "", token: "" };
+const serviceClient = window.createTripboardServiceClient({
+  fetch,
+  fetchWithTimeout,
+  localStorage,
+  safeJsonParse,
+  serviceConfigKey: SERVICE_CONFIG_KEY,
+  transportConfigKey: CTRIP_CONFIG_KEY,
+  externalImportConfigKey: EXTERNAL_IMPORT_CONFIG_KEY,
+  getAppConfig: () => window.TRIPBOARD_CONFIG || {},
+});
+let ctripConfig = serviceClient.loadTransportConfig();
+let externalImportConfig = serviceClient.loadExternalImportConfig();
 let lastParsedImport = null;
-let serviceConfig = safeJsonParse(localStorage.getItem(SERVICE_CONFIG_KEY), { aiEndpoint: "", aiToken: "", amapEndpoint: "", amapRouteEndpoint: "", amapJsKey: "", amapSecurityCode: "", weatherEndpoint: "" }) || {
-  aiEndpoint: "",
-  aiToken: "",
-  amapEndpoint: "",
-  amapRouteEndpoint: "",
-  amapJsKey: "",
-  amapSecurityCode: "",
-  weatherEndpoint: "",
-};
+let serviceConfig = serviceClient.loadServiceConfig();
+const serviceApi = window.createTripboardServiceApi({
+  serviceClient,
+  fetch,
+});
 let memberProfile = safeJsonParse(sessionStorage.getItem(MEMBER_PROFILE_KEY), null);
 let onlineMembers = [];
 const sessionId = crypto.randomUUID ? crypto.randomUUID() : uid();
@@ -9306,125 +9114,48 @@ const guideState = {
   budget: "舒适",
   interests: ["文化", "美食"],
 };
-
 function loadState() {
-  const library = ensurePlanLibrary();
-  const selectedId = currentLocalPlanId();
-  const selected = library.find((record) => record.id === selectedId) || library[0];
-  if (selected?.data?.days?.length) return clone(selected.data);
-  const fallback = buildKyotoPlan();
-  savePlanLibrary([planRecordFromState(fallback, newLocalPlanId(), { label: "京都示例计划" })]);
-  setCurrentLocalPlanId(currentLocalPlanId() || planLibrary()[0]?.id || "");
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback));
-  return fallback;
+  return planStore.loadState();
 }
 
 function newLocalPlanId() {
-  return `local-${Date.now()}-${uid()}`;
+  return planStore.newLocalPlanId();
 }
 
 function sharedLocalPlanId(id = tripId) {
-  return id ? `shared-${id}` : "";
+  return planStore.sharedLocalPlanId(id);
 }
 
 function currentLocalPlanId() {
-  const sharedId = sharedLocalPlanId();
-  if (sharedId) return sharedId;
-  return localStorage.getItem(CURRENT_PLAN_ID_KEY) || "";
+  return planStore.currentLocalPlanId();
 }
 
 function setCurrentLocalPlanId(id = "") {
-  if (id) localStorage.setItem(CURRENT_PLAN_ID_KEY, id);
-  else localStorage.removeItem(CURRENT_PLAN_ID_KEY);
+  planStore.setCurrentLocalPlanId(id);
 }
 
 function planLibrary() {
-  const list = safeJsonParse(localStorage.getItem(PLAN_LIBRARY_KEY), []);
-  return normalizePlanLibrary(list);
+  return planStore.planLibrary();
 }
 
 function savePlanLibrary(list = []) {
-  const normalized = normalizePlanLibrary(list);
-  localStorage.setItem(PLAN_LIBRARY_KEY, JSON.stringify(normalized));
-  return normalized;
+  return planStore.savePlanLibrary(list);
 }
 
 function normalizePlanLibrary(list = []) {
-  const seen = new Set();
-  return (Array.isArray(list) ? list : [])
-    .filter((record) => record?.data?.days?.length)
-    .map((record) => {
-      const id = String(record.id || newLocalPlanId());
-      const data = ensurePlanDates(clone(record.data));
-      return {
-        id,
-        label: String(record.label || data.name || data.destination || "未命名计划"),
-        tripId: String(record.tripId || ""),
-        createdAt: record.createdAt || new Date().toISOString(),
-        updatedAt: record.updatedAt || new Date().toISOString(),
-        data,
-      };
-    })
-    .filter((record) => {
-      if (seen.has(record.id)) return false;
-      seen.add(record.id);
-      return true;
-    })
-    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+  return planStore.normalizePlanLibrary(list);
 }
 
 function planRecordFromState(plan = state, id = currentLocalPlanId() || newLocalPlanId(), options = {}) {
-  const data = ensurePlanDates(clone(plan));
-  return {
-    id,
-    label: options.label || data.name || data.destination || "未命名计划",
-    tripId: options.tripId !== undefined ? options.tripId : (id === sharedLocalPlanId() ? tripId : data.tripId || ""),
-    createdAt: options.createdAt || new Date().toISOString(),
-    updatedAt: options.updatedAt || new Date().toISOString(),
-    data,
-  };
+  return planStore.planRecordFromPlan(plan, id, options);
 }
 
 function ensurePlanLibrary() {
-  const library = planLibrary();
-  const selectedId = localStorage.getItem(CURRENT_PLAN_ID_KEY) || "";
-  if (library.length) {
-    if (!selectedId || !library.some((record) => record.id === selectedId)) setCurrentLocalPlanId(library[0].id);
-    return library;
-  }
-  let migrated = null;
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (stored?.days?.length) migrated = stored;
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-  }
-  const initialPlan = migrated || buildKyotoPlan();
-  const initialId = sharedLocalPlanId() || selectedId || newLocalPlanId();
-  const initialRecord = planRecordFromState(initialPlan, initialId, {
-    label: migrated?.name || initialPlan.name || "本地计划",
-    tripId: sharedLocalPlanId() ? tripId : "",
-  });
-  savePlanLibrary([initialRecord]);
-  if (!sharedLocalPlanId()) setCurrentLocalPlanId(initialRecord.id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(initialRecord.data));
-  return [initialRecord];
+  return planStore.ensurePlanLibrary();
 }
 
 function persistLocalState(plan = state, options = {}) {
-  const id = options.id || currentLocalPlanId() || newLocalPlanId();
-  const library = planLibrary();
-  const previous = library.find((record) => record.id === id);
-  const record = planRecordFromState(plan, id, {
-    label: options.label || plan.name || previous?.label,
-    tripId: options.tripId !== undefined ? options.tripId : previous?.tripId || (id === sharedLocalPlanId() ? tripId : ""),
-    createdAt: previous?.createdAt,
-  });
-  const next = [record, ...library.filter((item) => item.id !== id)];
-  savePlanLibrary(next);
-  if (!sharedLocalPlanId()) setCurrentLocalPlanId(id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(record.data));
-  return record;
+  return planStore.persistLocalState(plan, options);
 }
 
 function renderPlanSwitcher() {
@@ -10789,7 +10520,7 @@ function saveServiceConfig() {
     amapSecurityCode: dom.amapSecurityCodeInput.value.trim(),
     weatherEndpoint: dom.weatherEndpointInput.value.trim(),
   };
-  localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+  serviceClient.saveServiceConfig(serviceConfig);
   const amapSdkConfigChanged =
     previousAmapJsKey !== serviceConfig.amapJsKey ||
     previousAmapSecurityCode !== serviceConfig.amapSecurityCode;
@@ -10807,14 +10538,7 @@ function saveServiceConfig() {
 }
 
 function serviceHeaders(token, endpoint = "") {
-  const headers = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const appConfig = window.TRIPBOARD_CONFIG || {};
-  if (!token && endpoint.includes("supabase.co/functions/v1") && appConfig.supabaseAnonKey) {
-    headers.apikey = appConfig.supabaseAnonKey;
-    headers.Authorization = `Bearer ${appConfig.supabaseAnonKey}`;
-  }
-  return headers;
+  return serviceClient.headers(token, endpoint);
 }
 
 function renderServiceStatus() {
@@ -10859,13 +10583,7 @@ function weatherLabel(code) {
 async function geocodeDestination() {
   const query = state.destination || guideState.destination || "";
   if (!query) return null;
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=zh&format=json`;
-  const response = await fetch(url);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
-  const result = data.results?.[0];
-  if (!result) return null;
-  return { latitude: result.latitude, longitude: result.longitude, name: result.name };
+  return serviceApi.weather.geocode(query);
 }
 
 async function requestWeatherForecast() {
@@ -10878,13 +10596,7 @@ async function requestWeatherForecast() {
   let proxyError = "";
   if (serviceConfig.weatherEndpoint) {
     try {
-      const response = await fetch(serviceConfig.weatherEndpoint, {
-        method: "POST",
-        headers: serviceHeaders("", serviceConfig.weatherEndpoint),
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+      const data = await serviceApi.weather.proxyForecast(serviceConfig.weatherEndpoint, payload);
       const days = Array.isArray(data.days) ? data.days : [];
       if (days.length) return { source: data.source || "weather-proxy", days };
       proxyError = data.message || "天气代理没有返回可用日期";
@@ -10895,10 +10607,7 @@ async function requestWeatherForecast() {
 
   const place = await geocodeDestination();
   if (!place) throw new Error("没有找到目的地坐标，请尝试填写更具体的城市名，或配置自己的天气代理。");
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=16`;
-  const response = await fetch(url);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
+  const data = await serviceApi.weather.forecast(place, { forecastDays: 16 });
   const days = (data.daily?.time || []).map((date, index) => ({
     date,
     text: `${Math.round(data.daily.temperature_2m_min?.[index] ?? 0)}-${Math.round(data.daily.temperature_2m_max?.[index] ?? 0)}°C ${weatherLabel(data.daily.weather_code?.[index])} · 降水${Math.round(data.daily.precipitation_probability_max?.[index] ?? 0)}%`,
@@ -10914,10 +10623,7 @@ async function requestWeatherForDateRange(startDateValue, endDateValue) {
   const end = parseIsoDate(endDateValue);
   if (!start || !end) throw new Error("请先填写可出行日期范围。");
   const forecastDays = Math.min(16, Math.max(1, Math.round((end - new Date()) / 86400000) + 2));
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=${forecastDays}`;
-  const response = await fetch(url);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.reason || data.error || `HTTP ${response.status}`);
+  const data = await serviceApi.weather.forecast(place, { forecastDays });
   const days = (data.daily?.time || []).map((date, index) => ({
     date,
     code: Number(data.daily.weather_code?.[index] ?? 0),
@@ -11915,21 +11621,17 @@ async function requestExternalOrderParse() {
   if (!externalImportConfig.endpoint) {
     return { source: "本地规则", parsed: parseExternalOrderText(text, pendingProvider) };
   }
-  const response = await fetchWithTimeout(externalImportConfig.endpoint, {
-    method: "POST",
-    headers: serviceHeaders(externalImportConfig.token, externalImportConfig.endpoint),
-    body: JSON.stringify({
+  const data = await serviceApi.externalImport.parse(
+    externalImportConfig,
+    {
       provider: pendingProvider,
       destination: state.destination || "",
       tripStartDate: state.startDate || "",
       tripEndDate: state.endDate || "",
       text,
-    }),
-  }, EXTERNAL_IMPORT_TIMEOUT_MS);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.message || data.error || `HTTP ${response.status}`);
-  }
+    },
+    { timeoutMs: EXTERNAL_IMPORT_TIMEOUT_MS },
+  );
   return { source: data.source || "AI 解析", parsed: data.parsed || data };
 }
 
@@ -12045,33 +11747,16 @@ function saveCtripConfig() {
     endpoint: dom.ctripEndpointInput.value.trim(),
     token: dom.ctripTokenInput.value.trim(),
   };
-  localStorage.setItem(CTRIP_CONFIG_KEY, JSON.stringify(ctripConfig));
+  serviceClient.saveTransportConfig(ctripConfig);
   dom.syncBadge.textContent = ctripConfig.endpoint ? "已配置接口" : "可手动导入";
 }
 
 function ctripHeaders() {
-  const headers = { "Content-Type": "application/json" };
-  const appConfig = window.TRIPBOARD_CONFIG || {};
-  if (ctripConfig.token) {
-    headers.Authorization = `Bearer ${ctripConfig.token}`;
-  } else if (ctripConfig.endpoint.includes("supabase.co/functions/v1") && appConfig.supabaseAnonKey) {
-    headers.apikey = appConfig.supabaseAnonKey;
-    headers.Authorization = `Bearer ${appConfig.supabaseAnonKey}`;
-  }
-  return headers;
+  return serviceClient.headers(ctripConfig.token, ctripConfig.endpoint);
 }
 
 async function fetchTransportQuotes(payload) {
-  const response = await fetch(ctripConfig.endpoint, {
-    method: "POST",
-    headers: ctripHeaders(),
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.message || data.error || `HTTP ${response.status}`);
-  }
-  return data;
+  return serviceApi.transport.quotes(ctripConfig, payload);
 }
 
 async function requestCtripTransport({ testOnly = false } = {}) {
@@ -13190,12 +12875,18 @@ function renderCandidates() {
         const amountText = money(numberValue(stop.budget) || estimatedTicket);
         const estimateText = !numberValue(stop.budget) && estimatedTicket ? " 估" : "";
         const remoteEditors = remoteRecordEditorNames("candidate", stop.id);
+        const candidateImage = displayImageForStop(stop);
+        const referenceUrl = candidateReferenceUrl(stop);
         return `
         <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
-          ${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}
-          <span class="candidate-title">${escapeHtml(stop.title)}</span>
-          <span class="candidate-meta">${escapeHtml(category)}${selected ? " · 已预选" : ""}${paid ? ` · 已付 ${money(paid)}${payer}` : ""}</span>
-          ${remoteEditors ? `<span class="record-presence">${escapeHtml(remoteEditors)} 正在编辑</span>` : ""}
+          <img class="candidate-photo" src="${escapeHtml(candidateImage)}" alt="" loading="lazy" aria-hidden="true">
+          <span class="candidate-main">
+            <span class="candidate-kicker">${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}${escapeHtml(category)}</span>
+            <span class="candidate-title">${escapeHtml(stop.title)}</span>
+            <span class="candidate-meta">${selected ? "已预选" : "可加入当天"}${paid ? ` · 已付 ${money(paid)}${payer}` : ""}</span>
+            ${remoteEditors ? `<span class="record-presence">${escapeHtml(remoteEditors)} 正在编辑</span>` : ""}
+            <a class="candidate-reference" href="${escapeHtml(referenceUrl)}" target="_blank" rel="noopener" aria-label="查看${escapeHtml(stop.title)}参考介绍">${icon("external-link")}参考介绍</a>
+          </span>
           <span class="candidate-price">${amountText}${estimateText}</span>
           ${editable ? `<span class="candidate-actions">
             <button type="button" class="icon-btn subtle" data-toggle-candidate-selected="${escapeHtml(stop.id)}" aria-label="${selected ? "移出预选" : "加入预选"}" title="${selected ? "移出预选" : "加入预选"}">${icon(selected ? "check-circle-2" : "circle")}</button>
@@ -14727,56 +14418,55 @@ function formatDurationText(value) {
 
 async function requestAiRoute(day) {
   if (!serviceConfig.aiEndpoint) return null;
-  const response = await fetch(serviceConfig.aiEndpoint, {
-    method: "POST",
-    headers: serviceHeaders(serviceConfig.aiToken, serviceConfig.aiEndpoint),
-    body: JSON.stringify({
-      tripId,
-      day: day.date || day.label,
-      date: day.date || "",
-      dayTitle: day.title || "",
-      pace: guideState.pace,
-      budgetLimit: state.budgetLimit || 0,
+  const payload = {
+    tripId,
+    day: day.date || day.label,
+    date: day.date || "",
+    dayTitle: day.title || "",
+    pace: guideState.pace,
+    budgetLimit: state.budgetLimit || 0,
+    weather: day.weather || "",
+    destination: state.destination,
+    origin: state.origin,
+    stops: day.stops.map((stop, index) => ({
+      index,
+      id: stop.id,
+      title: stop.title,
+      time: stop.time,
+      type: stop.type,
+      address: stop.address,
+      note: stop.note,
+      lng: stop.lng,
+      lat: stop.lat,
+      budget: stop.budget || 0,
       weather: day.weather || "",
-      destination: state.destination,
-      origin: state.origin,
-      stops: day.stops.map((stop, index) => ({
-        index,
-        id: stop.id,
-        title: stop.title,
-        time: stop.time,
-        type: stop.type,
-        address: stop.address,
-        note: stop.note,
-        lng: stop.lng,
-        lat: stop.lat,
-        budget: stop.budget || 0,
-        weather: day.weather || "",
-        tags: stop.tags || [],
-      })),
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
+      tags: stop.tags || [],
+    })),
+  };
+  let data;
+  try {
+    data = await serviceApi.ai.optimizeRoute(serviceConfig, payload);
+  } catch (error) {
+    data = error.data || {};
     if (Array.isArray(data.fallbackOrder) && data.fallbackOrder.length) {
       return {
         order: data.fallbackOrder,
-        note: data.note || data.error || "AI 未配置，已使用后端本地兜底顺序。",
+        note: data.note || data.error || "AI ????????????????",
         reason: data.error || "",
-        source: data.source || "AI 代理兜底",
+        source: data.source || "AI ????",
         fallback: true,
       };
     }
-    throw new Error(data.message || data.error || `HTTP ${response.status}`);
+    throw error;
   }
   const order = Array.isArray(data.order) ? data.order : Array.isArray(data.stopIds) ? data.stopIds : [];
   return {
     order,
-    note: data.note || data.reason || "AI 已返回优化顺序",
+    note: data.note || data.reason || "AI ???????",
     reason: data.reason || "",
     segments: Array.isArray(data.segments) ? data.segments : [],
     warnings: Array.isArray(data.warnings) ? data.warnings : [],
-    source: data.source || "AI 代理",
+    source: data.source || "AI ??",
   };
 }
 
@@ -16249,6 +15939,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
     await saveCollaborativePlanChange(`移除备选「${candidate.title}」`);
     return;
   }
+  if (event.target.closest(".candidate-reference")) return;
   const button = event.target.closest("[data-candidate]");
   if (!button) return;
   const candidate = state.candidates[Number(button.dataset.candidate)];
@@ -16258,7 +15949,7 @@ dom.candidateGrid.addEventListener("click", async (event) => {
 dom.candidateGrid.addEventListener("keydown", (event) => {
   if (!["Enter", " "].includes(event.key)) return;
   const card = event.target.closest("[data-candidate]");
-  if (!card || event.target.closest("[data-delete-candidate], [data-edit-candidate], [data-toggle-candidate-selected]")) return;
+  if (!card || event.target.closest("[data-delete-candidate], [data-edit-candidate], [data-toggle-candidate-selected], .candidate-reference")) return;
   event.preventDefault();
   card.click();
 });
@@ -17287,31 +16978,31 @@ async function boot() {
   const defaultTransportEndpoint = appConfig.searchApiFlightProxyUrl || appConfig.amadeusFlightProxyUrl || appConfig.ctripProxyUrl || "";
   if ((!ctripConfig.endpoint || isPlaceholderEndpoint || isLegacyTransportEndpoint) && defaultTransportEndpoint) {
     ctripConfig = { endpoint: defaultTransportEndpoint, token: "" };
-    localStorage.setItem(CTRIP_CONFIG_KEY, JSON.stringify(ctripConfig));
+    serviceClient.saveTransportConfig(ctripConfig);
   }
   if ((!externalImportConfig.endpoint || /your-project\.supabase\.co\/functions\/v1\/external-order-parse/.test(externalImportConfig.endpoint)) && appConfig.externalOrderParseProxyUrl) {
     externalImportConfig = { endpoint: appConfig.externalOrderParseProxyUrl, token: "" };
-    localStorage.setItem(EXTERNAL_IMPORT_CONFIG_KEY, JSON.stringify(externalImportConfig));
+    serviceClient.saveExternalImportConfig(externalImportConfig);
   }
   const isPlaceholderAiEndpoint = /your-domain\.com\/api\/route-optimize/.test(serviceConfig.aiEndpoint || "");
   if ((!serviceConfig.aiEndpoint || isPlaceholderAiEndpoint) && appConfig.aiRouteProxyUrl) {
     serviceConfig = { ...serviceConfig, aiEndpoint: appConfig.aiRouteProxyUrl, aiToken: "" };
-    localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+    serviceClient.saveServiceConfig(serviceConfig);
   }
   const isPlaceholderAmapEndpoint = /your-domain\.com\/api\/amap-place/.test(serviceConfig.amapEndpoint || "");
   if ((!serviceConfig.amapEndpoint || isPlaceholderAmapEndpoint) && appConfig.amapPlaceProxyUrl) {
     serviceConfig = { ...serviceConfig, amapEndpoint: appConfig.amapPlaceProxyUrl };
-    localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+    serviceClient.saveServiceConfig(serviceConfig);
   }
   const isPlaceholderAmapRouteEndpoint = /your-project\.supabase\.co\/functions\/v1\/amap-route-plan/.test(serviceConfig.amapRouteEndpoint || "");
   if ((!serviceConfig.amapRouteEndpoint || isPlaceholderAmapRouteEndpoint) && appConfig.amapRouteProxyUrl) {
     serviceConfig = { ...serviceConfig, amapRouteEndpoint: appConfig.amapRouteProxyUrl };
-    localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+    serviceClient.saveServiceConfig(serviceConfig);
   }
   const isPlaceholderWeatherEndpoint = /your-domain\.com\/api\/weather|your-project\.supabase\.co\/functions\/v1\/amap-weather/.test(serviceConfig.weatherEndpoint || "");
   if ((!serviceConfig.weatherEndpoint || isPlaceholderWeatherEndpoint) && appConfig.amapWeatherProxyUrl) {
     serviceConfig = { ...serviceConfig, weatherEndpoint: appConfig.amapWeatherProxyUrl };
-    localStorage.setItem(SERVICE_CONFIG_KEY, JSON.stringify(serviceConfig));
+    serviceClient.saveServiceConfig(serviceConfig);
   }
   dom.ctripEndpointInput.value = ctripConfig.endpoint || "";
   dom.ctripTokenInput.value = ctripConfig.token || "";
