@@ -8,5 +8,6 @@ window.TRIPBOARD_CONFIG = {
   amapPlaceProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/amap-place-search",
   amapRouteProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/amap-route-plan",
   amapWeatherProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/amap-weather",
+  placeImageSearchProxyUrl: "https://xjieikfcococjvqdqero.supabase.co/functions/v1/place-image-search",
   externalOrderParseProxyUrl: "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/external-order-parse",
 };

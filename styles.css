@@ -2384,6 +2384,16 @@ button:disabled {
   border-radius: 8px;
 }
 
+.candidate.is-missing-image .candidate-photo {
+  filter: saturate(0.72);
+  opacity: 0.78;
+}
+
+.candidate.is-missing-image .candidate-meta::after {
+  content: " · 图片待补全";
+  color: var(--muted);
+}
+
 .candidate-main {
   display: grid;
   min-width: 0;
@@ -2572,8 +2582,45 @@ button:disabled {
       center/cover;
 }
 
+.place-photo.is-missing-image {
+  position: relative;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(235, 238, 238, 0.88)),
+    var(--photo, #f1f3f2) center/cover;
+  background-blend-mode: screen, normal;
+}
+
+.place-photo.is-missing-image::after {
+  content: "未找到可用实景图";
+  position: absolute;
+  inset: auto 16px 16px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  color: #46525a;
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .place-body {
   padding: 15px;
+}
+
+.photo-meta {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.photo-meta a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .place-title-row {

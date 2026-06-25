@@ -162,6 +162,9 @@ function specificRuleImageForStop(stop = {}, destination = state.destination) {
 const specificImageLookupCache = new Map();
 const specificImageLookupPending = new Set();
 const coverImageLookupPending = new Set();
+const placeImageCache = new Map();
+const PLACE_IMAGE_TYPES = /Scenic|Museum|Temple|Grottoes|Geopark|River|Lake|Canyon|Fortress|Great Wall|Desert|Heritage|Culture|Walk|Mountain|Park|Gallery|Zoo|Aquarium|View|Grassland|Wetland|Forest|MountainLake|景|景区|景点|博物馆|寺|寺院|石窟|湖|山|峡谷|公园|古城|遗址|文化|街区|广场|栈桥|丹霞|月牙泉|盐湖|花海|草原|湿地|森林/i;
+const NON_PLACE_IMAGE_TYPES = /\b(?:Transit|Dinner|Lunch|Cafe|Market|Food|Hotel|Rest|Train|Flight|Airport|Station)\b|交通|餐|美食|夜市|住宿|酒店|民宿|休整|返程|机场|火车|高铁|动车/i;
 const {
   uid,
   clone,
@@ -784,6 +787,8 @@ function officialImageSearchUrl(stopOrKeyword = "") {
 }
 
 function candidateReferenceUrl(stop = {}) {
+  const existing = String(stop.referenceUrl || stop.sourceUrl || stop.imagePageUrl || "").trim();
+  if (existing) return existing;
   const keyword = [state.destination, stop.address, stop.title || stop.amapKeyword, "景点 介绍 攻略 门票"]
     .filter(Boolean)
     .join(" ");
@@ -1118,6 +1123,14 @@ function makeStop({
   lat = "",
   amapKeyword = "",
   image = images.city,
+  imageSource = "",
+  imageLicense = "",
+  imageCreator = "",
+  imagePageUrl = "",
+  imageVerifiedAt = "",
+  imageStatus = "",
+  imageCandidates = [],
+  referenceUrl = "",
   selected = false,
 } = {}) {
   return {
@@ -1145,6 +1158,14 @@ function makeStop({
     lat,
     amapKeyword,
     image,
+    imageSource,
+    imageLicense,
+    imageCreator,
+    imagePageUrl,
+    imageVerifiedAt,
+    imageStatus,
+    imageCandidates: Array.isArray(imageCandidates) ? imageCandidates.slice(0, 6) : [],
+    referenceUrl,
     selected: Boolean(selected),
   };
 }
@@ -3028,7 +3049,15 @@ function normalizeCollaborativeStop(stop = {}) {
     lng: String(stop.lng || "").trim(),
     lat: String(stop.lat || "").trim(),
     amapKeyword: String(stop.amapKeyword || "").trim(),
-    image: stop.image || state.cover || images.city,
+    image: stop.image || "",
+    imageSource: String(stop.imageSource || "").trim(),
+    imageLicense: String(stop.imageLicense || "").trim(),
+    imageCreator: String(stop.imageCreator || "").trim(),
+    imagePageUrl: String(stop.imagePageUrl || "").trim(),
+    imageVerifiedAt: String(stop.imageVerifiedAt || "").trim(),
+    imageStatus: String(stop.imageStatus || "").trim(),
+    imageCandidates: Array.isArray(stop.imageCandidates) ? stop.imageCandidates.slice(0, 6) : [],
+    referenceUrl: String(stop.referenceUrl || "").trim(),
   };
 }
 
@@ -3266,7 +3295,15 @@ function normalizeCandidateStops(candidates = []) {
       lng: String(stop.lng || "").trim(),
       lat: String(stop.lat || "").trim(),
       amapKeyword: String(stop.amapKeyword || "").trim(),
-      image: stop.image || state.cover || images.city,
+      image: stop.image || "",
+      imageSource: String(stop.imageSource || "").trim(),
+      imageLicense: String(stop.imageLicense || "").trim(),
+      imageCreator: String(stop.imageCreator || "").trim(),
+      imagePageUrl: String(stop.imagePageUrl || "").trim(),
+      imageVerifiedAt: String(stop.imageVerifiedAt || "").trim(),
+      imageStatus: String(stop.imageStatus || "").trim(),
+      imageCandidates: Array.isArray(stop.imageCandidates) ? stop.imageCandidates.slice(0, 6) : [],
+      referenceUrl: String(stop.referenceUrl || "").trim(),
       createdBy: stop.createdBy || "",
       createdAt: stop.createdAt || new Date().toISOString(),
       updatedBy: stop.updatedBy || "",
@@ -6464,13 +6501,7 @@ function applyStopRealtimeFields(stop) {
   dom.placeAddress.textContent = stop.address || "地址待确认";
   dom.placeNote.textContent = stop.note || "";
   dom.commentTitle.textContent = stop.title || "当前地点";
-  setVerifiedBackgroundImage(
-    dom.placePhoto,
-    "--photo",
-    displayImageForStop(stop),
-    displayFallbackImageForStop(stop) || destinationDefaultImage(state.destination),
-    stop.title || state.destination || state.name,
-  );
+  applyPlacePhotoDisplay(stop);
   scheduleSpecificImageForStop(stop, { render: false, reason: "specific-image-realtime-stop" });
   dom.favoriteBtn.classList.toggle("selected", Boolean(stop.favorite));
   dom.mustVote.classList.toggle("is-active", Boolean(stop.userVoted));
@@ -9116,6 +9147,7 @@ const dom = {
   mapProviderStatus: document.querySelector("#mapProviderStatus"),
   mapCanvas: document.querySelector("#mapCanvas"),
   placePhoto: document.querySelector("#placePhoto"),
+  placePhotoMeta: document.querySelector("#placePhotoMeta"),
   placeType: document.querySelector("#placeType"),
   placeTitle: document.querySelector("#placeTitle"),
   placeAddress: document.querySelector("#placeAddress"),
@@ -9143,6 +9175,7 @@ const dom = {
   fieldLng: document.querySelector("#fieldLng"),
   fieldLat: document.querySelector("#fieldLat"),
   fieldImage: document.querySelector("#fieldImage"),
+  fieldReferenceUrl: document.querySelector("#fieldReferenceUrl"),
   fieldTags: document.querySelector("#fieldTags"),
   fieldNote: document.querySelector("#fieldNote"),
   noteCollabStatus: document.querySelector("#noteCollabStatus"),
@@ -9220,6 +9253,7 @@ const dom = {
   cancelQuoteEditBtn: document.querySelector("#cancelQuoteEditBtn"),
   amapLookupBtn: document.querySelector("#amapLookupBtn"),
   fieldAmapLink: document.querySelector("#fieldAmapLink"),
+  fieldReferenceLink: document.querySelector("#fieldReferenceLink"),
   fieldAmapCandidates: document.querySelector("#fieldAmapCandidates"),
   exportBtn: document.querySelector("#exportBtn"),
   importJsonBtn: document.querySelector("#importJsonBtn"),
@@ -9274,6 +9308,7 @@ const dom = {
   amapJsKeyInput: document.querySelector("#amapJsKeyInput"),
   amapSecurityCodeInput: document.querySelector("#amapSecurityCodeInput"),
   weatherEndpointInput: document.querySelector("#weatherEndpointInput"),
+  placeImageEndpointInput: document.querySelector("#placeImageEndpointInput"),
   saveServiceConfigBtn: document.querySelector("#saveServiceConfigBtn"),
   syncWeatherBtn: document.querySelector("#syncWeatherBtn"),
   serviceStatusText: document.querySelector("#serviceStatusText"),
@@ -10834,6 +10869,7 @@ function saveServiceConfig() {
     amapJsKey: dom.amapJsKeyInput.value.trim(),
     amapSecurityCode: dom.amapSecurityCodeInput.value.trim(),
     weatherEndpoint: dom.weatherEndpointInput.value.trim(),
+    placeImageEndpoint: dom.placeImageEndpointInput?.value.trim() || "",
   };
   serviceClient.saveServiceConfig(serviceConfig);
   const amapSdkConfigChanged =
@@ -10863,6 +10899,7 @@ function renderServiceStatus() {
     serviceConfig.amapRouteEndpoint && "高德路线",
     serviceConfig.amapJsKey && "高德地图",
     serviceConfig.weatherEndpoint && "天气代理",
+    serviceConfig.placeImageEndpoint && "实景图",
   ].filter(Boolean);
   dom.serviceConfigStatus.textContent = connected.length ? `已配置 ${connected.join(" / ")}` : "本地兜底";
   dom.serviceStatusText.textContent = connected.length
@@ -12707,7 +12744,8 @@ async function lookupSpecificImageForStop(stop = {}) {
   const key = stopImageLookupKey(stop);
   if (!key) return "";
   if (specificImageLookupCache.has(key)) return specificImageLookupCache.get(key);
-  const image = cleanImageUrl(specificRuleImageForStop(stop));
+  const dynamic = await lookupDynamicPlaceImageForStop(stop);
+  const image = cleanImageUrl(dynamic?.image || "");
   specificImageLookupCache.set(key, image || "");
   return image || "";
 }
@@ -12727,13 +12765,20 @@ function isGeneratedFallbackImage(value = "") {
   return /^data:image\/svg\+xml/i.test(String(value || "").trim());
 }
 
+function isDynamicPlaceImageCandidate(value = "") {
+  const url = cleanImageUrl(value);
+  if (!url || /^data:image\//i.test(url)) return false;
+  if (/\.svg(?:[?#]|$)/i.test(url)) return false;
+  return !isDefaultTripboardImage(url) && !isGeneratedFallbackImage(url);
+}
+
 function hasSpecificImage(value = "") {
   const url = cleanImageUrl(value);
   return Boolean(url && !isDefaultTripboardImage(url) && !isGeneratedFallbackImage(url));
 }
 
 function hasStableDisplayImage(stop = {}) {
-  return Boolean(hasSpecificImage(stop.image) || isGeneratedFallbackImage(stop.image) || specificRuleImageForStop(stop));
+  return Boolean(hasSpecificImage(stop.image) || stop.imageStatus === "missing" || stop.imageStatus === "failed");
 }
 
 function isUsableImageUrl(value = "") {
@@ -12848,6 +12893,10 @@ function fallbackIllustrationForStop(stop = {}, sublabel = "地点图片待补�
   );
 }
 
+function missingPlaceImagePlaceholder(stop = {}) {
+  return fallbackIllustrationImage(stop.title || stop.amapKeyword || "图片待补全", "未找到可用实景图");
+}
+
 function bindImageFallbacks(root = document) {
   root.querySelectorAll?.("img[data-fallback-src]").forEach((image) => {
     const applyFallback = () => {
@@ -12903,6 +12952,160 @@ function testImageLoad(url = "", timeout = 3200) {
   return promise;
 }
 
+function normalizePlaceImageCandidate(candidate = {}) {
+  const url = cleanImageUrl(candidate.url || candidate.image || "");
+  if (!isDynamicPlaceImageCandidate(url)) return null;
+  return {
+    url,
+    source: String(candidate.source || "").trim(),
+    license: String(candidate.license || "").trim(),
+    creator: String(candidate.creator || "").trim(),
+    pageUrl: String(candidate.pageUrl || candidate.foreign_landing_url || "").trim(),
+    width: Number(candidate.width || 0) || 0,
+    height: Number(candidate.height || 0) || 0,
+    title: String(candidate.title || "").trim(),
+    verifiedAt: String(candidate.verifiedAt || "").trim(),
+  };
+}
+
+function placeImageLookupKey(stop = {}, destination = state.destination || guideState.destination || "") {
+  return uniqueTexts([destination, stop.title, stop.address, stop.amapKeyword, stop.type]).join("|").toLowerCase();
+}
+
+async function lookupDynamicPlaceImageForStop(stop = {}, options = {}) {
+  const destination = options.destination || state.destination || guideState.destination || "";
+  if (!serviceConfig.placeImageEndpoint || !shouldLookupSpecificStopImage(stop, destination)) return null;
+  const key = placeImageLookupKey(stop, destination);
+  if (!key) return null;
+  if (placeImageCache.has(key)) return placeImageCache.get(key);
+  const payload = {
+    destination,
+    title: stop.title || "",
+    address: stop.address || "",
+    amapKeyword: stop.amapKeyword || stop.title || "",
+    type: stop.type || "",
+    limit: options.limit || 4,
+  };
+  try {
+    const response = await fetchWithTimeout(serviceConfig.placeImageEndpoint, {
+      method: "POST",
+      headers: serviceClient.headers("", serviceConfig.placeImageEndpoint),
+      body: JSON.stringify(payload),
+    }, options.timeoutMs || 14000);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
+    const candidates = (Array.isArray(data.candidates) ? data.candidates : [data.image ? data : null])
+      .map(normalizePlaceImageCandidate)
+      .filter(Boolean);
+    for (const candidate of candidates) {
+      if (await testImageLoad(candidate.url, 5000)) {
+        const result = {
+          image: candidate.url,
+          imageSource: candidate.source || data.source || "place-image-search",
+          imageLicense: candidate.license || data.license || "",
+          imageCreator: candidate.creator || data.creator || "",
+          imagePageUrl: candidate.pageUrl || data.pageUrl || "",
+          imageVerifiedAt: candidate.verifiedAt || data.verifiedAt || new Date().toISOString(),
+          imageStatus: "verified",
+          imageCandidates: candidates.slice(0, 6),
+        };
+        placeImageCache.set(key, result);
+        return result;
+      }
+    }
+    const missing = {
+      image: "",
+      imageStatus: "missing",
+      imageSource: data.source || "place-image-search",
+      imageCandidates: candidates.slice(0, 6),
+    };
+    placeImageCache.set(key, missing);
+    return missing;
+  } catch (error) {
+    console.warn("Dynamic place image lookup failed", payload, error);
+    const failed = { image: "", imageStatus: "failed", imageSource: "place-image-search", imageCandidates: [] };
+    placeImageCache.set(key, failed);
+    return failed;
+  }
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = [];
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function imagePatchFromLookup(result = {}) {
+  if (!result) return null;
+  if (result.image) {
+    return {
+      image: result.image,
+      imageSource: result.imageSource || "",
+      imageLicense: result.imageLicense || "",
+      imageCreator: result.imageCreator || "",
+      imagePageUrl: result.imagePageUrl || "",
+      imageVerifiedAt: result.imageVerifiedAt || new Date().toISOString(),
+      imageStatus: "verified",
+      imageCandidates: result.imageCandidates || [],
+    };
+  }
+  return {
+    image: "",
+    imageStatus: result.imageStatus || "missing",
+    imageSource: result.imageSource || "place-image-search",
+    imageCandidates: result.imageCandidates || [],
+  };
+}
+
+function allPlanStops(plan = {}) {
+  return [
+    ...(plan.days || []).flatMap((day) => day.stops || []),
+    ...(plan.candidates || []),
+  ];
+}
+
+function markPendingPlaceImages(plan = {}) {
+  allPlanStops(plan).forEach((stop) => {
+    if (!shouldLookupSpecificStopImage(stop, plan.destination)) return;
+    if (hasSpecificImage(stop.image)) return;
+    stop.image = "";
+    stop.imageStatus = "pending";
+  });
+  if (isDefaultTripboardImage(plan.cover) || isGeneratedFallbackImage(plan.cover)) plan.cover = "";
+  return plan;
+}
+
+async function enrichPlanImagesBeforeSave(plan = {}, options = {}) {
+  if (!plan || !serviceConfig.placeImageEndpoint) return { checked: 0, imageCount: 0, missingCount: 0 };
+  const stops = allPlanStops(plan)
+    .filter((stop) => shouldLookupSpecificStopImage(stop, plan.destination))
+    .slice(0, options.maxItems || 14);
+  let imageCount = 0;
+  let missingCount = 0;
+  await mapWithConcurrency(stops, options.concurrency || 3, async (stop, index) => {
+    if (options.onProgress) options.onProgress(index + 1, stops.length, stop);
+    const result = await lookupDynamicPlaceImageForStop(stop, { destination: plan.destination, limit: 4, timeoutMs: 14000 });
+    const patch = imagePatchFromLookup(result);
+    if (!patch) return;
+    Object.assign(stop, patch);
+    if (patch.image) imageCount += 1;
+    else missingCount += 1;
+  });
+  if (!isDynamicPlaceImageCandidate(plan.cover)) {
+    const firstImage = allPlanStops(plan).find((stop) => isDynamicPlaceImageCandidate(stop.image))?.image;
+    plan.cover = firstImage || "";
+  }
+  return { checked: stops.length, imageCount, missingCount };
+}
+
 function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl, label = "") {
   if (!element) return "";
   const localMeta = stableImageMetaFromUrl(imageUrl) || stableImageMetaFromUrl(fallbackUrl);
@@ -12946,12 +13149,7 @@ function displayFallbackImageForStop(stop = {}) {
     const meta = stableImageMetaFromUrl(destinationImage || destinationDefaultImage(destinationText) || images.train);
     return fallbackIllustrationImage(stop.title || meta?.label || "交通", meta?.sublabel || "机场、动车与转场");
   }
-  const ruleImage = specificRuleImageForStop(stop);
-  if (ruleImage) {
-    const meta = stableImageMetaFromUrl(ruleImage);
-    if (meta) return fallbackIllustrationImage(meta.label, meta.sublabel || stop.title);
-    return ruleImage;
-  }
+  if (shouldLookupSpecificStopImage(stop)) return "";
   const fallbackLabel = stop.title || stop.amapKeyword || state.destination || state.name || "Tripboard";
   const fallbackSubLabel = /博物馆|Museum|寺|石窟|文化/.test(stopText)
     ? "文化地点 · 图片待补全"
@@ -12962,15 +13160,43 @@ function displayFallbackImageForStop(stop = {}) {
 }
 
 function displayImageForStop(stop = {}) {
-  return isDefaultTripboardImage(stop.image) ? displayFallbackImageForStop(stop) : cleanImageUrl(stop.image);
+  const image = cleanImageUrl(stop.image);
+  if (isDynamicPlaceImageCandidate(image)) return image;
+  return displayFallbackImageForStop(stop);
 }
 
-function shouldLookupSpecificStopImage(stop = {}) {
+function placeImageMetaText(stop = {}) {
+  if (stop.imageStatus === "pending") return "正在查找实景图";
+  if (stop.imageStatus === "missing") return "未找到可用实景图，可手动粘贴图片 URL 或重新查找";
+  if (stop.imageStatus === "failed") return "实景图接口失败，可手动粘贴图片 URL 或重新查找";
+  const source = String(stop.imageSource || "").trim();
+  const license = String(stop.imageLicense || "").trim();
+  if (source || license) return ["图片来源", source, license].filter(Boolean).join(" · ");
+  if (shouldLookupSpecificStopImage(stop)) return serviceConfig.placeImageEndpoint ? "正在查找实景图" : "未配置实景图代理";
+  return "";
+}
+
+function applyPlacePhotoDisplay(stop = {}) {
+  const image = displayImageForStop(stop);
+  const fallback = displayFallbackImageForStop(stop) || missingPlaceImagePlaceholder(stop);
+  setVerifiedBackgroundImage(dom.placePhoto, "--photo", image, fallback, stop.title || state.destination || state.name);
+  const hasRealImage = isDynamicPlaceImageCandidate(image);
+  dom.placePhoto?.classList.toggle("is-missing-image", !hasRealImage && shouldLookupSpecificStopImage(stop));
+  if (dom.placePhotoMeta) {
+    const metaText = placeImageMetaText(stop);
+    const pageUrl = String(stop.imagePageUrl || "").trim();
+    dom.placePhotoMeta.innerHTML = pageUrl && hasRealImage
+      ? `<a href="${escapeHtml(pageUrl)}" target="_blank" rel="noopener">${escapeHtml(metaText || "图片来源")}</a>`
+      : escapeHtml(metaText);
+  }
+}
+
+function shouldLookupSpecificStopImage(stop = {}, destination = state.destination) {
   if (!stop || isPlaceholderStop(stop)) return false;
-  if (specificRuleImageForStop(stop)) return false;
-  const text = `${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${stop.amapKeyword || ""}`;
-  if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(text)) return false;
-  if (/交通|高铁|动车|机场|火车|Transit|抵达|入住|返程|缓冲/.test(text)) return false;
+  if (stop.imageStatus === "missing" || stop.imageStatus === "failed") return false;
+  const text = `${destination || ""} ${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${stop.amapKeyword || ""}`;
+  if (NON_PLACE_IMAGE_TYPES.test(text)) return false;
+  if (!PLACE_IMAGE_TYPES.test(text)) return false;
   return !hasSpecificImage(stop.image);
 }
 
@@ -12996,24 +13222,43 @@ async function updateStopImageAfterLookup(stop, image, reason = "specific-image-
   return true;
 }
 
+async function updateStopImagePatchAfterLookup(stop, patch = {}, reason = "dynamic-place-image-lookup") {
+  if (!stop?.id || !patch || (!patch.image && !patch.imageStatus)) return false;
+  const safePatch = { ...patch };
+  Object.assign(stop, safePatch);
+  if (canEdit() && !isReadonlyMode) {
+    try {
+      const location = findStopLocation(stop.id);
+      if (location) {
+        if (!(await patchStopInDoc(stop.id, safePatch, reason))) {
+          await syncStopListToDoc(location.day?.id, `${reason}-fallback`);
+        }
+      } else if ((state.candidates || []).some((item) => item.id === stop.id)) {
+        if (!(await updateCandidateInDoc(stop.id, safePatch))) {
+          state.candidates = mergedCandidatesWithPatch("update", safePatch, stop.id);
+          await syncCandidatesToDoc(`${reason}-candidate-fallback`);
+        }
+      }
+    } catch (error) {
+      console.warn("Dynamic image sync failed", stop.title, error);
+    }
+  }
+  return true;
+}
+
 function scheduleSpecificImageForStop(stop = {}, options = {}) {
   if (!shouldLookupSpecificStopImage(stop)) return;
   const key = stopImageLookupKey(stop);
   if (!key || specificImageLookupPending.has(key)) return;
   specificImageLookupPending.add(key);
-  lookupSpecificImageForStop(stop)
-    .then(async (image) => {
-      if (!hasSpecificImage(image)) return;
-      const changed = await updateStopImageAfterLookup(stop, image, options.reason || "specific-image-lookup");
+  lookupDynamicPlaceImageForStop(stop)
+    .then(async (result) => {
+      const patch = imagePatchFromLookup(result);
+      if (!patch) return;
+      const changed = await updateStopImagePatchAfterLookup(stop, patch, options.reason || "dynamic-place-image-lookup");
       if (changed && currentStop()?.id === stop.id) {
-        setVerifiedBackgroundImage(
-          dom.placePhoto,
-          "--photo",
-          image,
-          displayFallbackImageForStop(stop) || destinationDefaultImage(state.destination),
-          stop.title || state.destination || state.name,
-        );
-        if (dom.fieldImage && dom.fieldImage.value !== image) dom.fieldImage.value = image;
+        applyPlacePhotoDisplay(stop);
+        if (dom.fieldImage && dom.fieldImage.value !== stop.image) dom.fieldImage.value = stop.image || "";
       }
       if (changed && options.render !== false) {
         renderDays();
@@ -13074,10 +13319,6 @@ function applyPlaceToStop(stop, place) {
     stop.lat = place.lat;
     patch.lat = place.lat;
   }
-  if (place.image && isDefaultTripboardImage(stop.image)) {
-    stop.image = place.image;
-    patch.image = place.image;
-  }
   if (!stop.amapKeyword && (place.title || stop.title)) {
     stop.amapKeyword = place.title || stop.title;
     patch.amapKeyword = place.title || stop.title;
@@ -13090,14 +13331,14 @@ function imageEnrichmentCandidates() {
   state.days.forEach((day) => {
     (day.stops || []).forEach((stop) => {
       if (isPlaceholderStop(stop)) return;
-      const needsPlace = !stop.lng || !stop.lat || !stop.address || !hasStableDisplayImage(stop);
+      const needsPlace = !stop.lng || !stop.lat || !stop.address || (shouldLookupSpecificStopImage(stop) && !hasSpecificImage(stop.image));
       const keyword = stopPlaceLookupKeyword(stop);
       if (needsPlace && keyword) candidates.push({ type: "stop", day, stop, keyword });
     });
   });
   (state.candidates || []).forEach((stop) => {
     if (isPlaceholderStop(stop)) return;
-    const needsPlace = !stop.lng || !stop.lat || !stop.address || !hasStableDisplayImage(stop);
+    const needsPlace = !stop.lng || !stop.lat || !stop.address || (shouldLookupSpecificStopImage(stop) && !hasSpecificImage(stop.image));
     const keyword = stopPlaceLookupKeyword(stop);
     if (needsPlace && keyword) candidates.push({ type: "candidate", stop, keyword });
   });
@@ -13128,9 +13369,9 @@ async function enrichPlacesFromAmap(options = {}) {
     .filter(Boolean);
   if (!auto && !confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")) return;
   if (!auto) saveVersionSnapshot("补全地点图片前版本");
-  dom.saveState.textContent = serviceConfig.amapEndpoint
-    ? auto ? "正在自动补全默认地点图片..." : `正在通过高德和稳定内置图补全 ${Math.min(candidates.length, 12)} 个地点...`
-    : `正在用稳定内置图补全 ${Math.min(candidates.length, 12)} 个地点...`;
+  dom.saveState.textContent = serviceConfig.placeImageEndpoint
+    ? auto ? "正在自动查找景点实景图..." : `正在查找并验证 ${Math.min(candidates.length, 12)} 个地点的实景图...`
+    : `未配置实景图代理；将只补全坐标，景点图显示待补全。`;
   const fallbackDayIds = new Set();
   let candidateFallback = false;
   let changedStops = 0;
@@ -13142,16 +13383,16 @@ async function enrichPlacesFromAmap(options = {}) {
     checked += 1;
     try {
       const places = serviceConfig.amapEndpoint ? await lookupAmapPlaces(item.keyword, { limit: 3 }) : [];
-      const place = Array.isArray(places) ? places.find((entry) => entry.image) || places[0] : null;
-      const fallbackImage = !hasSpecificImage(item.stop.image)
-        ? await lookupSpecificImageForStop(item.stop)
-        : "";
-      if (!place && !fallbackImage) continue;
+      const place = Array.isArray(places) ? places[0] : null;
+      const dynamicImagePatch = !hasSpecificImage(item.stop.image)
+        ? imagePatchFromLookup(await lookupDynamicPlaceImageForStop(item.stop))
+        : null;
+      if (!place && !dynamicImagePatch) continue;
       const hadRealImage = hasSpecificImage(item.stop.image);
       const patch = place ? (applyPlaceToStop(item.stop, place) || {}) : {};
-      if (fallbackImage && !hasSpecificImage(item.stop.image)) {
-        item.stop.image = fallbackImage;
-        patch.image = fallbackImage;
+      if (dynamicImagePatch && !hasSpecificImage(item.stop.image)) {
+        Object.assign(item.stop, dynamicImagePatch);
+        Object.assign(patch, dynamicImagePatch);
       }
       if (Object.keys(patch).length) {
         if (patch.image && !firstNewImage) firstNewImage = patch.image;
@@ -13185,14 +13426,14 @@ async function enrichPlacesFromAmap(options = {}) {
   }
   if (candidateFallback) await syncCandidatesToDoc("local-amap-candidate-enrich-fallback");
   if (!changedStops && !changedCandidates) {
-    if (!auto) dom.saveState.textContent = `已查询 ${checked} 个地点，没有返回可写入的新坐标或真实图片；页面会继续使用稳定内置图。`;
+    if (!auto) dom.saveState.textContent = `已查询 ${checked} 个地点，没有返回可写入的新坐标或真实图片；景点图会显示待补全。`;
     return;
   }
   persistCurrentPlanFromDoc("高德地点资料已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
   await logActivity(`${auto ? "自动" : ""}补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}`);
   await saveCollaborativePlanChange(`${auto ? "自动" : ""}补全地点图片和坐标`);
   render();
-  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增真实图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}；无真实图时使用稳定内置图。`;
+  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增真实图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}；无真实图时显示待补全。`;
 }
 
 function scheduleAutoImageEnrichment(delay = 1200) {
@@ -13421,13 +13662,7 @@ function renderMap() {
 function renderDetail() {
   const stop = currentStop();
   if (!stop) return;
-  setVerifiedBackgroundImage(
-    dom.placePhoto,
-    "--photo",
-    displayImageForStop(stop),
-    displayFallbackImageForStop(stop) || destinationDefaultImage(state.destination),
-    stop.title || state.destination || state.name,
-  );
+  applyPlacePhotoDisplay(stop);
   scheduleSpecificImageForStop(stop, { render: false, reason: "specific-image-detail" });
   dom.placeType.textContent = stop.type || "Place";
   dom.placeTitle.textContent = stop.title;
@@ -13453,6 +13688,7 @@ function renderDetail() {
     dom.fieldLng.value = stop.lng || "";
     dom.fieldLat.value = stop.lat || "";
     dom.fieldImage.value = stop.image || "";
+    if (dom.fieldReferenceUrl) dom.fieldReferenceUrl.value = stop.referenceUrl || "";
     dom.fieldTags.value = (stop.tags || []).join(", ");
   }
   const detailKeyword = dom.fieldAmapKeyword.value || stop.title;
@@ -13460,6 +13696,11 @@ function renderDetail() {
   dom.fieldAmapLink.textContent = `在高德搜索：${detailKeyword}`;
   if (dom.officialImageSearchLink) {
     dom.officialImageSearchLink.href = officialImageSearchUrl({ ...stop, title: dom.fieldTitle.value || stop.title, address: dom.fieldAddress.value || stop.address, amapKeyword: detailKeyword });
+  }
+  const referenceUrl = candidateReferenceUrl({ ...stop, referenceUrl: dom.fieldReferenceUrl?.value || stop.referenceUrl });
+  if (dom.fieldReferenceLink) {
+    dom.fieldReferenceLink.href = referenceUrl;
+    dom.fieldReferenceLink.textContent = "打开参考介绍链接";
   }
 
   renderStopComments(stop);
@@ -13501,12 +13742,13 @@ function renderCandidates() {
         const amountText = money(numberValue(stop.budget) || estimatedTicket);
         const estimateText = !numberValue(stop.budget) && estimatedTicket ? " 估" : "";
         const remoteEditors = remoteRecordEditorNames("candidate", stop.id);
-        const candidateImage = displayImageForStop(stop);
-        const candidateFallback = fallbackIllustrationForStop(stop, "景点图片待补全");
+        const candidateImage = displayImageForStop(stop) || missingPlaceImagePlaceholder(stop);
+        const candidateFallback = displayFallbackImageForStop(stop) || missingPlaceImagePlaceholder(stop);
+        const candidateMissingImage = !isDynamicPlaceImageCandidate(candidateImage) && shouldLookupSpecificStopImage(stop);
         const referenceUrl = candidateReferenceUrl(stop);
         scheduleSpecificImageForStop(stop, { render: true, reason: "specific-image-candidate-card" });
         return `
-        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
+        <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}${candidateMissingImage ? " is-missing-image" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
           <img class="candidate-photo" src="${escapeHtml(candidateImage)}" data-fallback-src="${escapeHtml(candidateFallback)}" alt="" loading="lazy" aria-hidden="true">
           <span class="candidate-main">
             <span class="candidate-kicker">${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}${escapeHtml(category)}</span>
@@ -16940,6 +17182,8 @@ async function createRecommendedPlan() {
   guideState.origin = origin;
   syncGuideDatesFromInputs();
   const days = guideDayCount();
+  dom.guideProgress.textContent = "正在生成路线";
+  dom.saveState.textContent = "正在生成推荐路线...";
   if (!mutate(`生成${destination}${days}天计划`, () => {
     state = buildRecommendedPlan(destination, days, guideState);
     applyPlanDates(state, guideState.startDate, guideState.endDate);
@@ -16953,6 +17197,20 @@ async function createRecommendedPlan() {
     transportFilterApplied = false;
     clearPlanYjsState();
   }, { requireUnlocked: false, save: false, render: false })) return;
+  markPendingPlaceImages(state);
+  render();
+  dom.guideProgress.textContent = "正在查找实景图";
+  dom.saveState.textContent = serviceConfig.placeImageEndpoint ? "正在查找并验证景点实景图..." : "未配置实景图代理，景点图片会显示待补全。";
+  if (serviceConfig.placeImageEndpoint) {
+    await enrichPlanImagesBeforeSave(state, {
+      maxItems: 14,
+      concurrency: 3,
+      onProgress: (current, total, stop) => {
+        dom.guideProgress.textContent = `正在验证图片 ${current}/${total}`;
+        dom.saveState.textContent = `正在验证 ${stop.title || "景点"} 的实景图...`;
+      },
+    });
+  }
   await replacePlanCollabDoc("local-recommended-plan", { allowReplace: true, reason: "recommended-plan" });
   await saveCollaborativePlanChange("已生成推荐计划");
   await broadcastPlanReplaced("生成推荐计划", { replacementType: "recommended-plan" });
@@ -17648,6 +17906,11 @@ async function boot() {
     serviceConfig = { ...serviceConfig, weatherEndpoint: appConfig.amapWeatherProxyUrl };
     serviceClient.saveServiceConfig(serviceConfig);
   }
+  const isPlaceholderPlaceImageEndpoint = /your-project\.supabase\.co\/functions\/v1\/place-image-search|juicyxqblnrmbhtuujez\.supabase\.co\/functions\/v1\/place-image-search/.test(serviceConfig.placeImageEndpoint || "");
+  if ((!serviceConfig.placeImageEndpoint || isPlaceholderPlaceImageEndpoint) && appConfig.placeImageSearchProxyUrl) {
+    serviceConfig = { ...serviceConfig, placeImageEndpoint: appConfig.placeImageSearchProxyUrl };
+    serviceClient.saveServiceConfig(serviceConfig);
+  }
   dom.ctripEndpointInput.value = ctripConfig.endpoint || "";
   dom.ctripTokenInput.value = ctripConfig.token || "";
   dom.aiRouteEndpointInput.value = serviceConfig.aiEndpoint || "";
@@ -17657,6 +17920,7 @@ async function boot() {
   dom.amapJsKeyInput.value = serviceConfig.amapJsKey || "";
   dom.amapSecurityCodeInput.value = serviceConfig.amapSecurityCode || "";
   dom.weatherEndpointInput.value = serviceConfig.weatherEndpoint || "";
+  if (dom.placeImageEndpointInput) dom.placeImageEndpointInput.value = serviceConfig.placeImageEndpoint || "";
   renderServiceStatus();
   if (ctripConfig.endpoint) {
     dom.syncBadge.textContent = "已配置接口";

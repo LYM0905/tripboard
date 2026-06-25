@@ -7,6 +7,7 @@
     amapJsKey: "",
     amapSecurityCode: "",
     weatherEndpoint: "",
+    placeImageEndpoint: "",
   };
   const defaultTokenConfig = {
     endpoint: "",

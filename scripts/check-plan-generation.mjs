@@ -71,18 +71,12 @@ function assertSpecificImage(plan, title, genericImage, label = title) {
   sandbox.state = plan;
   const stop = findStopByTitle(plan, title);
   if (!stop) throw new Error(`Could not find ${title} for image relevance check`);
-  const ruleImage = sandbox.specificRuleImageForStop(stop);
-  const renderedImage = sandbox.displayImageForStop({ ...stop, image: genericImage || stop.image });
-  if (!/^assets\/trip-images\/.+\.svg\?v=/.test(ruleImage)) {
-    throw new Error(`${label} has no built-in stable image rule: ${ruleImage}`);
+  if (!sandbox.shouldLookupSpecificStopImage(stop, plan.destination) && stop.imageStatus !== "pending") {
+    throw new Error(`${label} is not marked for dynamic real-photo lookup.`);
   }
-  if (!/^data:image\/svg\+xml/.test(renderedImage)) {
-    throw new Error(`${label} did not render a local generated stable image.\nExpected a generated SVG from: ${ruleImage}\nActual: ${renderedImage}`);
-  }
-  const decodedImage = decodeURIComponent(renderedImage);
-  const expectedLabel = sandbox.stableImageMetaFromUrl(ruleImage)?.label || title;
-  if (!decodedImage.includes(expectedLabel)) {
-    throw new Error(`${label} rendered a generated image without the expected place label.\nImage: ${decodedImage.slice(0, 320)}`);
+  const renderedImage = sandbox.displayImageForStop({ ...stop, image: genericImage || stop.image, imageStatus: "pending" });
+  if (/assets\/trip-images|assets\/trip-photos/i.test(renderedImage)) {
+    throw new Error(`${label} still renders a bundled/static image: ${renderedImage}`);
   }
 }
 

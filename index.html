@@ -564,6 +564,10 @@
               天气代理
               <input id="weatherEndpointInput" type="url" placeholder="可选；不填则使用 Open-Meteo" />
             </label>
+            <label>
+              图片搜索代理
+              <input id="placeImageEndpointInput" type="url" placeholder="https://your-project.supabase.co/functions/v1/place-image-search" />
+            </label>
             <div class="connector-actions">
               <button type="button" class="primary-btn" id="saveServiceConfigBtn"><i data-lucide="save"></i>保存接口</button>
               <button type="button" class="text-btn" id="syncWeatherBtn"><i data-lucide="cloud-sun"></i>同步天气</button>
@@ -605,6 +609,7 @@
         <section class="place-detail">
           <div class="place-photo" id="placePhoto" role="img"></div>
           <div class="place-body">
+            <p class="photo-meta" id="placePhotoMeta"></p>
             <div class="place-title-row">
               <div>
                 <p class="eyebrow" id="placeType">Place</p>
@@ -646,9 +651,11 @@
             <label>经度<input id="fieldLng" name="lng" type="number" step="0.000001" placeholder="可选" /><span class="text-presence" id="fieldLngPresence" hidden></span></label>
             <label>纬度<input id="fieldLat" name="lat" type="number" step="0.000001" placeholder="可选" /><span class="text-presence" id="fieldLatPresence" hidden></span></label>
             <label class="full">图片 URL<input id="fieldImage" name="image" type="url" placeholder="可粘贴景点官方图或自己上传后的图片地址" /><span class="text-presence" id="fieldImagePresence" hidden></span></label>
+            <label class="full">参考介绍链接<input id="fieldReferenceUrl" name="referenceUrl" type="url" placeholder="景区官网、百科或攻略介绍链接" /></label>
             <label class="full">标签<input id="fieldTags" name="tags" placeholder="用逗号分隔，比如 必去,日落,需预约" /><span class="text-presence" id="fieldTagsPresence" hidden></span></label>
             <label class="full">备注<textarea id="fieldNote" name="note" rows="4" placeholder="写下预订、交通、注意事项"></textarea><span class="text-presence" id="fieldNotePresence" hidden></span><small class="field-hint" id="noteCollabStatus">名称、类型、地址、高德关键词和备注会随计划保存</small></label>
             <a class="map-link full" id="fieldAmapLink" href="#" target="_blank" rel="noopener">生成后可打开高德搜索</a>
+            <a class="map-link full" id="fieldReferenceLink" href="#" target="_blank" rel="noopener">参考介绍链接会显示在这里</a>
             <div class="amap-place-results full" id="fieldAmapCandidates" hidden></div>
             <div class="form-actions full">
               <button type="button" class="text-btn" id="amapLookupBtn"><i data-lucide="map-pinned"></i>生成高德链接</button>
@@ -834,12 +841,12 @@ Response: { "source": "searchapi-google-flights", "items": [{ "type": "flight", 
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=stable-images-v1"></script>
-    <script src="tripboard-constants.js?v=stable-images-v1"></script>
-    <script src="tripboard-utils.js?v=stable-images-v1"></script>
-    <script src="tripboard-plan-store.js?v=stable-images-v1"></script>
-    <script src="tripboard-service-client.js?v=stable-images-v1"></script>
-    <script src="tripboard-service-api.js?v=stable-images-v1"></script>
-    <script src="script.js?v=stable-images-v1"></script>
+    <script src="config.js?v=dynamic-images-v1"></script>
+    <script src="tripboard-constants.js?v=dynamic-images-v1"></script>
+    <script src="tripboard-utils.js?v=dynamic-images-v1"></script>
+    <script src="tripboard-plan-store.js?v=dynamic-images-v1"></script>
+    <script src="tripboard-service-client.js?v=dynamic-images-v1"></script>
+    <script src="tripboard-service-api.js?v=dynamic-images-v1"></script>
+    <script src="script.js?v=dynamic-images-v1"></script>
   </body>
 </html>
