@@ -1011,6 +1011,7 @@ async function renderAmapSdkMap(day) {
       },
     });
     marker.on("click", () => {
+      userSelectedStop = true;
       switchActiveStop(index);
     });
     amapMap.add(marker);
@@ -1867,17 +1868,106 @@ function ensurePlanOrigin(plan) {
 
 function sanitizePlanImages(plan) {
   if (!plan || typeof plan !== "object") return plan;
-  const destination = plan.destination || plan.name || "";
   const currentCover = cleanImageUrl(plan.cover);
-  plan.cover = currentCover && isDynamicPlaceImageCandidate(currentCover) ? currentCover : "";
+  plan.cover = currentCover && isDynamicPlaceImageCandidate(currentCover) && !isLegacyRemoteImageUrl(currentCover) ? currentCover : "";
+  const clearStopImage = (stop) => {
+    stop.image = "";
+    stop.imageStatus = "";
+    stop.imageSource = "";
+    stop.imageCandidates = [];
+    stop.imageLookupVersion = "";
+    stop.imageVerifiedAt = "";
+    stop.imagePageUrl = "";
+    stop.imageLicense = "";
+    stop.imageCreator = "";
+  };
   const normalizeStopImage = (stop) => {
     if (!stop || typeof stop !== "object") return;
     const image = cleanImageUrl(stop.image);
+    const text = `${stop.title || ""} ${stop.type || ""} ${(stop.tags || []).join(" ")}`;
+    const shouldClear =
+      (stop.image && (!image || !isDynamicPlaceImageCandidate(image) || isLegacyRemoteImageUrl(image))) ||
+      isPlaceholderStop(stop, plan.destination || plan.name || "") ||
+      NON_PLACE_IMAGE_TYPES.test(text) ||
+      isLegacyRemoteImageUrl(image);
+    if (shouldClear) {
+      clearStopImage(stop);
+      return;
+    }
     stop.image = image && isDynamicPlaceImageCandidate(image) ? image : "";
+    stop.imageCandidates = normalizedImageCandidateList(stop);
   };
   (plan.days || []).forEach((day) => (day.stops || []).forEach(normalizeStopImage));
   (plan.candidates || []).forEach(normalizeStopImage);
   return plan;
+}
+
+function repairKnownPlanStop(stop = {}, dayIndex = -1, plan = {}) {
+  const destination = `${plan.destination || ""} ${plan.name || ""}`;
+  if (!/青海/.test(destination) || !isPlaceholderStop(stop, plan.destination || plan.name || "")) return stop;
+  const tags = (stop.tags || []).join(" ");
+  const image = String(stop.image || "");
+  if (dayIndex === 0 && /集合|高原适应/.test(tags)) {
+    return {
+      ...stop,
+      title: "西宁集合与高原适应",
+      type: "Transit",
+      address: stop.address && stop.address !== "地址待确认" ? stop.address : "西宁市区",
+      note: stop.note || "抵达后先集合、补水并适应海拔，把第二天环湖交通确认好。",
+      amapKeyword: stop.amapKeyword || "西宁 市区",
+    };
+  }
+  if (dayIndex === 0 && /文化|门票/.test(tags) && /a4aa82164c6240d1743bcf4470709678/.test(image)) {
+    return {
+      ...stop,
+      title: "塔尔寺",
+      type: "Temple",
+      address: stop.address && stop.address !== "地址待确认" ? stop.address : "西宁市湟中区金塔路56号",
+      note: stop.note || "青海经典文化点，建议预留讲解时间；注意尊重寺院拍摄规则。",
+      amapKeyword: stop.amapKeyword || "青海 塔尔寺",
+    };
+  }
+  if (dayIndex === 2 && /自然|门票/.test(tags)) {
+    return {
+      ...stop,
+      title: "茶卡盐湖",
+      type: "Lake",
+      address: stop.address && stop.address !== "地址待确认" ? stop.address : "海西蒙古族藏族自治州乌兰县茶卡镇",
+      note: stop.note || "天气好时倒影效果更好，建议穿防滑鞋并注意防晒。",
+      amapKeyword: stop.amapKeyword || "青海 茶卡盐湖",
+    };
+  }
+  if (dayIndex === 3 && /edit/i.test(String(stop.type || ""))) {
+    return {
+      ...stop,
+      title: "西宁返程前自由补完",
+      type: "Walk",
+      address: stop.address && stop.address !== "地址待确认" ? stop.address : "西宁市区",
+      note: stop.note || "预留补拍、购物或临时调整时间。",
+      amapKeyword: stop.amapKeyword || "西宁 市区 景点",
+    };
+  }
+  return stop;
+}
+
+function repairPlanStructure(plan = {}) {
+  if (!plan || typeof plan !== "object") return plan;
+  (plan.days || []).forEach((day, dayIndex) => {
+    const seenIds = new Set();
+    const seenSemantic = new Set();
+    day.stops = (day.stops || [])
+      .map((stop) => repairKnownPlanStop(stop, dayIndex, plan))
+      .filter((stop) => {
+        const id = String(stop?.id || "");
+        const semantic = `${stop?.title || ""}|${stop?.type || ""}|${stop?.time || ""}|${stop?.address || ""}`.toLowerCase();
+        if (id && seenIds.has(id)) return false;
+        if (seenSemantic.has(semantic)) return false;
+        if (id) seenIds.add(id);
+        seenSemantic.add(semantic);
+        return true;
+      });
+  });
+  return sanitizePlanImages(plan);
 }
 
 function planStopsForCover(plan = {}) {
@@ -1911,12 +2001,12 @@ function normalizePlanCover(plan = {}) {
 function ensurePlanDates(plan) {
   if (!plan?.days?.length) return plan;
   ensurePlanOrigin(plan);
-  sanitizePlanImages(plan);
+  repairPlanStructure(plan);
   if (plan.startDate && plan.endDate && plan.days.every((day) => day.date)) return plan;
   const defaults = defaultGuideDates();
   const startDate = plan.startDate || defaults.startDate;
   const endDate = plan.endDate || formatIsoDate(addDays(parseIsoDate(startDate), plan.days.length - 1));
-  return sanitizePlanImages(applyPlanDates(plan, startDate, endDate));
+  return repairPlanStructure(applyPlanDates(plan, startDate, endDate));
 }
 
 function hasLocalChanges() {
@@ -3056,7 +3146,7 @@ function normalizeCollaborativeStop(stop = {}) {
     imageVerifiedAt: String(stop.imageVerifiedAt || "").trim(),
     imageStatus: String(stop.imageStatus || "").trim(),
     imageLookupVersion: String(stop.imageLookupVersion || "").trim(),
-    imageCandidates: Array.isArray(stop.imageCandidates) ? stop.imageCandidates.slice(0, 6) : [],
+    imageCandidates: normalizedImageCandidateList(stop).slice(0, 8),
     referenceUrl: String(stop.referenceUrl || "").trim(),
   };
 }
@@ -3165,6 +3255,18 @@ function pendingPlanUpdates(id = tripId) {
     .slice(-MAX_PENDING_PLAN_UPDATES);
 }
 
+function freshPendingPlanUpdatesForRemote(id = tripId) {
+  const updates = pendingPlanUpdates(id);
+  const remoteTime = timestampValue(lastRemoteUpdatedAt);
+  if (!remoteTime || !updates.length) return updates;
+  const fresh = updates.filter((entry) => {
+    const entryTime = timestampValue(entry.at);
+    return entryTime && entryTime > remoteTime;
+  });
+  if (fresh.length !== updates.length) savePendingPlanUpdates(fresh, id);
+  return fresh;
+}
+
 function pendingPlanUpdateIds() {
   return new Set(pendingPlanUpdates().map((entry) => entry.id).filter(Boolean));
 }
@@ -3203,7 +3305,7 @@ function queuePendingPlanUpdate(updateBase64, origin = "local-plan-yjs") {
 
 async function flushPendingPlanUpdates(reason = "重试离线协作更新") {
   if (!tripId || !supabaseClient || isReadonlyMode || !canEdit() || pendingConflict) return false;
-  const updates = pendingPlanUpdates();
+  const updates = freshPendingPlanUpdatesForRemote();
   if (!updates.length) return true;
   const replayedIds = new Set(updates.map((entry) => entry.id).filter(Boolean));
   await bindCollabPlanDoc();
@@ -3303,7 +3405,7 @@ function normalizeCandidateStops(candidates = []) {
       imageVerifiedAt: String(stop.imageVerifiedAt || "").trim(),
       imageStatus: String(stop.imageStatus || "").trim(),
       imageLookupVersion: String(stop.imageLookupVersion || "").trim(),
-      imageCandidates: Array.isArray(stop.imageCandidates) ? stop.imageCandidates.slice(0, 6) : [],
+      imageCandidates: normalizedImageCandidateList(stop).slice(0, 8),
       referenceUrl: String(stop.referenceUrl || "").trim(),
       createdBy: stop.createdBy || "",
       createdAt: stop.createdAt || new Date().toISOString(),
@@ -3716,7 +3818,7 @@ function readStopListsFromDoc() {
     const stopArray = collabStopListsMap.get(dayId);
     lists[dayId] = stopArray && typeof stopArray.toArray === "function" ? stopArray.toArray().map((stop) => normalizeCollaborativeStop(stop)) : normalizeStopListsFromDays([fallbackDay])[dayId] || [];
   });
-  return lists;
+  return sanitizeStopListsForPlan(lists, state);
 }
 
 function readStopTextStatesFromDoc() {
@@ -3758,7 +3860,7 @@ function readDayBlocksFromDoc() {
 }
 
 function readCandidatesFromDoc() {
-  return normalizeCandidateStops(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || []);
+  return sanitizedCandidatesForPlan(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || [], state);
 }
 
 function mergedTransportQuotesWithPatch(mode, quote = null, quoteId = "") {
@@ -4005,6 +4107,25 @@ function stopListOrderSnapshot(stopLists = {}) {
   return snapshot;
 }
 
+function sanitizeStopListsForPlan(stopLists = {}, plan = state) {
+  const repairedPlan = repairPlanStructure({
+    ...clone(plan || {}),
+    days: (plan?.days || []).map((day) => ({
+      ...day,
+      stops: Array.isArray(stopLists?.[day.id]) ? clone(stopLists[day.id]) : clone(day.stops || []),
+    })),
+  });
+  return normalizeStopListsFromDays(repairedPlan.days || []);
+}
+
+function sanitizedCandidatesForPlan(candidates = [], plan = state) {
+  const repairedPlan = repairPlanStructure({
+    ...clone(plan || {}),
+    candidates: clone(candidates || []),
+  });
+  return normalizeCandidateStops(repairedPlan.candidates || []);
+}
+
 function refreshRealtimePlanViews() {
   renderShell();
   renderDays();
@@ -4128,6 +4249,7 @@ function persistCurrentPlanFromDoc(label = "计划结构协作内容已实时同
     state[`${field}Yjs`] = nextSettingTextStates[field] || "";
   });
   if (!state.dateRange && state.startDate && state.endDate) state.dateRange = dateRangeText(state.startDate, state.endDate);
+  repairPlanStructure(state);
   syncGuideStateFromPlan();
   persistLocalState();
   if (updateStatus) dom.collabStatus.textContent = label;
@@ -4207,6 +4329,19 @@ async function refreshLiveCollabStateBeforeRemoteSave(label = "保存前已刷�
   if (collabPlanDoc) {
     persistCurrentPlanFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
   }
+}
+
+async function prepareStateForRemoteSave(label = "保存前已清理图片与协作快照") {
+  repairPlanStructure(state);
+  if (!tripId || isReadonlyMode || !canEdit()) return;
+  try {
+    await replacePlanCollabDoc("local-clean-remote-save", { allowReplace: true, reason: "conflict-keep" });
+    persistCurrentPlanFromDoc(label, { refreshViews: false, scheduleSave: false, updateStatus: false });
+  } catch (error) {
+    console.warn("Clean remote save snapshot rebuild failed", error);
+    state.planYjs = planYjsSnapshotFromPlan(state);
+  }
+  repairPlanStructure(state);
 }
 
 async function ensureRemotePlanYjsSnapshot(label = "已补齐计划结构协作快照") {
@@ -4389,6 +4524,26 @@ function seedMissingPlanDocContent(Y) {
         stopArray.insert(index, [localStop]);
       });
     });
+    const cleanedStopLists = sanitizeStopListsForPlan(readStopListsFromDoc(), state);
+    (state.days || []).forEach((day) => {
+      if (!day?.id) return;
+      let stopArray = collabStopListsMap.get(day.id);
+      if (!stopArray || typeof stopArray.toArray !== "function") {
+        stopArray = new Y.Array();
+        collabStopListsMap.set(day.id, stopArray);
+      }
+      const cleanedStops = cleanedStopLists[day.id] || [];
+      if (!sameSerialized(stopArray.toArray().map((stop) => normalizeCollaborativeStop(stop)), cleanedStops)) {
+        stopArray.delete(0, stopArray.length);
+        if (cleanedStops.length) stopArray.insert(0, cleanedStops);
+      }
+    });
+    const rawCandidates = normalizeCandidateStops(collabCandidatesArray ? collabCandidatesArray.toArray() : state.candidates || []);
+    const cleanedCandidates = sanitizedCandidatesForPlan(rawCandidates, state);
+    if (collabCandidatesArray && !sameSerialized(rawCandidates, cleanedCandidates)) {
+      collabCandidatesArray.delete(0, collabCandidatesArray.length);
+      if (cleanedCandidates.length) collabCandidatesArray.insert(0, cleanedCandidates);
+    }
   }, "restore");
 }
 
@@ -4400,7 +4555,7 @@ function planDocMatchesCurrentState() {
     sameSerialized(dayBlockTextValueSnapshotFromDays(state.days || []), readDayBlockTextValuesFromDoc()) &&
     sameSerialized(settingTextStateSnapshotFromPlan(state, yjsModule), readSettingTextStatesFromDoc()) &&
     sameSerialized(settingTextValueSnapshotFromPlan(state), readSettingTextValuesFromDoc()) &&
-    sameSerialized(stopListOrderSnapshot(normalizeStopListsFromDays(state.days || [])), stopListOrderSnapshot(readStopListsFromDoc())) &&
+    sameSerialized(normalizeStopListsFromDays(state.days || []), readStopListsFromDoc()) &&
     sameSerialized(stopTextStateSnapshotFromDays(state.days || [], yjsModule), readStopTextStatesFromDoc()) &&
     sameSerialized(normalizeDayBlocksFromDays(state.days || []), readDayBlocksFromDoc()) &&
     sameSerialized(normalizeTransportQuotes(state.transportQuotes || []), readTransportQuotesFromDoc()) &&
@@ -9336,6 +9491,7 @@ const planStore = window.createTripboardPlanStore({
 let state = ensurePlanDates(loadState());
 let activeDay = 0;
 let activeStop = 0;
+let userSelectedStop = false;
 let pendingProvider = "";
 let quickAmapPlace = null;
 let lastAmapRouteRequest = null;
@@ -10454,6 +10610,7 @@ async function pushRemoteState(label = "已同步云端", options = {}) {
     }
   }
   await refreshLiveCollabStateBeforeRemoteSave("保存云端前已刷新协作快照");
+  await prepareStateForRemoteSave("保存云端前已清理图片与协作快照");
   const savingPendingIds = pendingPlanUpdateIds();
   const payload = {
     id: tripId,
@@ -10561,16 +10718,11 @@ async function loadRemoteState() {
   if (!supabaseClient || !tripId) return;
   const data = await fetchRemotePlan();
   if (data?.data?.days?.length) {
-    const remoteHadPlanYjs = Boolean(data.data.planYjs);
     saveVersionSnapshot("载入云端前版本");
     await applyRemotePlan(data.data, { updatedAt: data.updated_at || "" });
-    if (!remoteHadPlanYjs && !isReadonlyMode) {
-      ensureRemotePlanYjsSnapshot("已为旧共享计划补齐协作快照").catch((error) => {
-        dom.collabStatus.textContent = `补齐旧计划协作快照失败：${error.message}`;
-      });
-    }
     dom.saveState.textContent = `已载入共享计划`;
     persistLocalState(state, { id: sharedLocalPlanId(), label: state.name || "共享计划", tripId });
+    freshPendingPlanUpdatesForRemote();
     dom.collabStatus.textContent = isReadonlyMode
       ? data.updated_by
         ? `只读查看，最近由 ${data.updated_by} 更新`
@@ -10768,6 +10920,19 @@ function currentDay() {
 function currentStop() {
   const day = currentDay();
   return day?.stops[activeStop] || day?.stops[0];
+}
+
+function stabilizeActiveStopForDetailImage() {
+  const day = currentDay();
+  const stops = Array.isArray(day?.stops) ? day.stops : [];
+  if (!stops.length) return;
+  activeStop = Math.max(0, Math.min(activeStop, stops.length - 1));
+  if (userSelectedStop) return;
+  const stop = stops[activeStop];
+  if (hasVerifiedPlaceImage(stop)) return;
+  const preferred = preferredDetailStop(day);
+  const preferredIndex = preferred ? stops.findIndex((item) => item.id === preferred.id) : -1;
+  if (preferredIndex >= 0 && preferredIndex !== activeStop && hasVerifiedPlaceImage(preferred)) activeStop = preferredIndex;
 }
 
 function guideDayCount() {
@@ -12728,11 +12893,15 @@ function stopPlaceLookupKeyword(stop = {}) {
     .find(Boolean) || "";
 }
 
-function isPlaceholderStop(stop = {}, destination = state.destination) {
+function isPlaceholderStop(stop = {}, destination = "") {
   const title = String(stop.title || "").trim();
   const keyword = String(stop.amapKeyword || "").trim();
   const type = String(stop.type || "").trim();
-  return /待填写地点|备选景点|自由探索时段|返程缓冲|外部记录/.test(title) || /Draft|Idea|Flexible/.test(type) || (keyword && keyword === String(destination || "").trim());
+  const destinationText = destination || (typeof state !== "undefined" ? state.destination : "");
+  return !title ||
+    /未命名地点|新地点|待填写地点|备选景点|自由探索时段|返程缓冲|外部记录/.test(title) ||
+    /Draft|Idea|Flexible/.test(type) ||
+    (keyword && keyword === String(destinationText || "").trim());
 }
 
 function stopImageLookupKey(stop = {}) {
@@ -12766,11 +12935,15 @@ function isGeneratedFallbackImage(value = "") {
   return /^data:image\/svg\+xml/i.test(String(value || "").trim());
 }
 
+function isLegacyRemoteImageUrl(value = "") {
+  return /images\.unsplash\.com|p\d+\.itc\.cn|k\.sinaimg\.cn|images\.weserv\.nl/i.test(String(value || ""));
+}
+
 function isDynamicPlaceImageCandidate(value = "") {
   const url = cleanImageUrl(value);
   if (!url || /^data:image\//i.test(url)) return false;
   if (/\.svg(?:[?#]|$)/i.test(url)) return false;
-  return !isDefaultTripboardImage(url) && !isGeneratedFallbackImage(url);
+  return !isDefaultTripboardImage(url) && !isGeneratedFallbackImage(url) && !isLegacyRemoteImageUrl(url);
 }
 
 function hasSpecificImage(value = "") {
@@ -12778,7 +12951,44 @@ function hasSpecificImage(value = "") {
   return Boolean(url && !isDefaultTripboardImage(url) && !isGeneratedFallbackImage(url));
 }
 
+function imageCandidateInputUrl(candidate = {}) {
+  if (typeof candidate === "string") return cleanImageUrl(candidate);
+  if (!candidate || typeof candidate !== "object") return "";
+  return cleanImageUrl(candidate.url || candidate.image || candidate.src || candidate.href || "");
+}
+
+function normalizedImageCandidateList(stop = {}) {
+  const candidates = [
+    ...(Array.isArray(stop.imageCandidates) ? stop.imageCandidates : []),
+    stop.image ? {
+      url: stop.image,
+      source: stop.imageSource || "",
+      license: stop.imageLicense || "",
+      creator: stop.imageCreator || "",
+      pageUrl: stop.imagePageUrl || "",
+      title: stop.title || "",
+      verifiedAt: stop.imageVerifiedAt || "",
+    } : null,
+  ]
+    .filter(Boolean)
+    .map((candidate) => {
+      if (typeof candidate === "string") {
+        return {
+          url: candidate,
+          source: stop.imageSource || "",
+          title: stop.title || "",
+          verifiedAt: cleanImageUrl(candidate) === cleanImageUrl(stop.image) ? stop.imageVerifiedAt || "" : "",
+        };
+      }
+      return candidate;
+    })
+    .map(normalizePlaceImageCandidate)
+    .filter(Boolean);
+  return rankedImageCandidates(candidates).slice(0, 8);
+}
+
 function hasVerifiedPlaceImage(stop = {}) {
+  if (isPlaceholderStop(stop)) return false;
   const image = cleanImageUrl(stop.image);
   if (!isDynamicPlaceImageCandidate(image)) return false;
   const status = String(stop.imageStatus || "").trim().toLowerCase();
@@ -12919,29 +13129,120 @@ function missingPlaceImagePlaceholder(stop = {}) {
   return fallbackIllustrationImage(stop.title || stop.amapKeyword || "图片待补全", "未找到可用实景图");
 }
 
+function imageUrlReliabilityScore(value = "") {
+  const url = cleanImageUrl(value);
+  if (!url || /^data:image\//i.test(url) || /\.svg(?:[?#]|$)/i.test(url)) return -1000;
+  if (/store\.is\.autonavi\.com\/showpic/i.test(url)) return 100;
+  if (/upload\.wikimedia\.org/i.test(url)) return 86;
+  if (/commons\.wikimedia\.org|wikimedia\.org|wikipedia\.org/i.test(url)) return 72;
+  if (/aos-comment\.amap\.com|aos-cdn-image\.amap\.com/i.test(url)) return 46;
+  if (/images\.unsplash\.com/i.test(url)) return 10;
+  return 34;
+}
+
+function imageCandidateReliabilityScore(candidate = {}) {
+  const record = typeof candidate === "string" ? { url: candidate } : candidate;
+  let score = imageUrlReliabilityScore(record.url || record.image || "");
+  const title = String(record.title || "").trim();
+  const source = String(record.source || "").trim();
+  if (/Amap POI/i.test(source)) score += 8;
+  if (/Wikimedia Commons|Openverse/i.test(source)) score += 3;
+  if (/停车场|售票|票务|游客中心|服务中心|公共厕所|出入口|公交|车站|酒店|餐厅|民宿/i.test(title)) score -= 30;
+  if (/景区|风景区|博物馆|寺|湖|山|盐湖|花海|草原|湿地|森林/i.test(title)) score += 12;
+  return score;
+}
+
+function rankedImageCandidates(candidates = []) {
+  const seen = new Set();
+  return (Array.isArray(candidates) ? candidates : [])
+    .map(normalizePlaceImageCandidate)
+    .filter(Boolean)
+    .filter((candidate) => {
+      const key = candidate.url.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => imageCandidateReliabilityScore(b) - imageCandidateReliabilityScore(a));
+}
+
+function imageCandidateUrlsForStop(stop = {}, preferred = stop.image) {
+  const candidates = [
+    ...(Array.isArray(stop.imageCandidates) ? stop.imageCandidates : []),
+    preferred ? {
+      url: preferred,
+      source: stop.imageSource || "",
+      title: stop.title || "",
+      verifiedAt: stop.imageVerifiedAt || "",
+    } : null,
+  ].filter(Boolean);
+  return uniqueTexts(rankedImageCandidates(candidates).map((candidate) => candidate.url)).filter(Boolean);
+}
+
+function encodeImageCandidateUrls(urls = []) {
+  const cleaned = uniqueTexts((Array.isArray(urls) ? urls : []).map(cleanImageUrl)).filter(Boolean).slice(0, 8);
+  return encodeURIComponent(JSON.stringify(cleaned));
+}
+
+function decodeImageCandidateUrls(value = "") {
+  try {
+    const parsed = JSON.parse(decodeURIComponent(String(value || "")));
+    return Array.isArray(parsed) ? uniqueTexts(parsed.map(cleanImageUrl)).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function fallbackSourceQueue(image) {
+  const source = cleanImageUrl(image?.getAttribute("src"));
+  const candidates = decodeImageCandidateUrls(image?.dataset?.imageCandidates || "");
+  const fallback = cleanImageUrl(image?.dataset?.fallbackSrc);
+  if (/^data:image\//i.test(source) && candidates.length) return uniqueTexts([...candidates, source, fallback]).filter(Boolean);
+  return uniqueTexts([source, ...candidates, fallback]).filter(Boolean);
+}
+
+function advanceImageFallback(image) {
+  if (!image?.isConnected) return;
+  const queue = fallbackSourceQueue(image);
+  const current = cleanImageUrl(image.getAttribute("src"));
+  const currentIndex = Math.max(0, queue.indexOf(current));
+  const next = queue.slice(currentIndex + 1).find((url) => url && url !== current);
+  if (!next) return;
+  image.dataset.fallbackCheckedSrc = "";
+  image.setAttribute("src", next);
+  validateFallbackImage(image);
+}
+
+function validateFallbackImage(image) {
+  const source = cleanImageUrl(image?.getAttribute("src"));
+  if (!source || image?.dataset?.fallbackCheckedSrc === source) return;
+  if (/^data:image\//i.test(source)) {
+    const next = fallbackSourceQueue(image).find((url) => url && url !== source && !/^data:image\//i.test(url));
+    if (next) {
+      image.dataset.fallbackCheckedSrc = "";
+      image.setAttribute("src", next);
+      validateFallbackImage(image);
+    }
+    return;
+  }
+  if (image.complete && image.naturalWidth) return;
+  image.dataset.fallbackCheckedSrc = source;
+  const trusted = image.dataset.trustedSrc === "true";
+  testImageLoad(source, trusted ? 7800 : 4600).then((ok) => {
+    if (!image.isConnected || image.getAttribute("src") !== source) return;
+    if (ok || image.naturalWidth) return;
+    advanceImageFallback(image);
+  });
+}
+
 function bindImageFallbacks(root = document) {
   root.querySelectorAll?.("img[data-fallback-src]").forEach((image) => {
-    const applyFallback = () => {
-      const fallback = cleanImageUrl(image.dataset.fallbackSrc);
-      if (!fallback || image.getAttribute("src") === fallback) return;
-      image.setAttribute("src", fallback);
-    };
     if (image.dataset.fallbackBound !== "true") {
       image.dataset.fallbackBound = "true";
-      image.addEventListener("error", applyFallback);
+      image.addEventListener("error", () => advanceImageFallback(image));
     }
-    if (image.dataset.trustedSrc === "true") return;
-    if (image.complete && !image.naturalWidth) {
-      applyFallback();
-      return;
-    }
-    const source = cleanImageUrl(image.getAttribute("src"));
-    const fallback = cleanImageUrl(image.dataset.fallbackSrc);
-    if (!source || source === fallback || /^data:image\//i.test(source) || image.dataset.fallbackCheckedSrc === source) return;
-    image.dataset.fallbackCheckedSrc = source;
-    testImageLoad(source, 4200).then((ok) => {
-      if (!ok && image.isConnected && image.getAttribute("src") === source) applyFallback();
-    });
+    if (image.complete && !image.naturalWidth) advanceImageFallback(image);
+    else validateFallbackImage(image);
   });
 }
 
@@ -12976,18 +13277,19 @@ function testImageLoad(url = "", timeout = 3200) {
 }
 
 function normalizePlaceImageCandidate(candidate = {}) {
-  const url = cleanImageUrl(candidate.url || candidate.image || "");
+  const record = typeof candidate === "string" ? { url: candidate } : candidate || {};
+  const url = imageCandidateInputUrl(record);
   if (!isDynamicPlaceImageCandidate(url)) return null;
   return {
     url,
-    source: String(candidate.source || "").trim(),
-    license: String(candidate.license || "").trim(),
-    creator: String(candidate.creator || "").trim(),
-    pageUrl: String(candidate.pageUrl || candidate.foreign_landing_url || "").trim(),
-    width: Number(candidate.width || 0) || 0,
-    height: Number(candidate.height || 0) || 0,
-    title: String(candidate.title || "").trim(),
-    verifiedAt: String(candidate.verifiedAt || "").trim(),
+    source: String(record.source || "").trim(),
+    license: String(record.license || "").trim(),
+    creator: String(record.creator || "").trim(),
+    pageUrl: String(record.pageUrl || record.foreign_landing_url || "").trim(),
+    width: Number(record.width || 0) || 0,
+    height: Number(record.height || 0) || 0,
+    title: String(record.title || "").trim(),
+    verifiedAt: String(record.verifiedAt || "").trim(),
   };
 }
 
@@ -13020,11 +13322,10 @@ async function lookupDynamicPlaceImageForStop(stop = {}, options = {}) {
     const candidates = (Array.isArray(data.candidates) ? data.candidates : [data.image ? data : null])
       .map(normalizePlaceImageCandidate)
       .filter(Boolean);
+    const rankedCandidates = rankedImageCandidates(candidates);
     const verifiedCandidate =
-      candidates.find((candidate) => candidate.verifiedAt && /Amap POI/i.test(candidate.source || "")) ||
-      candidates.find((candidate) => candidate.verifiedAt) ||
-      candidates.find((candidate) => /Amap POI/i.test(candidate.source || "")) ||
-      candidates[0];
+      rankedCandidates.find((candidate) => candidate.verifiedAt) ||
+      rankedCandidates[0];
     if (verifiedCandidate) {
       const result = {
         image: verifiedCandidate.url,
@@ -13035,7 +13336,7 @@ async function lookupDynamicPlaceImageForStop(stop = {}, options = {}) {
         imageVerifiedAt: verifiedCandidate.verifiedAt || data.verifiedAt || new Date().toISOString(),
         imageStatus: "verified",
         imageLookupVersion: PLACE_IMAGE_LOOKUP_VERSION,
-        imageCandidates: candidates.slice(0, 6),
+        imageCandidates: rankedCandidates.slice(0, 8),
       };
       placeImageCache.set(key, result);
       return result;
@@ -13045,7 +13346,7 @@ async function lookupDynamicPlaceImageForStop(stop = {}, options = {}) {
       imageStatus: "missing",
       imageSource: data.source || "place-image-search",
       imageLookupVersion: PLACE_IMAGE_LOOKUP_VERSION,
-      imageCandidates: candidates.slice(0, 6),
+      imageCandidates: rankedCandidates.slice(0, 8),
     };
     placeImageCache.set(key, missing);
     return missing;
@@ -13146,7 +13447,16 @@ function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl,
   const localMeta = stableImageMetaFromUrl(imageUrl) || stableImageMetaFromUrl(fallbackUrl);
   const finalFallback = fallbackIllustrationImage(localMeta?.label || label, localMeta?.sublabel || "");
   const fallback = cleanImageUrl(fallbackUrl) || finalFallback;
-  const candidate = cleanImageUrl(imageUrl) || fallback;
+  const primary = cleanImageUrl(imageUrl);
+  const optionCandidates = Array.isArray(options.candidates) ? options.candidates.map(cleanImageUrl).filter(Boolean) : [];
+  const queue = uniqueTexts([
+    ...(/^data:image\//i.test(primary) && optionCandidates.some((url) => !/^data:image\//i.test(url)) ? [] : [primary]),
+    ...optionCandidates,
+    ...(/^data:image\//i.test(primary) && optionCandidates.some((url) => !/^data:image\//i.test(url)) ? [primary] : []),
+    fallback,
+    finalFallback,
+  ]).filter(Boolean);
+  const candidate = queue[0] || fallback;
   const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   if (localMeta && isDefaultTripboardImage(candidate)) {
     element.dataset.imageToken = token;
@@ -13156,24 +13466,37 @@ function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl,
   }
   element.dataset.imageToken = token;
   element.dataset.imageUrl = candidate;
+  element.dataset.imageCandidates = encodeImageCandidateUrls(queue);
   element.style.setProperty(cssVariable, cssImageUrl(candidate));
-  if (options.trusted && isDynamicPlaceImageCandidate(candidate)) return candidate;
-  if (/^data:image\//i.test(candidate)) return candidate;
-  testImageLoad(candidate).then((ok) => {
-    if (!ok && element.dataset.imageToken === token) {
-      element.dataset.imageUrl = fallback;
-      element.style.setProperty(cssVariable, cssImageUrl(fallback));
-      if (fallback !== finalFallback && !/^data:image\//i.test(fallback)) {
-        testImageLoad(fallback).then((fallbackOk) => {
-          if (!fallbackOk && element.dataset.imageToken === token) {
-            element.dataset.imageUrl = finalFallback;
-            element.style.setProperty(cssVariable, cssImageUrl(finalFallback));
-          }
-        });
-      }
-    }
-  });
+  if (/^data:image\//i.test(candidate)) {
+    testBackgroundImageQueue(element, cssVariable, token, options.trusted ? 7600 : 4200);
+    return candidate;
+  }
+  testBackgroundImageQueue(element, cssVariable, token, options.trusted ? 7600 : 4200);
   return candidate;
+}
+
+function testBackgroundImageQueue(element, cssVariable, token, timeout = 4200) {
+  const queue = decodeImageCandidateUrls(element?.dataset?.imageCandidates || "");
+  const current = cleanImageUrl(element?.dataset?.imageUrl);
+  if (!element || !current) return;
+  if (/^data:image\//i.test(current)) {
+    const next = queue.find((url) => url && url !== current && !/^data:image\//i.test(url));
+    if (!next || element.dataset.imageToken !== token) return;
+    element.dataset.imageUrl = next;
+    element.style.setProperty(cssVariable, cssImageUrl(next));
+    testBackgroundImageQueue(element, cssVariable, token, timeout);
+    return;
+  }
+  testImageLoad(current, timeout).then((ok) => {
+    if (ok || element.dataset.imageToken !== token || cleanImageUrl(element.dataset.imageUrl) !== current) return;
+    const currentIndex = Math.max(0, queue.indexOf(current));
+    const next = queue.slice(currentIndex + 1).find((url) => url && url !== current);
+    if (!next) return;
+    element.dataset.imageUrl = next;
+    element.style.setProperty(cssVariable, cssImageUrl(next));
+    if (!/^data:image\//i.test(next)) testBackgroundImageQueue(element, cssVariable, token, timeout);
+  });
 }
 
 function displayFallbackImageForStop(stop = {}) {
@@ -13201,6 +13524,16 @@ function displayImageForStop(stop = {}) {
   return displayFallbackImageForStop(stop);
 }
 
+function preferredDetailStop(day = currentDay()) {
+  const stops = Array.isArray(day?.stops) ? day.stops : [];
+  const concreteStops = stops.filter((stop) => !isPlaceholderStop(stop));
+  return concreteStops.find((stop) => hasVerifiedPlaceImage(stop)) ||
+    concreteStops.find((stop) => shouldLookupSpecificStopImage(stop)) ||
+    concreteStops[0] ||
+    stops[0] ||
+    null;
+}
+
 function placeImageMetaText(stop = {}) {
   if (stop.imageStatus === "pending") return "正在查找实景图";
   if (stop.imageStatus === "missing") return "未找到可用实景图，可手动粘贴图片 URL 或重新查找";
@@ -13216,7 +13549,10 @@ function applyPlacePhotoDisplay(stop = {}) {
   const image = displayImageForStop(stop);
   const fallback = displayFallbackImageForStop(stop) || missingPlaceImagePlaceholder(stop);
   const trusted = hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cleanImageUrl(image);
-  setVerifiedBackgroundImage(dom.placePhoto, "--photo", image, fallback, stop.title || state.destination || state.name, { trusted });
+  setVerifiedBackgroundImage(dom.placePhoto, "--photo", image, fallback, stop.title || state.destination || state.name, {
+    trusted,
+    candidates: imageCandidateUrlsForStop(stop, image),
+  });
   const hasRealImage = isDynamicPlaceImageCandidate(image);
   dom.placePhoto?.classList.toggle("is-missing-image", !hasRealImage && shouldLookupSpecificStopImage(stop));
   if (dom.placePhotoMeta) {
@@ -13327,8 +13663,9 @@ function scheduleSpecificCoverImage() {
       if (!isDynamicPlaceImageCandidate(image)) continue;
       state.cover = image;
       const fallback = fallbackIllustrationForStop(stop, "Trip cover image pending");
-      setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", image, fallback, stop.title || state.destination || state.name, { trusted: true });
-      setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", image, fallback, stop.title || state.destination || state.name, { trusted: true });
+      const coverCandidates = imageCandidateUrlsForStop(stop, image);
+      setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", image, fallback, stop.title || state.destination || state.name, { trusted: true, candidates: coverCandidates });
+      setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", image, fallback, stop.title || state.destination || state.name, { trusted: true, candidates: coverCandidates });
       dom.tripCover?.classList.remove("is-missing-image");
       document.querySelector(".template-card")?.classList.remove("is-missing-image");
       if (canEdit() && !isReadonlyMode) {
@@ -13535,8 +13872,10 @@ function renderShell() {
   const coverImage = displayCoverImage();
   const coverFallback = fallbackIllustrationImage(state.destination || state.name || "封面图片待补全", "封面实景图待补全");
   const trustedCover = hasTrustedCoverImage(state, coverImage);
-  setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", coverImage, coverFallback, state.destination || state.name, { trusted: trustedCover });
-  setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", coverImage, coverFallback, state.destination || state.name, { trusted: trustedCover });
+  const coverStop = allPlanStops(state).find((stop) => hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cleanImageUrl(coverImage));
+  const coverCandidates = coverStop ? imageCandidateUrlsForStop(coverStop, coverImage) : [];
+  setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", coverImage, coverFallback, state.destination || state.name, { trusted: trustedCover, candidates: coverCandidates });
+  setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", coverImage, coverFallback, state.destination || state.name, { trusted: trustedCover, candidates: coverCandidates });
   dom.tripCover?.classList.toggle("is-missing-image", !isDynamicPlaceImageCandidate(coverImage));
   document.querySelector(".template-card")?.classList.toggle("is-missing-image", !isDynamicPlaceImageCandidate(coverImage));
   scheduleSpecificCoverImage();
@@ -13677,9 +14016,16 @@ function renderTimeline() {
   const editable = canEdit();
   dom.timeline.innerHTML = day.stops
     .map(
-      (stop, index) => `
+      (stop, index) => {
+        const stopImage = displayImageForStop(stop) || missingPlaceImagePlaceholder(stop);
+        const stopFallback = displayFallbackImageForStop(stop) || missingPlaceImagePlaceholder(stop);
+        const stopTrustedImage = hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cleanImageUrl(stopImage);
+        const stopImageQueue = encodeImageCandidateUrls(imageCandidateUrlsForStop(stop, stopImage));
+        scheduleSpecificImageForStop(stop, { render: true, reason: "specific-image-timeline-card" });
+        return `
         <article class="stop-card ${index === activeStop ? "is-active" : ""}" data-stop="${index}">
           <time class="stop-time">${stop.time || "--:--"}</time>
+          <img class="stop-photo" src="${escapeHtml(stopImage)}" data-fallback-src="${escapeHtml(stopFallback)}" data-image-candidates="${escapeHtml(stopImageQueue)}" data-trusted-src="${stopTrustedImage ? "true" : "false"}" alt="" loading="lazy" aria-hidden="true">
           <div>
             <h4>${stop.title}</h4>
             <p>${stop.note || ""}</p>
@@ -13694,9 +14040,11 @@ function renderTimeline() {
             ${editable ? `<button type="button" class="icon-btn subtle danger-icon stop-delete-btn" data-delete-stop-index="${index}" aria-label="删除${escapeHtml(stop.title || "地点")}" title="删除地点">${icon("trash-2")}</button>` : ""}
           </div>
         </article>
-      `,
+      `;
+      },
     )
     .join("");
+  bindImageFallbacks(dom.timeline);
 }
 
 function renderMap() {
@@ -13797,11 +14145,12 @@ function renderCandidates() {
         const candidateFallback = displayFallbackImageForStop(stop) || missingPlaceImagePlaceholder(stop);
         const candidateMissingImage = !isDynamicPlaceImageCandidate(candidateImage) && shouldLookupSpecificStopImage(stop);
         const candidateTrustedImage = hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cleanImageUrl(candidateImage);
+        const candidateImageQueue = encodeImageCandidateUrls(imageCandidateUrlsForStop(stop, candidateImage));
         const referenceUrl = candidateReferenceUrl(stop);
         scheduleSpecificImageForStop(stop, { render: true, reason: "specific-image-candidate-card" });
         return `
         <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}${candidateMissingImage ? " is-missing-image" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
-          <img class="candidate-photo" src="${escapeHtml(candidateImage)}" data-fallback-src="${escapeHtml(candidateFallback)}" data-trusted-src="${candidateTrustedImage ? "true" : "false"}" alt="" loading="lazy" aria-hidden="true">
+          <img class="candidate-photo" src="${escapeHtml(candidateImage)}" data-fallback-src="${escapeHtml(candidateFallback)}" data-image-candidates="${escapeHtml(candidateImageQueue)}" data-trusted-src="${candidateTrustedImage ? "true" : "false"}" alt="" loading="lazy" aria-hidden="true">
           <span class="candidate-main">
             <span class="candidate-kicker">${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}${escapeHtml(category)}</span>
             <span class="candidate-title">${escapeHtml(stop.title)}</span>
@@ -14430,6 +14779,7 @@ function renderFlow() {
 function render() {
   activeDay = Math.min(activeDay, state.days.length - 1);
   activeStop = Math.min(activeStop, currentDay().stops.length - 1);
+  stabilizeActiveStopForDetailImage();
   renderShell();
   renderDays();
   renderDaySummary();
@@ -14541,6 +14891,7 @@ dom.dayList.addEventListener("click", (event) => {
   if (!button) return;
   activeDay = Number(button.dataset.day);
   activeStop = 0;
+  userSelectedStop = false;
   render();
   trackPresence();
 });
@@ -14555,12 +14906,14 @@ dom.timeline.addEventListener("click", async (event) => {
   }
   const card = event.target.closest("[data-stop]");
   if (!card) return;
+  userSelectedStop = true;
   switchActiveStop(Number(card.dataset.stop));
 });
 
 dom.mapCanvas.addEventListener("click", (event) => {
   const pin = event.target.closest("[data-stop]");
   if (!pin) return;
+  userSelectedStop = true;
   switchActiveStop(Number(pin.dataset.stop));
 });
 

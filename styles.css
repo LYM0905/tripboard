@@ -2257,7 +2257,7 @@ button:disabled {
 .stop-card {
   position: relative;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-columns: 58px 76px minmax(0, 1fr) auto;
   gap: 16px;
   padding: 14px;
   background: var(--panel-2);
@@ -2289,6 +2289,16 @@ button:disabled {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+}
+
+.stop-photo {
+  display: block;
+  width: 76px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--soft);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
 }
 
 .stop-card h4 {
@@ -4633,11 +4643,15 @@ svg {
   }
 
   .stop-card {
-    grid-template-columns: 54px minmax(0, 1fr);
+    grid-template-columns: 54px 64px minmax(0, 1fr);
+  }
+
+  .stop-photo {
+    width: 64px;
   }
 
   .stop-actions {
-    grid-column: 2;
+    grid-column: 3;
     align-items: flex-start;
     flex-direction: row;
     flex-wrap: wrap;
