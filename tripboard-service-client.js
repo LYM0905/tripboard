@@ -40,11 +40,26 @@
     externalImportConfigKey,
     getAppConfig = () => ({}),
   }) {
+    function sameSupabaseProject(endpoint = "", appConfig = {}) {
+      try {
+        const endpointUrl = new URL(endpoint);
+        const supabaseUrl = new URL(appConfig.supabaseUrl || "");
+        return endpointUrl.hostname === supabaseUrl.hostname;
+      } catch {
+        return false;
+      }
+    }
+
     function headers(token = "", endpoint = "") {
       const requestHeaders = { "Content-Type": "application/json" };
       if (token) requestHeaders.Authorization = `Bearer ${token}`;
       const appConfig = getAppConfig() || {};
-      if (!token && String(endpoint || "").includes("supabase.co/functions/v1") && appConfig.supabaseAnonKey) {
+      if (
+        !token &&
+        String(endpoint || "").includes("supabase.co/functions/v1") &&
+        appConfig.supabaseAnonKey &&
+        sameSupabaseProject(endpoint, appConfig)
+      ) {
         requestHeaders.apikey = appConfig.supabaseAnonKey;
         requestHeaders.Authorization = `Bearer ${appConfig.supabaseAnonKey}`;
       }

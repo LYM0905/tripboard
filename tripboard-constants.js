@@ -89,6 +89,7 @@ const COLLAB_STRUCT_FIELDS = [
   { field: "imagePageUrl", type: "string" },
   { field: "imageVerifiedAt", type: "string" },
   { field: "imageStatus", type: "string" },
+  { field: "imageLookupVersion", type: "string" },
   { field: "imageCandidates", type: "list" },
   { field: "tags", domKey: "fieldTags", type: "tags", label: "标签", presenceId: "fieldTagsPresence" },
   { field: "voters", type: "list" },

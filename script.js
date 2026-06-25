@@ -38,6 +38,7 @@ const {
 } = window.TripboardConstants;
 
 const LOCAL_IMAGE_VERSION = "stable-images-v1";
+const PLACE_IMAGE_LOOKUP_VERSION = "real-photos-v2";
 
 function localTripImage(name = "") {
   return `assets/trip-images/${name}.svg?v=${LOCAL_IMAGE_VERSION}`;
@@ -1129,6 +1130,7 @@ function makeStop({
   imagePageUrl = "",
   imageVerifiedAt = "",
   imageStatus = "",
+  imageLookupVersion = "",
   imageCandidates = [],
   referenceUrl = "",
   selected = false,
@@ -1164,6 +1166,7 @@ function makeStop({
     imagePageUrl,
     imageVerifiedAt,
     imageStatus,
+    imageLookupVersion,
     imageCandidates: Array.isArray(imageCandidates) ? imageCandidates.slice(0, 6) : [],
     referenceUrl,
     selected: Boolean(selected),
@@ -1891,11 +1894,12 @@ function preferredCoverForPlan(plan = {}) {
   const scenicStop = stops.find((stop) => /景区|Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage|Grassland|Wetland|Desert/i.test(`${stop.type || ""} ${stop.title || ""}`));
   const orderedStops = scenicStop ? [scenicStop, ...stops.filter((stop) => stop !== scenicStop)] : stops;
   const stopImage = orderedStops
+    .filter((stop) => hasVerifiedPlaceImage(stop))
     .map((stop) => cleanImageUrl(stop.image))
     .find((image) => image && isDynamicPlaceImageCandidate(image));
   if (stopImage) return stopImage;
   const currentCover = cleanImageUrl(plan.cover);
-  return isDynamicPlaceImageCandidate(currentCover) ? currentCover : "";
+  return hasTrustedCoverImage(plan, currentCover) ? currentCover : "";
 }
 
 function normalizePlanCover(plan = {}) {
@@ -3051,6 +3055,7 @@ function normalizeCollaborativeStop(stop = {}) {
     imagePageUrl: String(stop.imagePageUrl || "").trim(),
     imageVerifiedAt: String(stop.imageVerifiedAt || "").trim(),
     imageStatus: String(stop.imageStatus || "").trim(),
+    imageLookupVersion: String(stop.imageLookupVersion || "").trim(),
     imageCandidates: Array.isArray(stop.imageCandidates) ? stop.imageCandidates.slice(0, 6) : [],
     referenceUrl: String(stop.referenceUrl || "").trim(),
   };
@@ -3297,6 +3302,7 @@ function normalizeCandidateStops(candidates = []) {
       imagePageUrl: String(stop.imagePageUrl || "").trim(),
       imageVerifiedAt: String(stop.imageVerifiedAt || "").trim(),
       imageStatus: String(stop.imageStatus || "").trim(),
+      imageLookupVersion: String(stop.imageLookupVersion || "").trim(),
       imageCandidates: Array.isArray(stop.imageCandidates) ? stop.imageCandidates.slice(0, 6) : [],
       referenceUrl: String(stop.referenceUrl || "").trim(),
       createdBy: stop.createdBy || "",
@@ -12748,7 +12754,7 @@ async function lookupSpecificImageForStop(stop = {}) {
 function isDefaultTripboardImage(value = "") {
   const url = String(value || "").trim();
   if (!isUsableImageUrl(url)) return true;
-  return Object.values(images).includes(url) || /assets\/trip-images\//.test(url) || /images\.unsplash\.com|wikimedia\.org|wikipedia\.org/i.test(url);
+  return Object.values(images).includes(url) || /assets\/trip-images\//.test(url) || /images\.unsplash\.com/i.test(url);
 }
 
 function isSpecificRuleImage(value = "") {
@@ -12772,8 +12778,29 @@ function hasSpecificImage(value = "") {
   return Boolean(url && !isDefaultTripboardImage(url) && !isGeneratedFallbackImage(url));
 }
 
+function hasVerifiedPlaceImage(stop = {}) {
+  const image = cleanImageUrl(stop.image);
+  if (!isDynamicPlaceImageCandidate(image)) return false;
+  const status = String(stop.imageStatus || "").trim().toLowerCase();
+  if (status === "manual") return true;
+  if (status !== "verified") return false;
+  const source = String(stop.imageSource || "").trim();
+  return Boolean(stop.imageVerifiedAt || /Amap POI|Wikimedia Commons|Openverse|place-image-search/i.test(source));
+}
+
+function hasResolvedPlaceImageMiss(stop = {}) {
+  return /^(missing|failed)$/i.test(String(stop.imageStatus || "")) &&
+    stop.imageLookupVersion === PLACE_IMAGE_LOOKUP_VERSION;
+}
+
+function hasTrustedCoverImage(plan = {}, image = plan.cover) {
+  const cover = cleanImageUrl(image);
+  if (!isDynamicPlaceImageCandidate(cover)) return false;
+  return allPlanStops(plan).some((stop) => hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cover);
+}
+
 function hasStableDisplayImage(stop = {}) {
-  return Boolean(hasSpecificImage(stop.image) || stop.imageStatus === "missing" || stop.imageStatus === "failed");
+  return Boolean(hasVerifiedPlaceImage(stop));
 }
 
 function isUsableImageUrl(value = "") {
@@ -12903,6 +12930,7 @@ function bindImageFallbacks(root = document) {
       image.dataset.fallbackBound = "true";
       image.addEventListener("error", applyFallback);
     }
+    if (image.dataset.trustedSrc === "true") return;
     if (image.complete && !image.naturalWidth) {
       applyFallback();
       return;
@@ -12992,7 +13020,11 @@ async function lookupDynamicPlaceImageForStop(stop = {}, options = {}) {
     const candidates = (Array.isArray(data.candidates) ? data.candidates : [data.image ? data : null])
       .map(normalizePlaceImageCandidate)
       .filter(Boolean);
-    const verifiedCandidate = candidates.find((candidate) => candidate.verifiedAt) || candidates[0];
+    const verifiedCandidate =
+      candidates.find((candidate) => candidate.verifiedAt && /Amap POI/i.test(candidate.source || "")) ||
+      candidates.find((candidate) => candidate.verifiedAt) ||
+      candidates.find((candidate) => /Amap POI/i.test(candidate.source || "")) ||
+      candidates[0];
     if (verifiedCandidate) {
       const result = {
         image: verifiedCandidate.url,
@@ -13002,6 +13034,7 @@ async function lookupDynamicPlaceImageForStop(stop = {}, options = {}) {
         imagePageUrl: verifiedCandidate.pageUrl || data.pageUrl || "",
         imageVerifiedAt: verifiedCandidate.verifiedAt || data.verifiedAt || new Date().toISOString(),
         imageStatus: "verified",
+        imageLookupVersion: PLACE_IMAGE_LOOKUP_VERSION,
         imageCandidates: candidates.slice(0, 6),
       };
       placeImageCache.set(key, result);
@@ -13011,13 +13044,14 @@ async function lookupDynamicPlaceImageForStop(stop = {}, options = {}) {
       image: "",
       imageStatus: "missing",
       imageSource: data.source || "place-image-search",
+      imageLookupVersion: PLACE_IMAGE_LOOKUP_VERSION,
       imageCandidates: candidates.slice(0, 6),
     };
     placeImageCache.set(key, missing);
     return missing;
   } catch (error) {
     console.warn("Dynamic place image lookup failed", payload, error);
-    const failed = { image: "", imageStatus: "failed", imageSource: "place-image-search", imageCandidates: [] };
+    const failed = { image: "", imageStatus: "failed", imageSource: "place-image-search", imageLookupVersion: PLACE_IMAGE_LOOKUP_VERSION, imageCandidates: [] };
     placeImageCache.set(key, failed);
     return failed;
   }
@@ -13048,6 +13082,7 @@ function imagePatchFromLookup(result = {}) {
       imagePageUrl: result.imagePageUrl || "",
       imageVerifiedAt: result.imageVerifiedAt || new Date().toISOString(),
       imageStatus: "verified",
+      imageLookupVersion: PLACE_IMAGE_LOOKUP_VERSION,
       imageCandidates: result.imageCandidates || [],
     };
   }
@@ -13055,6 +13090,7 @@ function imagePatchFromLookup(result = {}) {
     image: "",
     imageStatus: result.imageStatus || "missing",
     imageSource: result.imageSource || "place-image-search",
+    imageLookupVersion: PLACE_IMAGE_LOOKUP_VERSION,
     imageCandidates: result.imageCandidates || [],
   };
 }
@@ -13069,9 +13105,10 @@ function allPlanStops(plan = {}) {
 function markPendingPlaceImages(plan = {}) {
   allPlanStops(plan).forEach((stop) => {
     if (!shouldLookupSpecificStopImage(stop, plan.destination)) return;
-    if (hasSpecificImage(stop.image)) return;
+    if (hasVerifiedPlaceImage(stop)) return;
     stop.image = "";
     stop.imageStatus = "pending";
+    stop.imageLookupVersion = "";
   });
   if (isDefaultTripboardImage(plan.cover) || isGeneratedFallbackImage(plan.cover)) plan.cover = "";
   return plan;
@@ -13092,19 +13129,19 @@ async function enrichPlanImagesBeforeSave(plan = {}, options = {}) {
     Object.assign(stop, patch);
     if (patch.image) {
       imageCount += 1;
-      if (!isDynamicPlaceImageCandidate(plan.cover)) plan.cover = patch.image;
+      if (!hasTrustedCoverImage(plan, plan.cover)) plan.cover = patch.image;
     } else {
       missingCount += 1;
     }
   });
-  if (!isDynamicPlaceImageCandidate(plan.cover)) {
-    const firstImage = allPlanStops(plan).find((stop) => isDynamicPlaceImageCandidate(stop.image))?.image;
+  if (!hasTrustedCoverImage(plan, plan.cover)) {
+    const firstImage = allPlanStops(plan).find((stop) => hasVerifiedPlaceImage(stop))?.image;
     plan.cover = firstImage || "";
   }
   return { checked: stops.length, imageCount, missingCount };
 }
 
-function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl, label = "") {
+function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl, label = "", options = {}) {
   if (!element) return "";
   const localMeta = stableImageMetaFromUrl(imageUrl) || stableImageMetaFromUrl(fallbackUrl);
   const finalFallback = fallbackIllustrationImage(localMeta?.label || label, localMeta?.sublabel || "");
@@ -13120,6 +13157,7 @@ function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl,
   element.dataset.imageToken = token;
   element.dataset.imageUrl = candidate;
   element.style.setProperty(cssVariable, cssImageUrl(candidate));
+  if (options.trusted && isDynamicPlaceImageCandidate(candidate)) return candidate;
   if (/^data:image\//i.test(candidate)) return candidate;
   testImageLoad(candidate).then((ok) => {
     if (!ok && element.dataset.imageToken === token) {
@@ -13159,7 +13197,7 @@ function displayFallbackImageForStop(stop = {}) {
 
 function displayImageForStop(stop = {}) {
   const image = cleanImageUrl(stop.image);
-  if (isDynamicPlaceImageCandidate(image)) return image;
+  if (hasVerifiedPlaceImage(stop) && isDynamicPlaceImageCandidate(image)) return image;
   return displayFallbackImageForStop(stop);
 }
 
@@ -13177,7 +13215,8 @@ function placeImageMetaText(stop = {}) {
 function applyPlacePhotoDisplay(stop = {}) {
   const image = displayImageForStop(stop);
   const fallback = displayFallbackImageForStop(stop) || missingPlaceImagePlaceholder(stop);
-  setVerifiedBackgroundImage(dom.placePhoto, "--photo", image, fallback, stop.title || state.destination || state.name);
+  const trusted = hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cleanImageUrl(image);
+  setVerifiedBackgroundImage(dom.placePhoto, "--photo", image, fallback, stop.title || state.destination || state.name, { trusted });
   const hasRealImage = isDynamicPlaceImageCandidate(image);
   dom.placePhoto?.classList.toggle("is-missing-image", !hasRealImage && shouldLookupSpecificStopImage(stop));
   if (dom.placePhotoMeta) {
@@ -13191,11 +13230,11 @@ function applyPlacePhotoDisplay(stop = {}) {
 
 function shouldLookupSpecificStopImage(stop = {}, destination = state.destination) {
   if (!stop || isPlaceholderStop(stop)) return false;
-  if (stop.imageStatus === "missing" || stop.imageStatus === "failed") return false;
+  if (hasVerifiedPlaceImage(stop)) return false;
   const text = `${destination || ""} ${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${stop.amapKeyword || ""}`;
   if (NON_PLACE_IMAGE_TYPES.test(text)) return false;
   if (!PLACE_IMAGE_TYPES.test(text)) return false;
-  return !hasSpecificImage(stop.image);
+  return true;
 }
 
 async function updateStopImageAfterLookup(stop, image, reason = "specific-image-lookup") {
@@ -13268,31 +13307,38 @@ function scheduleSpecificImageForStop(stop = {}, options = {}) {
 }
 
 function scheduleSpecificCoverImage() {
-  if (isDynamicPlaceImageCandidate(state.cover)) return;
+  if (hasTrustedCoverImage(state, state.cover)) return;
   const stops = (state.days || [])
     .flatMap((day) => day.stops || [])
     .filter((stop) => !isPlaceholderStop(stop) && shouldLookupSpecificStopImage(stop));
-  const stop = stops.find((item) => /景区|Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage|Grassland|Wetland|Desert/i.test(`${item.type || ""} ${item.title || ""}`)) || stops[0];
-  if (!stop) return;
-  const key = `cover:${stopImageLookupKey(stop)}`;
+  const scenicStops = stops.filter((item) => /Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage|Grassland|Wetland|Desert|\u666f\u533a|\u666f\u70b9|\u535a\u7269\u9986|\u5bfa|\u6e56|\u5c71|\u76d0\u6e56/i.test(`${item.type || ""} ${item.title || ""}`));
+  const orderedStops = [...scenicStops, ...stops.filter((stop) => !scenicStops.includes(stop))].slice(0, 8);
+  if (!orderedStops.length) return;
+  const key = `cover:${orderedStops.map((stop) => stopImageLookupKey(stop)).join("|")}`;
   if (coverImageLookupPending.has(key)) return;
   coverImageLookupPending.add(key);
-  lookupSpecificImageForStop(stop)
-    .then(async (image) => {
-      if (!isDynamicPlaceImageCandidate(image) || isDynamicPlaceImageCandidate(state.cover)) return;
+  (async () => {
+    for (const stop of orderedStops) {
+      if (hasTrustedCoverImage(state, state.cover)) return;
+      const result = await lookupDynamicPlaceImageForStop(stop);
+      const patch = imagePatchFromLookup(result);
+      if (patch) await updateStopImagePatchAfterLookup(stop, patch, "specific-cover-image-stop-patch");
+      const image = cleanImageUrl(patch?.image || result?.image || "");
+      if (!isDynamicPlaceImageCandidate(image)) continue;
       state.cover = image;
-      const fallback = fallbackIllustrationForStop(stop, "旅行封面图片待补全");
-      setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", image, fallback, stop.title || state.destination || state.name);
-      setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", image, fallback, stop.title || state.destination || state.name);
+      const fallback = fallbackIllustrationForStop(stop, "Trip cover image pending");
+      setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", image, fallback, stop.title || state.destination || state.name, { trusted: true });
+      setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", image, fallback, stop.title || state.destination || state.name, { trusted: true });
       dom.tripCover?.classList.remove("is-missing-image");
       document.querySelector(".template-card")?.classList.remove("is-missing-image");
       if (canEdit() && !isReadonlyMode) {
         if (!(await syncPlanSettingToDoc("cover", image))) await syncPlanMetaToDoc("specific-cover-image-fallback");
       }
-    })
+      return;
+    }
+  })()
     .finally(() => coverImageLookupPending.delete(key));
 }
-
 function displayCoverImage() {
   return preferredCoverForPlan(state);
 }
@@ -13330,14 +13376,14 @@ function imageEnrichmentCandidates() {
   state.days.forEach((day) => {
     (day.stops || []).forEach((stop) => {
       if (isPlaceholderStop(stop)) return;
-      const needsPlace = !stop.lng || !stop.lat || !stop.address || (shouldLookupSpecificStopImage(stop) && !hasSpecificImage(stop.image));
+      const needsPlace = !stop.lng || !stop.lat || !stop.address || shouldLookupSpecificStopImage(stop);
       const keyword = stopPlaceLookupKeyword(stop);
       if (needsPlace && keyword) candidates.push({ type: "stop", day, stop, keyword });
     });
   });
   (state.candidates || []).forEach((stop) => {
     if (isPlaceholderStop(stop)) return;
-    const needsPlace = !stop.lng || !stop.lat || !stop.address || (shouldLookupSpecificStopImage(stop) && !hasSpecificImage(stop.image));
+    const needsPlace = !stop.lng || !stop.lat || !stop.address || shouldLookupSpecificStopImage(stop);
     const keyword = stopPlaceLookupKeyword(stop);
     if (needsPlace && keyword) candidates.push({ type: "candidate", stop, keyword });
   });
@@ -13345,13 +13391,12 @@ function imageEnrichmentCandidates() {
 }
 
 function shouldAutoEnrichImages() {
-  return Boolean(canEdit() && !isReadonlyMode && imageEnrichmentCandidates().some((item) => !hasStableDisplayImage(item.stop) || (serviceConfig.amapEndpoint && (!item.stop?.lng || !item.stop?.lat || !item.stop?.address))));
+  return Boolean(imageEnrichmentCandidates().some((item) => !hasStableDisplayImage(item.stop) || (canEdit() && !isReadonlyMode && serviceConfig.amapEndpoint && (!item.stop?.lng || !item.stop?.lat || !item.stop?.address))));
 }
 
 async function enrichPlacesFromAmap(options = {}) {
   const auto = Boolean(options.auto);
   if (!auto && !requireEdit("补全地点图片")) return;
-  if (auto && (!canEdit() || isReadonlyMode)) return;
   const candidates = imageEnrichmentCandidates();
   if (!candidates.length) {
     if (!auto) dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
@@ -13381,42 +13426,46 @@ async function enrichPlacesFromAmap(options = {}) {
   for (const item of candidates.slice(0, 12)) {
     checked += 1;
     try {
-      const places = serviceConfig.amapEndpoint ? await lookupAmapPlaces(item.keyword, { limit: 3 }) : [];
+      const canSync = canEdit() && !isReadonlyMode;
+      const places = canSync && serviceConfig.amapEndpoint ? await lookupAmapPlaces(item.keyword, { limit: 3 }) : [];
       const place = Array.isArray(places) ? places[0] : null;
-      const dynamicImagePatch = !hasSpecificImage(item.stop.image)
+      const dynamicImagePatch = !hasVerifiedPlaceImage(item.stop) && shouldLookupSpecificStopImage(item.stop)
         ? imagePatchFromLookup(await lookupDynamicPlaceImageForStop(item.stop))
         : null;
       if (!place && !dynamicImagePatch) continue;
-      const hadRealImage = hasSpecificImage(item.stop.image);
+      const hadRealImage = hasVerifiedPlaceImage(item.stop);
       const patch = place ? (applyPlaceToStop(item.stop, place) || {}) : {};
-      if (dynamicImagePatch && !hasSpecificImage(item.stop.image)) {
+      if (dynamicImagePatch && !hasVerifiedPlaceImage(item.stop)) {
         Object.assign(item.stop, dynamicImagePatch);
         Object.assign(patch, dynamicImagePatch);
       }
       if (Object.keys(patch).length) {
         if (patch.image && !firstNewImage) firstNewImage = patch.image;
-        if (item.type === "stop") {
+        if (canSync && item.type === "stop") {
           if (!(await patchStopInDoc(item.stop.id, patch, "local-amap-place-enrich-stop"))) {
             fallbackDayIds.add(item.day.id);
           }
           changedStops += 1;
-        } else {
+        } else if (canSync) {
           if (!(await updateCandidateInDoc(item.stop.id, patch))) {
             state.candidates = mergedCandidatesWithPatch("update", patch, item.stop.id);
             candidateFallback = true;
           }
           changedCandidates += 1;
+        } else {
+          if (item.type === "stop") changedStops += 1;
+          else changedCandidates += 1;
         }
-        if (!hadRealImage && hasSpecificImage(item.stop.image)) imageCount += 1;
+        if (!hadRealImage && hasVerifiedPlaceImage(item.stop)) imageCount += 1;
       }
     } catch (error) {
       console.warn("Amap place enrichment failed", item.keyword, error);
     }
   }
-  const coverChanged = Boolean(firstNewImage && isDefaultTripboardImage(state.cover));
+  const coverChanged = Boolean(firstNewImage && !hasTrustedCoverImage(state, state.cover));
   if (coverChanged) {
     state.cover = firstNewImage;
-    if (!(await syncPlanSettingToDoc("cover", firstNewImage))) {
+    if (canEdit() && !isReadonlyMode && !(await syncPlanSettingToDoc("cover", firstNewImage))) {
       await syncPlanMetaToDoc("local-amap-place-cover-fallback");
     }
   }
@@ -13485,8 +13534,9 @@ function renderShell() {
   dom.tripDateRange.textContent = state.dateRange || "自定义日期";
   const coverImage = displayCoverImage();
   const coverFallback = fallbackIllustrationImage(state.destination || state.name || "封面图片待补全", "封面实景图待补全");
-  setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", coverImage, coverFallback, state.destination || state.name);
-  setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", coverImage, coverFallback, state.destination || state.name);
+  const trustedCover = hasTrustedCoverImage(state, coverImage);
+  setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", coverImage, coverFallback, state.destination || state.name, { trusted: trustedCover });
+  setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", coverImage, coverFallback, state.destination || state.name, { trusted: trustedCover });
   dom.tripCover?.classList.toggle("is-missing-image", !isDynamicPlaceImageCandidate(coverImage));
   document.querySelector(".template-card")?.classList.toggle("is-missing-image", !isDynamicPlaceImageCandidate(coverImage));
   scheduleSpecificCoverImage();
@@ -13746,11 +13796,12 @@ function renderCandidates() {
         const candidateImage = displayImageForStop(stop) || missingPlaceImagePlaceholder(stop);
         const candidateFallback = displayFallbackImageForStop(stop) || missingPlaceImagePlaceholder(stop);
         const candidateMissingImage = !isDynamicPlaceImageCandidate(candidateImage) && shouldLookupSpecificStopImage(stop);
+        const candidateTrustedImage = hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cleanImageUrl(candidateImage);
         const referenceUrl = candidateReferenceUrl(stop);
         scheduleSpecificImageForStop(stop, { render: true, reason: "specific-image-candidate-card" });
         return `
         <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}${candidateMissingImage ? " is-missing-image" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
-          <img class="candidate-photo" src="${escapeHtml(candidateImage)}" data-fallback-src="${escapeHtml(candidateFallback)}" alt="" loading="lazy" aria-hidden="true">
+          <img class="candidate-photo" src="${escapeHtml(candidateImage)}" data-fallback-src="${escapeHtml(candidateFallback)}" data-trusted-src="${candidateTrustedImage ? "true" : "false"}" alt="" loading="lazy" aria-hidden="true">
           <span class="candidate-main">
             <span class="candidate-kicker">${icon(category === "住宿" ? "bed-double" : category === "餐饮" ? "utensils" : category === "交通" ? "train-front" : "landmark")}${escapeHtml(category)}</span>
             <span class="candidate-title">${escapeHtml(stop.title)}</span>

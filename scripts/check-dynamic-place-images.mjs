@@ -5,6 +5,7 @@ const source = readFileSync(new URL("../script.js", import.meta.url), "utf8");
 const constantsSource = readFileSync(new URL("../tripboard-constants.js", import.meta.url), "utf8");
 const utilsSource = readFileSync(new URL("../tripboard-utils.js", import.meta.url), "utf8");
 const functionSource = readFileSync(new URL("../supabase/functions/place-image-search/index.ts", import.meta.url), "utf8");
+const serviceClientSource = readFileSync(new URL("../tripboard-service-client.js", import.meta.url), "utf8");
 const start = source.indexOf("const LOCAL_IMAGE_VERSION");
 const end = source.indexOf("function hasLocalChanges", start);
 const displayStart = source.indexOf("function isPlaceholderStop");
@@ -51,6 +52,9 @@ vm.runInContext(
   globalThis.shouldLookupSpecificStopImage = shouldLookupSpecificStopImage;
   globalThis.displayImageForStop = displayImageForStop;
   globalThis.isDefaultTripboardImage = isDefaultTripboardImage;
+  globalThis.displayCoverImage = displayCoverImage;
+  globalThis.hasStableDisplayImage = hasStableDisplayImage;
+  globalThis.hasVerifiedPlaceImage = hasVerifiedPlaceImage;
   `,
   sandbox,
   { filename: "script-display.js" },
@@ -81,6 +85,52 @@ for (const destination of destinations) {
   }
 }
 
+const legacyMissingStop = {
+  id: "legacy-missing",
+  title: "塔尔寺",
+  type: "景点",
+  address: "青海省西宁市湟中区",
+  amapKeyword: "塔尔寺",
+  image: "",
+  imageStatus: "missing",
+};
+sandbox.state = { destination: "青海", days: [{ stops: [legacyMissingStop] }], candidates: [] };
+if (!sandbox.shouldLookupSpecificStopImage(legacyMissingStop, "青海")) {
+  throw new Error("Legacy missing image stops should be retried by the current dynamic image lookup.");
+}
+
+const currentMissingStop = {
+  ...legacyMissingStop,
+  imageLookupVersion: "real-photos-v2",
+};
+if (!sandbox.shouldLookupSpecificStopImage(currentMissingStop, "青海")) {
+  throw new Error("Current-version missing image stops should remain retryable when the user opens an old plan.");
+}
+if (sandbox.hasStableDisplayImage(currentMissingStop)) {
+  throw new Error("Missing image stops should not be treated as a stable real-photo state.");
+}
+
+const unverifiedExternalStop = {
+  id: "unverified",
+  title: "塔尔寺",
+  type: "景点",
+  address: "青海省西宁市湟中区",
+  image: "https://example.com/random.jpg",
+  imageStatus: "",
+};
+sandbox.state = {
+  destination: "青海",
+  cover: unverifiedExternalStop.image,
+  days: [{ stops: [unverifiedExternalStop] }],
+  candidates: [],
+};
+if (sandbox.displayCoverImage()) {
+  throw new Error("Unverified external images must not be accepted as trusted trip covers.");
+}
+if (!sandbox.shouldLookupSpecificStopImage(unverifiedExternalStop, "青海")) {
+  throw new Error("Unverified external stop images should be replaced by verified dynamic real photos.");
+}
+
 const requiredFunctionSignals = [
   ["searchAmap", "Amap source"],
   ["searchWikimedia", "Wikimedia Commons source"],
@@ -96,6 +146,41 @@ for (const [needle, label] of requiredFunctionSignals) {
   if (!functionSource.includes(needle)) {
     throw new Error(`place-image-search is missing ${label}.`);
   }
+}
+
+const serviceSandbox = {
+  window: {},
+  URL,
+  fetch: async () => ({ json: async () => ({}), ok: true }),
+  fetchWithTimeout: async () => ({ json: async () => ({}), ok: true }),
+  localStorage: {
+    getItem: () => "",
+    setItem: () => {},
+  },
+  safeJsonParse: () => ({}),
+};
+vm.createContext(serviceSandbox);
+vm.runInContext(serviceClientSource, serviceSandbox, { filename: "tripboard-service-client.js" });
+const serviceClient = serviceSandbox.window.createTripboardServiceClient({
+  fetch: serviceSandbox.fetch,
+  fetchWithTimeout: serviceSandbox.fetchWithTimeout,
+  localStorage: serviceSandbox.localStorage,
+  safeJsonParse: serviceSandbox.safeJsonParse,
+  serviceConfigKey: "service",
+  transportConfigKey: "transport",
+  externalImportConfigKey: "external",
+  getAppConfig: () => ({
+    supabaseUrl: "https://juicyxqblnrmbhtuujez.supabase.co",
+    supabaseAnonKey: "same-project-anon",
+  }),
+});
+const sameProjectHeaders = serviceClient.headers("", "https://juicyxqblnrmbhtuujez.supabase.co/functions/v1/amap-weather");
+if (sameProjectHeaders.apikey !== "same-project-anon") {
+  throw new Error("Same-project Supabase functions should still receive the configured anon key.");
+}
+const crossProjectHeaders = serviceClient.headers("", "https://xjieikfcococjvqdqero.supabase.co/functions/v1/place-image-search");
+if (crossProjectHeaders.apikey || crossProjectHeaders.Authorization) {
+  throw new Error("Cross-project image function requests must not reuse the main Supabase anon key.");
 }
 
 console.log("Dynamic place image generation check passed.");
