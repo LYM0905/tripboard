@@ -37,33 +37,69 @@ const {
   DAY_BLOCK_COMMANDS,
 } = window.TripboardConstants;
 
+const LOCAL_IMAGE_VERSION = "stable-images-v1";
+
+function localTripImage(name = "") {
+  return `assets/trip-images/${name}.svg?v=${LOCAL_IMAGE_VERSION}`;
+}
+
+const LOCAL_TRIP_IMAGE_LABELS = {
+  kyoto: ["京都", "寺院与街巷"],
+  gansu: ["甘肃", "丝路、丹霞与沙漠"],
+  city: ["城市", "城市漫游与集合"],
+  food: ["美食", "餐饮与夜市"],
+  train: ["交通", "机场、动车与转场"],
+  museum: ["文化", "博物馆与历史街区"],
+  qinghai: ["青海", "高原湖泊与盐湖"],
+  qingdao: ["青岛", "海滨、老城与崂山"],
+  "inner-mongolia": ["内蒙古", "草原、湿地与边境城市"],
+  nature: ["自然", "山水与户外路线"],
+  "mountain-lake": ["山湖", "高山湖泊与峡谷"],
+  forest: ["森林", "林海、雪景与湿地"],
+  jilin: ["吉林", "长白山与雾凇"],
+  lodging: ["住宿", "酒店与民宿"],
+  "changbai-mountain": ["长白山天池", "高山湖泊"],
+  jingyuetan: ["净月潭", "森林公园"],
+  "rime-island": ["雾凇岛", "冬季江畔"],
+  "qinghai-museum": ["青海省博物馆", "文化展馆"],
+  "qinghai-lake": ["青海湖", "高原湖泊"],
+  "black-horse-river": ["黑马河", "环湖日落"],
+  "chaka-salt-lake": ["茶卡盐湖", "天空之镜"],
+  "taer-monastery": ["塔尔寺", "藏传佛教寺院"],
+  "qilian-zhuoer": ["祁连卓尔山", "草原与山脊"],
+  "riyue-mountain": ["日月山", "青海湖路上"],
+  "dongguan-mosque": ["东关清真大寺", "西宁文化街区"],
+  "mogao-caves": ["莫高窟", "敦煌石窟"],
+  "zhangye-danxia": ["张掖七彩丹霞", "彩色丘陵"],
+  "crescent-lake": ["鸣沙山月牙泉", "沙漠与泉"],
+  "jiayuguan-fort": ["嘉峪关关城", "河西走廊"],
+  "gansu-museum": ["甘肃省博物馆", "丝路文化"],
+  "lanzhou-zhongshan-bridge": ["黄河铁桥", "兰州黄河"],
+  "qingdao-zhanqiao": ["栈桥", "青岛海滨"],
+  "qingdao-badaguan": ["八大关", "老城街区"],
+  "qingdao-laoshan": ["崂山", "山海景区"],
+  "qingdao-may-fourth": ["五四广场", "城市地标"],
+  "hulunbuir-grassland": ["呼伦贝尔草原", "草原腹地"],
+  "ergun-wetland": ["额尔古纳湿地", "湿地观景"],
+  "manzhouli-square": ["满洲里套娃广场", "边境城市"],
+  "arxan-forest": ["阿尔山森林公园", "火山森林"],
+};
+
 const images = {
-  kyoto:
-    "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?auto=format&fit=crop&w=900&q=80",
-  gansu:
-    "https://images.unsplash.com/photo-1509316785289-025f5b846b35?auto=format&fit=crop&w=900&q=80",
-  city:
-    "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?auto=format&fit=crop&w=900&q=80",
-  food:
-    "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=900&q=80",
-  train:
-    "https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=900&q=80",
-  museum:
-    "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=900&q=80",
-  qinghai:
-    "https://images.unsplash.com/photo-1516981879613-9f5da904015f?auto=format&fit=crop&w=900&q=80",
-  qingdao:
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
-  innerMongolia:
-    "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=900&q=80",
-  nature:
-    "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80",
-  mountainLake:
-    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=900&q=80",
-  forest:
-    "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80",
-  jilin:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Changbai_Mountain%2CChina.jpg/1280px-Changbai_Mountain%2CChina.jpg",
+  kyoto: localTripImage("kyoto"),
+  gansu: localTripImage("gansu"),
+  city: localTripImage("city"),
+  food: localTripImage("food"),
+  train: localTripImage("train"),
+  museum: localTripImage("museum"),
+  qinghai: localTripImage("qinghai"),
+  qingdao: localTripImage("qingdao"),
+  innerMongolia: localTripImage("inner-mongolia"),
+  nature: localTripImage("nature"),
+  mountainLake: localTripImage("mountain-lake"),
+  forest: localTripImage("forest"),
+  jilin: localTripImage("jilin"),
+  lodging: localTripImage("lodging"),
 };
 
 const DESTINATION_IMAGE_RULES = [
@@ -79,63 +115,32 @@ const DESTINATION_IMAGE_RULES = [
   [/成都|重庆|四川|杭州|苏州|上海|广州|深圳|长沙|武汉|城市|Chengdu|Chongqing|Hangzhou|Shanghai/i, images.city],
 ];
 
-const WIKIPEDIA_IMAGE_RULES = [
-  [/青海省博物馆/i, { title: "青海省博物馆", lang: "zh" }],
-  [/门源|油菜花/i, { title: "门源回族自治县", lang: "zh" }],
-  [/黑马河/i, { title: "黑马河乡", lang: "zh" }],
-  [/东关清真大寺/i, { title: "东关清真大寺", lang: "zh" }],
-  [/莫高窟|敦煌.*石窟|Mogao/i, "Mogao_Caves"],
-  [/七彩丹霞|张掖.*丹霞|丹霞.*张掖|Zhangye.*Danxia|Danxia/i, "Zhangye_National_Geopark"],
-  [/鸣沙山|月牙泉|Mingsha|Crescent/i, "Crescent_Lake_(Dunhuang)"],
-  [/嘉峪关|关城|Jiayu/i, "Jiayu_Pass"],
-  [/甘肃省博物馆|Gansu.*Museum/i, "Gansu_Provincial_Museum"],
-  [/中山桥|黄河铁桥|Lanzhou.*Bridge|Zhongshan/i, "Zhongshan_Bridge_(Lanzhou)"],
-  [/塔尔寺|Ta'?er|Kumbum/i, "Kumbum_Monastery"],
-  [/茶卡|Chaka/i, "Chaka_Salt_Lake"],
-  [/祁连|卓尔山|Qilian/i, "Qilian_Mountains"],
-  [/门源|Menyuan/i, "Menyuan_Hui_Autonomous_County"],
-  [/日月山|Riyue/i, "Riyue_Mountain"],
-  [/甘肃|Gansu/i, "Gansu"],
-  [/青海|西宁|茶卡|青海湖|Qinghai|Xining|Chaka/i, "Qinghai_Lake"],
-  [/吉林|长白山|天池|Changbai/i, "Changbai_Mountains"],
-  [/呼伦贝尔|额尔古纳|满洲里|阿尔山|草原|Inner.?Mongolia/i, "Hulunbuir"],
-  [/栈桥|Zhanqiao/i, "Zhanqiao_Pier"],
-  [/八大关|Badaguan/i, "Badaguan"],
-  [/崂山|Laoshan|Mount Lao/i, "Mount_Lao"],
-  [/五四广场|May Fourth/i, "May_Fourth_Square"],
-  [/青岛|Qingdao/i, "Qingdao"],
-];
-
-function commonsFileImage(fileName = "", width = 1200) {
-  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fileName)}?width=${width}`;
-}
-
 const SPECIFIC_IMAGE_RULES = [
-  [/长白山|天池|Changbai/i, commonsFileImage("Changbai Mountain,China.jpg")],
-  [/净月潭|Jingyue|Jingyuetan/i, commonsFileImage("净月潭 jing yue tan - panoramio (1).jpg")],
-  [/雾凇|Rime/i, commonsFileImage("Rime Island Hantun Village 13 outside of an agritainment.jpg")],
-  [/青海省博物馆|Qinghai Provincial Museum/i, commonsFileImage("Qinghai Provincial Museum.jpg")],
-  [/青海湖|二郎剑|Qinghai Lake/i, commonsFileImage("Qinghai lake.jpg")],
-  [/黑马河|环湖住宿|Qinghai Lake.*2016/i, commonsFileImage("Qinghai Lake 2016 01.jpg")],
-  [/茶卡|盐湖|Chaka/i, commonsFileImage("Chaka Salt Lake 1.jpg")],
-  [/塔尔寺|Kumbum|Ta'?er/i, commonsFileImage("Kumbum Monastery.jpg")],
-  [/祁连|卓尔山|Qilian/i, commonsFileImage("Qilian in Qilian Qinghai.jpg")],
-  [/日月山|Riyue/i, commonsFileImage("Riyue Mountain.jpg")],
-  [/东关清真大寺|Dongguan.*Mosque/i, commonsFileImage("Dongguan Mosque in Xining (2025).jpg")],
-  [/莫高窟|Mogao/i, commonsFileImage("Mogao Caves.jpg")],
-  [/七彩丹霞|张掖.*丹霞|丹霞.*张掖|Zhangye.*Danxia/i, commonsFileImage("Colourful mountains of the Zhangye National Geopark.jpg")],
-  [/鸣沙山|月牙泉|Mingsha|Crescent/i, commonsFileImage("Crescent_Lake_(Dunhuang).jpg")],
-  [/嘉峪关|关城|Jiayu/i, commonsFileImage("Jiayuguan fort.jpg")],
-  [/甘肃省博物馆|Gansu.*Museum/i, commonsFileImage("Gansu Provincial Museum 2008.jpg")],
-  [/中山桥|黄河铁桥|Zhongshan/i, commonsFileImage("Lanzhou Zhongshan Bridge 2019.jpg")],
-  [/栈桥|Zhanqiao/i, commonsFileImage("Zhanqiao pier with Little Qingdao Isle.jpg")],
-  [/八大关|Badaguan/i, commonsFileImage("Badaguan Scenic Area.jpg")],
-  [/崂山|Laoshan|Mount Lao/i, commonsFileImage("Laoshan mountain.jpg")],
-  [/五四广场|May Fourth/i, commonsFileImage("May Fourth Square Qingdao.jpg")],
-  [/呼伦贝尔|草原|Hulunbuir/i, commonsFileImage("Hulunbuir Grassland.jpg")],
-  [/额尔古纳|湿地|Ergun/i, commonsFileImage("Ergun Wetland.jpg")],
-  [/满洲里|套娃|Manzhouli/i, commonsFileImage("Manzhouli Matryoshka Square.jpg")],
-  [/阿尔山|森林|Arxan/i, commonsFileImage("Arxan National Forest Park.jpg")],
+  [/长白山|天池|Changbai/i, localTripImage("changbai-mountain")],
+  [/净月潭|Jingyue|Jingyuetan/i, localTripImage("jingyuetan")],
+  [/雾凇|Rime/i, localTripImage("rime-island")],
+  [/青海省博物馆|Qinghai Provincial Museum/i, localTripImage("qinghai-museum")],
+  [/青海湖|二郎剑|Qinghai Lake/i, localTripImage("qinghai-lake")],
+  [/黑马河|环湖住宿|Qinghai Lake.*2016/i, localTripImage("black-horse-river")],
+  [/茶卡|盐湖|Chaka/i, localTripImage("chaka-salt-lake")],
+  [/塔尔寺|Kumbum|Ta'?er/i, localTripImage("taer-monastery")],
+  [/祁连|卓尔山|Qilian/i, localTripImage("qilian-zhuoer")],
+  [/日月山|Riyue/i, localTripImage("riyue-mountain")],
+  [/东关清真大寺|Dongguan.*Mosque/i, localTripImage("dongguan-mosque")],
+  [/莫高窟|Mogao/i, localTripImage("mogao-caves")],
+  [/七彩丹霞|张掖.*丹霞|丹霞.*张掖|Zhangye.*Danxia/i, localTripImage("zhangye-danxia")],
+  [/鸣沙山|月牙泉|Mingsha|Crescent/i, localTripImage("crescent-lake")],
+  [/嘉峪关|关城|Jiayu|悬壁长城/i, localTripImage("jiayuguan-fort")],
+  [/甘肃省博物馆|Gansu.*Museum/i, localTripImage("gansu-museum")],
+  [/中山桥|黄河铁桥|Zhongshan/i, localTripImage("lanzhou-zhongshan-bridge")],
+  [/栈桥|Zhanqiao/i, localTripImage("qingdao-zhanqiao")],
+  [/八大关|Badaguan/i, localTripImage("qingdao-badaguan")],
+  [/崂山|Laoshan|Mount Lao/i, localTripImage("qingdao-laoshan")],
+  [/五四广场|May Fourth/i, localTripImage("qingdao-may-fourth")],
+  [/呼伦贝尔|草原|Hulunbuir/i, localTripImage("hulunbuir-grassland")],
+  [/额尔古纳|湿地|Ergun/i, localTripImage("ergun-wetland")],
+  [/满洲里|套娃|Manzhouli/i, localTripImage("manzhouli-square")],
+  [/阿尔山|森林|Arxan/i, localTripImage("arxan-forest")],
 ];
 
 function specificRuleImageForText(...values) {
@@ -154,9 +159,6 @@ function specificRuleImageForStop(stop = {}, destination = state.destination) {
   );
 }
 
-const wikipediaImageCache = new Map();
-const wikipediaSearchImageCache = new Map();
-const commonsImageCache = new Map();
 const specificImageLookupCache = new Map();
 const specificImageLookupPending = new Set();
 const coverImageLookupPending = new Set();
@@ -1181,7 +1183,7 @@ function buildKyotoPlan() {
         weather: "22°C 少云",
         transport: "步行 + 地铁",
         stops: [
-          makeStop({ time: "08:30", title: "清水寺", type: "Temple", address: "京都市东山区清水1丁目294", note: "早到避开人流，从二年坂上行。雨天缩短到 70 分钟。", tags: ["必去", "门票"], budget: 96, image: "https://images.unsplash.com/photo-1528164344705-47542687000d?auto=format&fit=crop&w=900&q=80", comments: [{ author: "林", text: "门票预算已加上。" }], x: 64, y: 42 }),
+          makeStop({ time: "08:30", title: "清水寺", type: "Temple", address: "京都市东山区清水1丁目294", note: "早到避开人流，从二年坂上行。雨天缩短到 70 分钟。", tags: ["必去", "门票"], budget: 96, image: images.kyoto, comments: [{ author: "林", text: "门票预算已加上。" }], x: 64, y: 42 }),
           makeStop({ time: "10:30", title: "二年坂与三年坂", type: "Walk", address: "京都市东山区清水2丁目", note: "沿坡道慢走，预留甜品和手信时间。", tags: ["散步", "购物"], budget: 260, image: images.city, x: 58, y: 50 }),
           makeStop({ time: "12:20", title: "祇园午餐", type: "Lunch", address: "京都市东山区祇园町南侧", note: "两家候选店都支持预约，先用投票定。", tags: ["待投票", "美食"], budget: 720, votes: 2, userVoted: false, image: images.food, x: 46, y: 43 }),
         ],
@@ -1250,7 +1252,7 @@ function buildGansuPlan(dayCount = 6, options = {}) {
         transport: "动车 + 打车",
         stops: [
           makeStop({ time: "10:30", title: "嘉峪关关城", type: "Fortress", address: "嘉峪关市峪泉镇", note: "河西走廊历史感很强的一站，适合安排讲解。", tags: ["历史", "门票"], budget: 440, image: images.city, x: 45, y: 44 }),
-          makeStop({ time: "15:00", title: "悬壁长城", type: "Great Wall", address: "嘉峪关市石关峡口北侧", note: "体力允许再去，风大时注意保暖和防晒。", tags: ["可选", "风大"], budget: 200, votes: 2, userVoted: false, image: "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?auto=format&fit=crop&w=900&q=80", x: 62, y: 38 }),
+          makeStop({ time: "15:00", title: "悬壁长城", type: "Great Wall", address: "嘉峪关市石关峡口北侧", note: "体力允许再去，风大时注意保暖和防晒。", tags: ["可选", "风大"], budget: 200, votes: 2, userVoted: false, image: localTripImage("jiayuguan-fort"), x: 62, y: 38 }),
         ],
       },
       {
@@ -1843,11 +1845,13 @@ function sanitizePlanImages(plan) {
   if (!plan || typeof plan !== "object") return plan;
   const destination = plan.destination || plan.name || "";
   const fallbackCover = destinationDefaultImage(destination) || images.city;
-  plan.cover = cleanImageUrl(plan.cover) || fallbackCover;
+  const currentCover = cleanImageUrl(plan.cover);
+  plan.cover = currentCover && !isDefaultTripboardImage(currentCover) ? currentCover : fallbackCover;
   const normalizeStopImage = (stop) => {
     if (!stop || typeof stop !== "object") return;
     const image = cleanImageUrl(stop.image);
-    stop.image = image || "";
+    const ruleImage = specificRuleImageForStop(stop, destination);
+    stop.image = image && !isDefaultTripboardImage(image) ? image : (ruleImage || "");
   };
   (plan.days || []).forEach((day) => (day.stops || []).forEach(normalizeStopImage));
   (plan.candidates || []).forEach(normalizeStopImage);
@@ -11702,7 +11706,7 @@ function normalizeImportCategory(value, provider = "") {
 function providerDefaults(provider = "") {
   const category = normalizeImportCategory("", provider);
   const defaults = {
-    住宿: { title: "住宿入住", time: "15:00", image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80" },
+    住宿: { title: "住宿入住", time: "15:00", image: images.lodging },
     餐饮: { title: "餐厅预约", time: "18:30", image: images.food },
     交通: { title: "交通订单", time: "09:00", image: images.train },
     景点: { title: "景点预约", time: "10:00", image: images.museum },
@@ -12693,134 +12697,17 @@ function isPlaceholderStop(stop = {}, destination = state.destination) {
   return /待填写地点|备选景点|自由探索时段|返程缓冲|外部记录/.test(title) || /Draft|Idea|Flexible/.test(type) || (keyword && keyword === String(destination || "").trim());
 }
 
-function wikipediaTitleForStop(stop = {}) {
-  const text = `${stop.amapKeyword || ""} ${stop.address || ""} ${stop.title || ""} ${stop.type || ""}`;
-  const matched = WIKIPEDIA_IMAGE_RULES.find(([pattern]) => pattern.test(text));
-  if (!matched) return null;
-  const entry = matched[1];
-  return typeof entry === "string" ? { title: entry, lang: "en" } : { title: entry.title || "", lang: entry.lang || "en" };
-}
-
-async function lookupWikipediaImage(stop = {}) {
-  const entry = wikipediaTitleForStop(stop);
-  if (!entry?.title) return "";
-  const key = `${entry.lang}:${entry.title}`;
-  if (wikipediaImageCache.has(key)) return wikipediaImageCache.get(key);
-  const url = `https://${entry.lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(entry.title)}`;
-  try {
-    const response = await fetchWithTimeout(url, {
-      headers: { Accept: "application/json" },
-    }, 5000);
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-    const image = data?.originalimage?.source || data?.thumbnail?.source || "";
-    wikipediaImageCache.set(key, image || "");
-    return image || "";
-  } catch (error) {
-    console.warn("Wikipedia image lookup failed", key, error);
-    wikipediaImageCache.set(key, "");
-    return "";
-  }
-}
-
 function stopImageLookupKey(stop = {}) {
   return uniqueTexts([stop.title, stop.amapKeyword, stop.address, state.destination])
     .join(" ")
     .trim();
 }
 
-function wikipediaSearchQueryForStop(stop = {}) {
-  return uniqueTexts([stop.title, stop.amapKeyword, stop.address])
-    .join(" ")
-    .replace(/\b(Transit|Draft|Idea|Walk|Dinner|Lunch|Market|Scenic|Museum|Place)\b/gi, "")
-    .trim();
-}
-
-async function lookupWikipediaSearchImage(stop = {}, lang = "zh") {
-  const query = wikipediaSearchQueryForStop(stop);
-  if (!query || query.length < 2) return "";
-  const cacheKey = `${lang}:${query}`;
-  if (wikipediaSearchImageCache.has(cacheKey)) return wikipediaSearchImageCache.get(cacheKey);
-  const searchParams = new URLSearchParams({
-    action: "query",
-    list: "search",
-    srsearch: query,
-    srlimit: "1",
-    format: "json",
-    origin: "*",
-  });
-  try {
-    const searchResponse = await fetchWithTimeout(`https://${lang}.wikipedia.org/w/api.php?${searchParams.toString()}`, {
-      headers: { Accept: "application/json" },
-    }, 5000);
-    const searchData = await searchResponse.json().catch(() => ({}));
-    if (!searchResponse.ok) throw new Error(searchData.error?.info || `HTTP ${searchResponse.status}`);
-    const title = searchData?.query?.search?.[0]?.title || "";
-    if (!title) {
-      wikipediaSearchImageCache.set(cacheKey, "");
-      return "";
-    }
-    const summaryResponse = await fetchWithTimeout(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`, {
-      headers: { Accept: "application/json" },
-    }, 5000);
-    const summaryData = await summaryResponse.json().catch(() => ({}));
-    if (!summaryResponse.ok) throw new Error(summaryData.detail || `HTTP ${summaryResponse.status}`);
-    const image = cleanImageUrl(summaryData?.originalimage?.source || summaryData?.thumbnail?.source || "");
-    wikipediaSearchImageCache.set(cacheKey, image || "");
-    return image || "";
-  } catch (error) {
-    console.warn("Wikipedia search image lookup failed", cacheKey, error);
-    wikipediaSearchImageCache.set(cacheKey, "");
-    return "";
-  }
-}
-
-async function lookupCommonsImage(stop = {}) {
-  const keyword = uniqueTexts([state.destination, stop.title, stop.amapKeyword, stop.address])
-    .slice(0, 3)
-    .join(" ");
-  if (!keyword) return "";
-  if (commonsImageCache.has(keyword)) return commonsImageCache.get(keyword);
-  const params = new URLSearchParams({
-    action: "query",
-    generator: "search",
-    gsrnamespace: "6",
-    gsrsearch: keyword,
-    gsrlimit: "6",
-    prop: "imageinfo",
-    iiprop: "url",
-    iiurlwidth: "900",
-    format: "json",
-    origin: "*",
-  });
-  const url = `https://commons.wikimedia.org/w/api.php?${params.toString()}`;
-  try {
-    const response = await fetchWithTimeout(url, { headers: { Accept: "application/json" } }, 6000);
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error?.info || `HTTP ${response.status}`);
-    const pages = Object.values(data?.query?.pages || {});
-    const image = pages
-      .map((page) => page?.imageinfo?.[0]?.thumburl || page?.imageinfo?.[0]?.url || "")
-      .find((value) => /\.(jpg|jpeg|png|webp)(\?|$)/i.test(value));
-    commonsImageCache.set(keyword, image || "");
-    return image || "";
-  } catch (error) {
-    console.warn("Commons image lookup failed", keyword, error);
-    commonsImageCache.set(keyword, "");
-    return "";
-  }
-}
-
 async function lookupSpecificImageForStop(stop = {}) {
   const key = stopImageLookupKey(stop);
   if (!key) return "";
   if (specificImageLookupCache.has(key)) return specificImageLookupCache.get(key);
-  const image =
-    cleanImageUrl(specificRuleImageForStop(stop)) ||
-    cleanImageUrl(await lookupWikipediaImage(stop)) ||
-    cleanImageUrl(await lookupWikipediaSearchImage(stop, "zh")) ||
-    cleanImageUrl(await lookupWikipediaSearchImage(stop, "en")) ||
-    cleanImageUrl(await lookupCommonsImage(stop));
+  const image = cleanImageUrl(specificRuleImageForStop(stop));
   specificImageLookupCache.set(key, image || "");
   return image || "";
 }
@@ -12828,7 +12715,7 @@ async function lookupSpecificImageForStop(stop = {}) {
 function isDefaultTripboardImage(value = "") {
   const url = String(value || "").trim();
   if (!isUsableImageUrl(url)) return true;
-  return Object.values(images).includes(url) || /images\.unsplash\.com/.test(url);
+  return Object.values(images).includes(url) || /assets\/trip-images\//.test(url) || /images\.unsplash\.com|wikimedia\.org|wikipedia\.org/i.test(url);
 }
 
 function isSpecificRuleImage(value = "") {
@@ -12843,6 +12730,10 @@ function isGeneratedFallbackImage(value = "") {
 function hasSpecificImage(value = "") {
   const url = cleanImageUrl(value);
   return Boolean(url && !isDefaultTripboardImage(url) && !isGeneratedFallbackImage(url));
+}
+
+function hasStableDisplayImage(stop = {}) {
+  return Boolean(hasSpecificImage(stop.image) || isGeneratedFallbackImage(stop.image) || specificRuleImageForStop(stop));
 }
 
 function isUsableImageUrl(value = "") {
@@ -12876,6 +12767,65 @@ function svgText(value = "") {
     .slice(0, 36);
 }
 
+function localImageNameFromUrl(value = "") {
+  const match = String(value || "").match(/(?:^|\/)trip-images\/([^/?#]+)\.svg/i);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function stableImageMetaFromUrl(value = "") {
+  const key = localImageNameFromUrl(value);
+  const [label = "", sublabel = ""] = LOCAL_TRIP_IMAGE_LABELS[key] || [];
+  return key ? { key, label, sublabel } : null;
+}
+
+function imageIllustrationKind(label = "", sublabel = "") {
+  const text = `${label} ${sublabel}`;
+  if (/餐|食|面|夜市|咖啡|饭|美食|Dinner|Lunch|Cafe|Market/i.test(text)) return "food";
+  if (/交通|高铁|动车|机场|火车|Transit|抵达|返程|转场/i.test(text)) return "transit";
+  if (/住宿|酒店|民宿|入住|Hotel|Lodging/i.test(text)) return "lodging";
+  if (/寺|庙|清真|博物馆|石窟|文化|关城|古城|Museum|Temple|Mosque|Caves|Fort/i.test(text)) return "culture";
+  if (/海|湖|盐湖|泉|湿地|河|Lake|Wetland|River|Sea/i.test(text)) return "water";
+  if (/沙漠|丹霞|戈壁|雅丹|Desert|Danxia|Canyon/i.test(text)) return "desert";
+  if (/草原|牧场|Grassland|Hulunbuir/i.test(text)) return "grassland";
+  if (/森林|雾凇|雪|Forest|Rime|Snow/i.test(text)) return "forest";
+  if (/山|高原|峰|峡谷|Mountain|Qilian|Laoshan|Changbai/i.test(text)) return "mountain";
+  return "city";
+}
+
+function illustrationPalette(kind = "city", hue = 206) {
+  const palettes = {
+    water: ["#0b5f89", "#4aa6c8", "#f4d58d", "#ffffff"],
+    desert: ["#88451d", "#d89038", "#f6d27b", "#3d2c22"],
+    grassland: ["#28624a", "#78aa57", "#e5cf78", "#ffffff"],
+    forest: ["#123b35", "#2e7357", "#cfd9b7", "#ffffff"],
+    mountain: ["#2d4b61", "#6f8fa7", "#f2c66d", "#ffffff"],
+    culture: ["#71352f", "#b65d45", "#e6c98f", "#ffffff"],
+    food: ["#7a2f25", "#d1643c", "#f5c66e", "#ffffff"],
+    transit: ["#25364c", "#657e9d", "#d6e4f0", "#ffffff"],
+    lodging: ["#3d4151", "#7d6e62", "#e3c79b", "#ffffff"],
+    city: ["#26384f", "#617b91", "#e9b872", "#ffffff"],
+  };
+  return palettes[kind] || [`hsl(${hue} 58% 26%)`, `hsl(${(hue + 34) % 360} 54% 42%)`, `hsl(${(hue + 92) % 360} 48% 72%)`, "#ffffff"];
+}
+
+function illustrationScene(kind = "city", colors = []) {
+  const [dark, mid, light, white] = colors;
+  const sun = `<circle cx="708" cy="112" r="54" fill="${light}" opacity=".82"/>`;
+  const scenes = {
+    water: `${sun}<path d="M0 334 C136 268 244 286 380 238 C536 184 690 150 900 204 L900 540 L0 540 Z" fill="${mid}"/><path d="M0 390 C132 360 250 382 388 352 C552 318 690 310 900 344 L900 540 L0 540 Z" fill="${light}" opacity=".72"/><path d="M44 420 C180 392 296 434 440 404 C596 372 710 390 856 368" fill="none" stroke="${white}" stroke-width="10" opacity=".54"/>`,
+    desert: `${sun}<path d="M0 306 C160 244 296 284 428 232 C602 166 718 174 900 124 L900 540 L0 540 Z" fill="${mid}"/><path d="M0 394 C162 326 318 344 476 300 C660 248 760 278 900 236 L900 540 L0 540 Z" fill="${light}" opacity=".84"/><path d="M120 414 C264 372 400 390 548 350 C670 318 760 328 842 300" fill="none" stroke="${dark}" stroke-width="7" opacity=".22"/>`,
+    grassland: `${sun}<path d="M0 342 C146 278 278 306 420 262 C580 212 710 190 900 226 L900 540 L0 540 Z" fill="${mid}"/><path d="M0 418 C168 354 326 372 490 334 C664 292 760 306 900 280 L900 540 L0 540 Z" fill="${light}" opacity=".68"/><path d="M128 430 C214 384 284 388 362 430" fill="none" stroke="${white}" stroke-width="8" opacity=".42"/>`,
+    forest: `${sun}<path d="M80 370 L150 210 L220 370 Z M202 380 L278 172 L360 380 Z M470 382 L548 190 L630 382 Z M614 388 L706 146 L800 388 Z" fill="${mid}"/><path d="M0 420 C170 360 320 384 480 346 C650 306 780 322 900 290 L900 540 L0 540 Z" fill="${light}" opacity=".6"/>`,
+    mountain: `${sun}<path d="M0 374 L188 174 L310 342 L430 128 L620 376 L742 206 L900 374 L900 540 L0 540 Z" fill="${mid}"/><path d="M430 128 L494 258 L384 244 Z M188 174 L228 286 L150 262 Z M742 206 L786 302 L700 286 Z" fill="${white}" opacity=".68"/><path d="M0 430 C160 382 314 398 472 370 C626 342 750 356 900 326 L900 540 L0 540 Z" fill="${light}" opacity=".58"/>`,
+    culture: `${sun}<path d="M86 396 L86 262 L206 198 L330 262 L330 396 Z M384 396 L384 230 L538 158 L700 230 L700 396 Z" fill="${mid}"/><path d="M66 262 L206 184 L348 262 Z M354 230 L538 140 L730 230 Z" fill="${light}"/><rect x="118" y="296" width="54" height="100" fill="${dark}" opacity=".56"/><rect x="448" y="286" width="58" height="110" fill="${dark}" opacity=".5"/><path d="M0 424 C160 388 330 400 490 376 C640 354 780 362 900 338 L900 540 L0 540 Z" fill="${dark}" opacity=".22"/>`,
+    food: `${sun}<circle cx="380" cy="326" r="104" fill="${light}" opacity=".84"/><circle cx="380" cy="326" r="70" fill="${mid}"/><path d="M560 212 L560 410 M602 212 L602 410 M548 212 C568 260 596 260 616 212" fill="none" stroke="${white}" stroke-width="16" stroke-linecap="round"/><path d="M0 420 C150 380 310 398 470 372 C640 344 780 360 900 334 L900 540 L0 540 Z" fill="${dark}" opacity=".22"/>`,
+    transit: `${sun}<path d="M96 340 C240 280 496 280 694 326 C748 338 790 370 804 410 L96 410 Z" fill="${mid}"/><circle cx="222" cy="410" r="42" fill="${dark}"/><circle cx="668" cy="410" r="42" fill="${dark}"/><path d="M180 330 L514 330" stroke="${white}" stroke-width="22" opacity=".58"/><path d="M0 442 L900 442" stroke="${light}" stroke-width="18" opacity=".7"/>`,
+    lodging: `${sun}<path d="M154 396 L154 238 L298 150 L450 238 L450 396 Z" fill="${mid}"/><path d="M128 238 L298 130 L474 238 Z" fill="${light}"/><rect x="246" y="294" width="82" height="102" fill="${dark}" opacity=".56"/><rect x="582" y="218" width="116" height="178" fill="${mid}" opacity=".82"/><path d="M0 426 C172 378 332 398 496 368 C652 340 774 354 900 326 L900 540 L0 540 Z" fill="${dark}" opacity=".2"/>`,
+    city: `${sun}<rect x="104" y="246" width="112" height="164" fill="${mid}"/><rect x="258" y="188" width="118" height="222" fill="${light}" opacity=".78"/><rect x="420" y="258" width="100" height="152" fill="${mid}"/><rect x="572" y="210" width="146" height="200" fill="${light}" opacity=".66"/><path d="M0 424 C160 386 326 400 488 374 C660 346 780 360 900 332 L900 540 L0 540 Z" fill="${dark}" opacity=".25"/>`,
+  };
+  return scenes[kind] || scenes.city;
+}
+
 function fallbackIllustrationImage(label = "", sublabel = "") {
   const title = svgText(label || state.destination || state.name || "Tripboard");
   const subtitle = svgText(sublabel || state.dateRange || "Travel plan");
@@ -12884,8 +12834,10 @@ function fallbackIllustrationImage(label = "", sublabel = "") {
     hash = (hash * 31 + char.charCodeAt(0)) % 360;
   });
   const hue = hash || 206;
-  const accent = (hue + 34) % 360;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl(${hue} 58% 26%)"/><stop offset=".55" stop-color="hsl(${accent} 54% 42%)"/><stop offset="1" stop-color="hsl(${(hue + 92) % 360} 48% 72%)"/></linearGradient><filter id="soft"><feGaussianBlur stdDeviation="18"/></filter></defs><rect width="900" height="540" fill="url(#bg)"/><path d="M0 396 C150 290 256 320 386 246 C520 170 672 116 900 178 L900 540 L0 540 Z" fill="rgba(255,255,255,.28)"/><path d="M0 430 C160 352 312 362 470 300 C622 241 754 224 900 278 L900 540 L0 540 Z" fill="rgba(255,255,255,.18)"/><circle cx="706" cy="112" r="76" fill="rgba(255,255,255,.23)" filter="url(#soft)"/><text x="54" y="90" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="700" letter-spacing="2" fill="rgba(255,255,255,.72)">TRIPBOARD</text><text x="54" y="406" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="56" font-weight="800" fill="white">${title}</text><text x="58" y="462" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="600" fill="rgba(255,255,255,.82)">${subtitle}</text></svg>`;
+  const kind = imageIllustrationKind(title, subtitle);
+  const colors = illustrationPalette(kind, hue);
+  const scene = illustrationScene(kind, colors);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${colors[0]}"/><stop offset=".58" stop-color="${colors[1]}"/><stop offset="1" stop-color="${colors[2]}"/></linearGradient><filter id="soft"><feGaussianBlur stdDeviation="18"/></filter><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="rgba(0,0,0,.08)"/><stop offset=".68" stop-color="rgba(0,0,0,.2)"/><stop offset="1" stop-color="rgba(0,0,0,.46)"/></linearGradient></defs><rect width="900" height="540" fill="url(#bg)"/><g filter="url(#soft)" opacity=".22"><circle cx="182" cy="126" r="92" fill="${colors[3]}"/><circle cx="746" cy="206" r="126" fill="${colors[3]}"/></g><g opacity=".92">${scene}</g><rect width="900" height="540" fill="url(#shade)"/><text x="54" y="90" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="700" fill="rgba(255,255,255,.72)">TRIPBOARD</text><text x="54" y="406" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="56" font-weight="800" fill="white">${title}</text><text x="58" y="462" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="26" font-weight="600" fill="rgba(255,255,255,.84)">${subtitle}</text></svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
@@ -12953,10 +12905,17 @@ function testImageLoad(url = "", timeout = 3200) {
 
 function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl, label = "") {
   if (!element) return "";
-  const finalFallback = fallbackIllustrationImage(label);
+  const localMeta = stableImageMetaFromUrl(imageUrl) || stableImageMetaFromUrl(fallbackUrl);
+  const finalFallback = fallbackIllustrationImage(localMeta?.label || label, localMeta?.sublabel || "");
   const fallback = cleanImageUrl(fallbackUrl) || finalFallback;
   const candidate = cleanImageUrl(imageUrl) || fallback;
   const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  if (localMeta && isDefaultTripboardImage(candidate)) {
+    element.dataset.imageToken = token;
+    element.dataset.imageUrl = finalFallback;
+    element.style.setProperty(cssVariable, cssImageUrl(finalFallback));
+    return finalFallback;
+  }
   element.dataset.imageToken = token;
   element.dataset.imageUrl = candidate;
   element.style.setProperty(cssVariable, cssImageUrl(candidate));
@@ -12981,14 +12940,18 @@ function setVerifiedBackgroundImage(element, cssVariable, imageUrl, fallbackUrl,
 function displayFallbackImageForStop(stop = {}) {
   const stopText = `${stop.title || ""} ${stop.address || ""} ${stop.type || ""} ${stop.amapKeyword || ""}`;
   const destinationText = String(state.destination || "");
-  if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(stopText)) return images.food;
+  if (/餐|食|面|夜市|Cafe|Dinner|Lunch|Market/.test(stopText)) return fallbackIllustrationImage(stop.title || "美食", "餐饮与夜市");
   const destinationImage = destinationImageForText(stopText, destinationText);
-  if (/交通|高铁|动车|机场|火车|Transit|抵达|入住|返程/.test(stopText)) return destinationImage || destinationDefaultImage(destinationText) || images.train;
+  if (/交通|高铁|动车|机场|火车|Transit|抵达|入住|返程/.test(stopText)) {
+    const meta = stableImageMetaFromUrl(destinationImage || destinationDefaultImage(destinationText) || images.train);
+    return fallbackIllustrationImage(stop.title || meta?.label || "交通", meta?.sublabel || "机场、动车与转场");
+  }
   const ruleImage = specificRuleImageForStop(stop);
-  if (ruleImage) return ruleImage;
-  const wikipediaEntry = wikipediaTitleForStop(stop);
-  const wikipediaCacheKey = wikipediaEntry?.title ? `${wikipediaEntry.lang}:${wikipediaEntry.title}` : "";
-  if (wikipediaCacheKey && wikipediaImageCache.get(wikipediaCacheKey)) return wikipediaImageCache.get(wikipediaCacheKey);
+  if (ruleImage) {
+    const meta = stableImageMetaFromUrl(ruleImage);
+    if (meta) return fallbackIllustrationImage(meta.label, meta.sublabel || stop.title);
+    return ruleImage;
+  }
   const fallbackLabel = stop.title || stop.amapKeyword || state.destination || state.name || "Tripboard";
   const fallbackSubLabel = /博物馆|Museum|寺|石窟|文化/.test(stopText)
     ? "文化地点 · 图片待补全"
@@ -13127,14 +13090,14 @@ function imageEnrichmentCandidates() {
   state.days.forEach((day) => {
     (day.stops || []).forEach((stop) => {
       if (isPlaceholderStop(stop)) return;
-      const needsPlace = !stop.lng || !stop.lat || !stop.address || !hasSpecificImage(stop.image);
+      const needsPlace = !stop.lng || !stop.lat || !stop.address || !hasStableDisplayImage(stop);
       const keyword = stopPlaceLookupKeyword(stop);
       if (needsPlace && keyword) candidates.push({ type: "stop", day, stop, keyword });
     });
   });
   (state.candidates || []).forEach((stop) => {
     if (isPlaceholderStop(stop)) return;
-    const needsPlace = !stop.lng || !stop.lat || !stop.address || !hasSpecificImage(stop.image);
+    const needsPlace = !stop.lng || !stop.lat || !stop.address || !hasStableDisplayImage(stop);
     const keyword = stopPlaceLookupKeyword(stop);
     if (needsPlace && keyword) candidates.push({ type: "candidate", stop, keyword });
   });
@@ -13142,7 +13105,7 @@ function imageEnrichmentCandidates() {
 }
 
 function shouldAutoEnrichImages() {
-  return Boolean(canEdit() && !isReadonlyMode && imageEnrichmentCandidates().some((item) => !hasSpecificImage(item.stop?.image) || (serviceConfig.amapEndpoint && (!item.stop?.lng || !item.stop?.lat || !item.stop?.address))));
+  return Boolean(canEdit() && !isReadonlyMode && imageEnrichmentCandidates().some((item) => !hasStableDisplayImage(item.stop) || (serviceConfig.amapEndpoint && (!item.stop?.lng || !item.stop?.lat || !item.stop?.address))));
 }
 
 async function enrichPlacesFromAmap(options = {}) {
@@ -13166,8 +13129,8 @@ async function enrichPlacesFromAmap(options = {}) {
   if (!auto && !confirmRemoteCandidateEdit(affectedCandidateIds, "补全备选地点图片和坐标")) return;
   if (!auto) saveVersionSnapshot("补全地点图片前版本");
   dom.saveState.textContent = serviceConfig.amapEndpoint
-    ? auto ? "正在自动补全默认地点图片..." : `正在通过高德和公开图片补全 ${Math.min(candidates.length, 12)} 个地点...`
-    : `正在用公开百科图片兜底补全 ${Math.min(candidates.length, 12)} 个地点...`;
+    ? auto ? "正在自动补全默认地点图片..." : `正在通过高德和稳定内置图补全 ${Math.min(candidates.length, 12)} 个地点...`
+    : `正在用稳定内置图补全 ${Math.min(candidates.length, 12)} 个地点...`;
   const fallbackDayIds = new Set();
   let candidateFallback = false;
   let changedStops = 0;
@@ -13222,14 +13185,14 @@ async function enrichPlacesFromAmap(options = {}) {
   }
   if (candidateFallback) await syncCandidatesToDoc("local-amap-candidate-enrich-fallback");
   if (!changedStops && !changedCandidates) {
-    if (!auto) dom.saveState.textContent = `已查询 ${checked} 个地点，高德和公开图片兜底都没有返回可写入的新坐标或图片。`;
+    if (!auto) dom.saveState.textContent = `已查询 ${checked} 个地点，没有返回可写入的新坐标或真实图片；页面会继续使用稳定内置图。`;
     return;
   }
   persistCurrentPlanFromDoc("高德地点资料已按单项协作同步", { refreshViews: false, scheduleSave: false, updateStatus: false });
   await logActivity(`${auto ? "自动" : ""}补全地点资料 ${changedStops + changedCandidates} 项，其中图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}`);
   await saveCollaborativePlanChange(`${auto ? "自动" : ""}补全地点图片和坐标`);
   render();
-  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}；图片来自高德 POI 或公开百科兜底，请按需核对。`;
+  dom.saveState.textContent = `已补全 ${changedStops + changedCandidates} 个地点，其中新增真实图片 ${imageCount} 张${coverChanged ? "，并更新封面" : ""}；无真实图时使用稳定内置图。`;
 }
 
 function scheduleAutoImageEnrichment(delay = 1200) {

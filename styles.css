@@ -143,7 +143,7 @@ button {
     linear-gradient(rgba(23, 32, 38, 0.04), rgba(23, 32, 38, 0.16)),
     var(
         --trip-cover,
-        url("https://images.unsplash.com/photo-1545569341-9eb8b30979d9?auto=format&fit=crop&w=900&q=80")
+        linear-gradient(135deg, #25364c, #4aa6c8 58%, #f4d58d)
       )
       center/cover;
 }
@@ -992,7 +992,7 @@ button:disabled {
     linear-gradient(rgba(23, 32, 38, 0.14), rgba(23, 32, 38, 0.34)),
     var(
         --template-cover,
-        url("https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=900&q=80")
+        linear-gradient(135deg, #26384f, #617b91 58%, #e9b872)
       )
       center/cover;
   border-radius: 8px;
@@ -2568,7 +2568,7 @@ button:disabled {
   min-height: 176px;
   background:
     linear-gradient(rgba(23, 32, 38, 0.04), rgba(23, 32, 38, 0.1)),
-    var(--photo, url("https://images.unsplash.com/photo-1528164344705-47542687000d?auto=format&fit=crop&w=900&q=80"))
+    var(--photo, linear-gradient(135deg, #71352f, #b65d45 58%, #e6c98f))
       center/cover;
 }
 

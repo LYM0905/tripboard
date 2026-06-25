@@ -4,7 +4,7 @@ import vm from "node:vm";
 const source = readFileSync(new URL("../script.js", import.meta.url), "utf8");
 const constantsSource = readFileSync(new URL("../tripboard-constants.js", import.meta.url), "utf8");
 const utilsSource = readFileSync(new URL("../tripboard-utils.js", import.meta.url), "utf8");
-const start = source.indexOf("const images = ");
+const start = source.indexOf("const LOCAL_IMAGE_VERSION");
 const end = source.indexOf("function hasLocalChanges", start);
 const displayStart = source.indexOf("function isPlaceholderStop");
 const displayEnd = source.indexOf("function applyPlaceToStop", displayStart);
@@ -49,6 +49,7 @@ vm.runInContext(
   globalThis.hasSpecificImage = hasSpecificImage;
   globalThis.shouldLookupSpecificStopImage = shouldLookupSpecificStopImage;
   globalThis.specificRuleImageForStop = specificRuleImageForStop;
+  globalThis.stableImageMetaFromUrl = stableImageMetaFromUrl;
   globalThis.firstMeaningfulStopIndex = firstMeaningfulStopIndex;
   `,
   sandbox,
@@ -72,11 +73,16 @@ function assertSpecificImage(plan, title, genericImage, label = title) {
   if (!stop) throw new Error(`Could not find ${title} for image relevance check`);
   const ruleImage = sandbox.specificRuleImageForStop(stop);
   const renderedImage = sandbox.displayImageForStop({ ...stop, image: genericImage || stop.image });
-  if (!/commons\.wikimedia\.org\/wiki\/Special:FilePath\//.test(ruleImage)) {
-    throw new Error(`${label} has no built-in specific image rule: ${ruleImage}`);
+  if (!/^assets\/trip-images\/.+\.svg\?v=/.test(ruleImage)) {
+    throw new Error(`${label} has no built-in stable image rule: ${ruleImage}`);
   }
-  if (renderedImage !== ruleImage) {
-    throw new Error(`${label} rendered an unrelated/generic image instead of its specific image.\nExpected: ${ruleImage}\nActual: ${renderedImage}`);
+  if (!/^data:image\/svg\+xml/.test(renderedImage)) {
+    throw new Error(`${label} did not render a local generated stable image.\nExpected a generated SVG from: ${ruleImage}\nActual: ${renderedImage}`);
+  }
+  const decodedImage = decodeURIComponent(renderedImage);
+  const expectedLabel = sandbox.stableImageMetaFromUrl(ruleImage)?.label || title;
+  if (!decodedImage.includes(expectedLabel)) {
+    throw new Error(`${label} rendered a generated image without the expected place label.\nImage: ${decodedImage.slice(0, 320)}`);
   }
 }
 
@@ -124,7 +130,7 @@ if (/Changbai/i.test(qinghaiCoverWithStaleSavedImage)) {
   throw new Error(`Qinghai cover reused a stale previous-destination image: ${qinghaiCoverWithStaleSavedImage}`);
 }
 
-if (!/Kumbum|Qinghai|Chaka|Riyue|Qilian/i.test(qinghaiCoverWithStaleSavedImage)) {
+if (!/(Kumbum|Qinghai|Chaka|Riyue|Qilian|trip-images\/(?:taer-monastery|qinghai-lake|chaka-salt-lake|riyue-mountain|qilian-zhuoer)\.svg)/i.test(qinghaiCoverWithStaleSavedImage)) {
   throw new Error(`Qinghai cover did not recover to a destination-specific image: ${qinghaiCoverWithStaleSavedImage}`);
 }
 
@@ -194,7 +200,7 @@ if (renderedJilinFirstStopImage === sandbox.tripboardImages.train || renderedJil
   throw new Error(`Rendered Jilin detail still used a generic transit/template image: ${renderedJilinFirstStopImage}`);
 }
 
-if (renderedJilinCoverWithBadSavedImage === "8" || !/^https?:\/\/|^data:image\//.test(renderedJilinCoverWithBadSavedImage)) {
+if (renderedJilinCoverWithBadSavedImage === "8" || !/^(https?:\/\/|data:image\/|assets\/trip-images\/)/.test(renderedJilinCoverWithBadSavedImage)) {
   throw new Error(`Rendered Jilin cover did not recover from a bad saved image: ${renderedJilinCoverWithBadSavedImage}`);
 }
 
