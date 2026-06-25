@@ -124,8 +124,8 @@ if (/Changbai/i.test(qinghaiCoverWithStaleSavedImage)) {
   throw new Error(`Qinghai cover reused a stale previous-destination image: ${qinghaiCoverWithStaleSavedImage}`);
 }
 
-if (!/(Kumbum|Qinghai|Chaka|Riyue|Qilian|trip-images\/(?:taer-monastery|qinghai-lake|chaka-salt-lake|riyue-mountain|qilian-zhuoer)\.svg)/i.test(qinghaiCoverWithStaleSavedImage)) {
-  throw new Error(`Qinghai cover did not recover to a destination-specific image: ${qinghaiCoverWithStaleSavedImage}`);
+if (/assets\/trip-images|data:image\/svg/i.test(qinghaiCoverWithStaleSavedImage)) {
+  throw new Error(`Qinghai cover fell back to a local/generated image instead of waiting for a verified real photo: ${qinghaiCoverWithStaleSavedImage.slice(0, 80)}`);
 }
 
 const innerMongolia = sandbox.buildRecommendedPlan("内蒙古", 6, { budget: "舒适", pace: "轻松" });
@@ -194,8 +194,8 @@ if (renderedJilinFirstStopImage === sandbox.tripboardImages.train || renderedJil
   throw new Error(`Rendered Jilin detail still used a generic transit/template image: ${renderedJilinFirstStopImage}`);
 }
 
-if (renderedJilinCoverWithBadSavedImage === "8" || !/^(https?:\/\/|data:image\/|assets\/trip-images\/)/.test(renderedJilinCoverWithBadSavedImage)) {
-  throw new Error(`Rendered Jilin cover did not recover from a bad saved image: ${renderedJilinCoverWithBadSavedImage}`);
+if (renderedJilinCoverWithBadSavedImage === "8" || /assets\/trip-images|data:image\/svg/i.test(renderedJilinCoverWithBadSavedImage)) {
+  throw new Error(`Rendered Jilin cover used a bad/local/generated image instead of waiting for a verified real photo: ${renderedJilinCoverWithBadSavedImage.slice(0, 80)}`);
 }
 
 const dirtyJilin = sandbox.ensurePlanDates({

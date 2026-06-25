@@ -5045,6 +5045,38 @@ body {
   opacity: 0.55;
 }
 
+.trip-cover,
+.template-card {
+  position: relative;
+}
+
+.trip-cover.is-missing-image,
+.template-card.is-missing-image {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(235, 238, 238, 0.84)),
+    var(--trip-cover, var(--template-cover, #f1f3f2)) center/cover !important;
+  background-blend-mode: screen, normal;
+}
+
+.trip-cover.is-missing-image::after,
+.template-card.is-missing-image::after {
+  content: "封面实景图待补全";
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  z-index: 1;
+  display: inline-flex;
+  justify-content: center;
+  padding: 8px 10px;
+  color: #46525a;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .guide-layout {
   grid-template-columns: minmax(220px, 0.42fr) minmax(320px, 1fr);
 }

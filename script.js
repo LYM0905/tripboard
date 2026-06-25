@@ -1865,14 +1865,12 @@ function ensurePlanOrigin(plan) {
 function sanitizePlanImages(plan) {
   if (!plan || typeof plan !== "object") return plan;
   const destination = plan.destination || plan.name || "";
-  const fallbackCover = destinationDefaultImage(destination) || images.city;
   const currentCover = cleanImageUrl(plan.cover);
-  plan.cover = currentCover && !isDefaultTripboardImage(currentCover) ? currentCover : fallbackCover;
+  plan.cover = currentCover && isDynamicPlaceImageCandidate(currentCover) ? currentCover : "";
   const normalizeStopImage = (stop) => {
     if (!stop || typeof stop !== "object") return;
     const image = cleanImageUrl(stop.image);
-    const ruleImage = specificRuleImageForStop(stop, destination);
-    stop.image = image && !isDefaultTripboardImage(image) ? image : (ruleImage || "");
+    stop.image = image && isDynamicPlaceImageCandidate(image) ? image : "";
   };
   (plan.days || []).forEach((day) => (day.stops || []).forEach(normalizeStopImage));
   (plan.candidates || []).forEach(normalizeStopImage);
@@ -1892,15 +1890,12 @@ function preferredCoverForPlan(plan = {}) {
   const stops = planStopsForCover(plan);
   const scenicStop = stops.find((stop) => /景区|Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage|Grassland|Wetland|Desert/i.test(`${stop.type || ""} ${stop.title || ""}`));
   const orderedStops = scenicStop ? [scenicStop, ...stops.filter((stop) => stop !== scenicStop)] : stops;
-  const ruleImage = orderedStops
-    .map((stop) => specificRuleImageForStop(stop, destination))
-    .find(Boolean);
-  if (ruleImage) return ruleImage;
   const stopImage = orderedStops
     .map((stop) => cleanImageUrl(stop.image))
-    .find((image) => image && hasSpecificImage(image));
+    .find((image) => image && isDynamicPlaceImageCandidate(image));
   if (stopImage) return stopImage;
-  return destinationImageForText(destination, plan.name, plan.dateRange) || destinationDefaultImage(destination) || images.city;
+  const currentCover = cleanImageUrl(plan.cover);
+  return isDynamicPlaceImageCandidate(currentCover) ? currentCover : "";
 }
 
 function normalizePlanCover(plan = {}) {
@@ -13270,23 +13265,24 @@ function scheduleSpecificImageForStop(stop = {}, options = {}) {
 }
 
 function scheduleSpecificCoverImage() {
+  if (isDynamicPlaceImageCandidate(state.cover)) return;
   const stops = (state.days || [])
     .flatMap((day) => day.stops || [])
-    .filter((stop) => !isPlaceholderStop(stop) && (specificRuleImageForStop(stop) || shouldLookupSpecificStopImage(stop)));
+    .filter((stop) => !isPlaceholderStop(stop) && shouldLookupSpecificStopImage(stop));
   const stop = stops.find((item) => /景区|Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage|Grassland|Wetland|Desert/i.test(`${item.type || ""} ${item.title || ""}`)) || stops[0];
   if (!stop) return;
-  const ruleCover = specificRuleImageForStop(stop);
-  if (isSpecificRuleImage(state.cover) && state.cover === ruleCover) return;
   const key = `cover:${stopImageLookupKey(stop)}`;
   if (coverImageLookupPending.has(key)) return;
   coverImageLookupPending.add(key);
   lookupSpecificImageForStop(stop)
     .then(async (image) => {
-      if (!hasSpecificImage(image) || isSpecificRuleImage(state.cover)) return;
+      if (!isDynamicPlaceImageCandidate(image) || isDynamicPlaceImageCandidate(state.cover)) return;
       state.cover = image;
       const fallback = fallbackIllustrationForStop(stop, "旅行封面图片待补全");
       setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", image, fallback, stop.title || state.destination || state.name);
       setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", image, fallback, stop.title || state.destination || state.name);
+      dom.tripCover?.classList.remove("is-missing-image");
+      document.querySelector(".template-card")?.classList.remove("is-missing-image");
       if (canEdit() && !isReadonlyMode) {
         if (!(await syncPlanSettingToDoc("cover", image))) await syncPlanMetaToDoc("specific-cover-image-fallback");
       }
@@ -13485,9 +13481,11 @@ function renderShell() {
   dom.templateName.textContent = state.name;
   dom.tripDateRange.textContent = state.dateRange || "自定义日期";
   const coverImage = displayCoverImage();
-  const coverFallback = destinationDefaultImage(state.destination) || fallbackIllustrationImage(state.destination || state.name, state.dateRange);
+  const coverFallback = fallbackIllustrationImage(state.destination || state.name || "封面图片待补全", "封面实景图待补全");
   setVerifiedBackgroundImage(dom.tripCover, "--trip-cover", coverImage, coverFallback, state.destination || state.name);
   setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", coverImage, coverFallback, state.destination || state.name);
+  dom.tripCover?.classList.toggle("is-missing-image", !isDynamicPlaceImageCandidate(coverImage));
+  document.querySelector(".template-card")?.classList.toggle("is-missing-image", !isDynamicPlaceImageCandidate(coverImage));
   scheduleSpecificCoverImage();
   dom.budgetTotal.textContent = `${money(total)} / ${money(limit)}`;
   dom.budgetMeter.style.width = `${percent}%`;
