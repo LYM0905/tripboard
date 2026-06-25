@@ -12992,21 +12992,20 @@ async function lookupDynamicPlaceImageForStop(stop = {}, options = {}) {
     const candidates = (Array.isArray(data.candidates) ? data.candidates : [data.image ? data : null])
       .map(normalizePlaceImageCandidate)
       .filter(Boolean);
-    for (const candidate of candidates) {
-      if (await testImageLoad(candidate.url, 5000)) {
-        const result = {
-          image: candidate.url,
-          imageSource: candidate.source || data.source || "place-image-search",
-          imageLicense: candidate.license || data.license || "",
-          imageCreator: candidate.creator || data.creator || "",
-          imagePageUrl: candidate.pageUrl || data.pageUrl || "",
-          imageVerifiedAt: candidate.verifiedAt || data.verifiedAt || new Date().toISOString(),
-          imageStatus: "verified",
-          imageCandidates: candidates.slice(0, 6),
-        };
-        placeImageCache.set(key, result);
-        return result;
-      }
+    const verifiedCandidate = candidates.find((candidate) => candidate.verifiedAt) || candidates[0];
+    if (verifiedCandidate) {
+      const result = {
+        image: verifiedCandidate.url,
+        imageSource: verifiedCandidate.source || data.source || "place-image-search",
+        imageLicense: verifiedCandidate.license || data.license || "",
+        imageCreator: verifiedCandidate.creator || data.creator || "",
+        imagePageUrl: verifiedCandidate.pageUrl || data.pageUrl || "",
+        imageVerifiedAt: verifiedCandidate.verifiedAt || data.verifiedAt || new Date().toISOString(),
+        imageStatus: "verified",
+        imageCandidates: candidates.slice(0, 6),
+      };
+      placeImageCache.set(key, result);
+      return result;
     }
     const missing = {
       image: "",
@@ -13091,8 +13090,12 @@ async function enrichPlanImagesBeforeSave(plan = {}, options = {}) {
     const patch = imagePatchFromLookup(result);
     if (!patch) return;
     Object.assign(stop, patch);
-    if (patch.image) imageCount += 1;
-    else missingCount += 1;
+    if (patch.image) {
+      imageCount += 1;
+      if (!isDynamicPlaceImageCandidate(plan.cover)) plan.cover = patch.image;
+    } else {
+      missingCount += 1;
+    }
   });
   if (!isDynamicPlaceImageCandidate(plan.cover)) {
     const firstImage = allPlanStops(plan).find((stop) => isDynamicPlaceImageCandidate(stop.image))?.image;
@@ -17200,7 +17203,7 @@ async function createRecommendedPlan() {
   dom.guideProgress.textContent = "正在查找实景图";
   dom.saveState.textContent = serviceConfig.placeImageEndpoint ? "正在查找并验证景点实景图..." : "未配置实景图代理，景点图片会显示待补全。";
   if (serviceConfig.placeImageEndpoint) {
-    await enrichPlanImagesBeforeSave(state, {
+    const imageSummary = await enrichPlanImagesBeforeSave(state, {
       maxItems: 14,
       concurrency: 3,
       onProgress: (current, total, stop) => {
@@ -17208,6 +17211,7 @@ async function createRecommendedPlan() {
         dom.saveState.textContent = `正在验证 ${stop.title || "景点"} 的实景图...`;
       },
     });
+    dom.saveState.textContent = `已找到 ${imageSummary.imageCount} 张实景图${imageSummary.missingCount ? `，${imageSummary.missingCount} 个地点待补全` : ""}。`;
   }
   await replacePlanCollabDoc("local-recommended-plan", { allowReplace: true, reason: "recommended-plan" });
   await saveCollaborativePlanChange("已生成推荐计划");

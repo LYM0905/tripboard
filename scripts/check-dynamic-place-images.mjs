@@ -47,6 +47,7 @@ vm.runInContext(
   `
   ${source.slice(displayStart, displayEnd)}
   globalThis.markPendingPlaceImages = markPendingPlaceImages;
+  globalThis.enrichPlanImagesBeforeSave = enrichPlanImagesBeforeSave;
   globalThis.shouldLookupSpecificStopImage = shouldLookupSpecificStopImage;
   globalThis.displayImageForStop = displayImageForStop;
   globalThis.isDefaultTripboardImage = isDefaultTripboardImage;
@@ -98,3 +99,26 @@ for (const [needle, label] of requiredFunctionSignals) {
 }
 
 console.log("Dynamic place image generation check passed.");
+
+if (process.env.TRIPBOARD_LIVE_IMAGE_CHECK === "1") {
+  sandbox.serviceConfig.placeImageEndpoint = "https://xjieikfcococjvqdqero.supabase.co/functions/v1/place-image-search";
+  sandbox.serviceClient = {
+    headers: () => ({ "Content-Type": "application/json" }),
+  };
+  sandbox.fetchWithTimeout = (url, options) => fetch(url, options);
+  sandbox.Image = function Image() {};
+  const livePlan = sandbox.buildRecommendedPlan("青海", 4, { budget: "舒适", pace: "轻松" });
+  sandbox.state = livePlan;
+  await vm.runInContext(
+    `
+    markPendingPlaceImages(globalThis.livePlan);
+    enrichPlanImagesBeforeSave(globalThis.livePlan, { maxItems: 4, concurrency: 2 });
+    `,
+    Object.assign(sandbox, { livePlan }),
+    { filename: "script-live-image-check.js" },
+  );
+  if (!/^https:\/\/store\.is\.autonavi\.com\/showpic\//.test(livePlan.cover || "")) {
+    throw new Error(`Live Qinghai plan did not receive an Amap real-photo cover: ${livePlan.cover}`);
+  }
+  console.log("Live dynamic place image cover check passed.");
+}
