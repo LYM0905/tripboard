@@ -9810,7 +9810,28 @@ function savePlanSnapshot(plan, reason = "保存前版本", by = getCollabName()
     serialized,
     data: snapshot,
   };
-  localStorage.setItem(historyKey(), JSON.stringify([entry, ...history].slice(0, MAX_VERSION_HISTORY)));
+  const key = historyKey();
+  let saved = false;
+  for (let keep = Math.min(history.length, MAX_VERSION_HISTORY - 1); keep >= 0; keep -= 1) {
+    try {
+      localStorage.setItem(key, JSON.stringify([entry, ...history.slice(0, keep)]));
+      saved = true;
+      break;
+    } catch (error) {
+      if (error?.name !== "QuotaExceededError") {
+        console.warn("Version snapshot could not be saved", error);
+        break;
+      }
+    }
+  }
+  if (!saved) {
+    try {
+      localStorage.removeItem(key);
+    } catch (error) {
+      console.warn("Version history cleanup failed", error);
+    }
+    console.warn("Version snapshot skipped because local storage quota is full");
+  }
   queueRemoteVersionSnapshot(entry);
 }
 
@@ -13920,15 +13941,32 @@ function renderShell() {
 }
 
 function renderDays() {
+  const editable = canEdit();
   dom.dayList.innerHTML = state.days
     .map(
-      (day, index) => `
-        <button class="day-button ${index === activeDay ? "is-active" : ""}" data-day="${index}">
-          <span>${day.label}</span>
-          <strong>${day.title}<small>${day.route}</small></strong>
-          <em>${money(day.stops.reduce((sum, stop) => sum + Number(stop.budget || 0), 0))}</em>
-        </button>
-      `,
+      (day, index) => {
+        const isActive = index === activeDay;
+        const upDisabled = !editable || index === 0 ? " disabled" : "";
+        const downDisabled = !editable || index >= state.days.length - 1 ? " disabled" : "";
+        const dayBudget = (day.stops || []).reduce((sum, stop) => sum + Number(stop.budget || 0), 0);
+        return `
+        <div class="day-card ${isActive ? "is-active" : ""}" data-day-card="${index}">
+          <button class="day-button ${isActive ? "is-active" : ""}" data-day="${index}">
+            <span>${day.label}</span>
+            <strong>${day.title}<small>${day.route}</small></strong>
+            <em>${money(dayBudget)}</em>
+          </button>
+          ${
+            editable
+              ? `<div class="day-card-actions" aria-label="移动${escapeHtml(day.label || `D${index + 1}`)}">
+                  <button type="button" class="icon-btn subtle" data-move-day-index="${index}" data-move-day-direction="up" title="上移当天"${upDisabled}>${icon("chevron-up")}</button>
+                  <button type="button" class="icon-btn subtle" data-move-day-index="${index}" data-move-day-direction="down" title="下移当天"${downDisabled}>${icon("chevron-down")}</button>
+                </div>`
+              : ""
+          }
+        </div>
+      `;
+      },
     )
     .join("");
 }
@@ -14021,12 +14059,23 @@ function renderTimeline() {
         const stopFallback = displayFallbackImageForStop(stop) || missingPlaceImagePlaceholder(stop);
         const stopTrustedImage = hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cleanImageUrl(stopImage);
         const stopImageQueue = encodeImageCandidateUrls(imageCandidateUrlsForStop(stop, stopImage));
+        const commentRoots = commentRootsAndReplies(stop.comments || []).roots;
+        const recentComments = commentRoots.slice(-2);
+        const commentPreview = recentComments.length
+          ? recentComments
+            .map((comment) => `<span><strong>${escapeHtml(comment.author || "我")}</strong>${escapeHtml(comment.text)}</span>`)
+            .join("")
+          : `<span class="stop-comment-empty">还没有注释</span>`;
+        const disabledAttr = editable ? "" : " disabled";
         scheduleSpecificImageForStop(stop, { render: true, reason: "specific-image-timeline-card" });
         return `
         <article class="stop-card ${index === activeStop ? "is-active" : ""}" data-stop="${index}">
-          <time class="stop-time">${stop.time || "--:--"}</time>
+          <label class="stop-time-control">
+            <span>时间</span>
+            <input class="stop-time-input" data-stop-time-index="${index}" value="${escapeHtml(stop.time || "")}" placeholder="--:--"${disabledAttr}>
+          </label>
           <img class="stop-photo" src="${escapeHtml(stopImage)}" data-fallback-src="${escapeHtml(stopFallback)}" data-image-candidates="${escapeHtml(stopImageQueue)}" data-trusted-src="${stopTrustedImage ? "true" : "false"}" alt="" loading="lazy" aria-hidden="true">
-          <div>
+          <div class="stop-card-main">
             <h4>${stop.title}</h4>
             <p>${stop.note || ""}</p>
             <div class="stop-tags">
@@ -14038,6 +14087,17 @@ function renderTimeline() {
             <span>${icon("thumbs-up")} ${stop.votes || 0}</span>
             <span>${icon("message-square")} ${(stop.comments || []).length}</span>
             ${editable ? `<button type="button" class="icon-btn subtle danger-icon stop-delete-btn" data-delete-stop-index="${index}" aria-label="删除${escapeHtml(stop.title || "地点")}" title="删除地点">${icon("trash-2")}</button>` : ""}
+          </div>
+          <div class="stop-card-comments">
+            <div class="stop-comment-preview">${commentPreview}</div>
+            ${
+              editable
+                ? `<form class="stop-comment-form" data-stop-card-comment="${index}">
+                    <input type="text" data-stop-card-comment-input placeholder="给这个景点加注释">
+                    <button type="button" class="icon-btn subtle" data-submit-stop-card-comment="${index}" title="添加注释">${icon("send")}</button>
+                  </form>`
+                : ""
+            }
           </div>
         </article>
       `;
@@ -14886,7 +14946,122 @@ function quickPlaceDraft(extra = {}) {
   });
 }
 
-dom.dayList.addEventListener("click", (event) => {
+async function moveDayByIndex(dayIndex = activeDay, direction = "down") {
+  const fromIndex = Math.max(0, Math.min(Number(dayIndex) || 0, state.days.length - 1));
+  const offset = direction === "up" ? -1 : 1;
+  const toIndex = fromIndex + offset;
+  if (toIndex < 0 || toIndex >= state.days.length) return false;
+  const movingDay = state.days[fromIndex];
+  const targetDay = state.days[toIndex];
+  if (!movingDay || !targetDay) return false;
+  if (!confirmRemoteDayEdit([movingDay.id || "", targetDay.id || ""], direction === "up" ? "上移当天" : "下移当天")) return false;
+  let changed = false;
+  if (!mutate(direction === "up" ? "上移当天" : "下移当天", () => {
+    [state.days[fromIndex], state.days[toIndex]] = [state.days[toIndex], state.days[fromIndex]];
+    activeDay = toIndex;
+    activeStop = 0;
+    reflowPlanDates();
+    changed = true;
+  }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(movingDay.id || "", { action: direction === "up" ? "move-up" : "move-down" }) })) return false;
+  if (!changed) return false;
+  if (!(await reorderDayMetasInDoc(state.days, "local-day-reorder"))) {
+    await syncDayMetasToDoc("local-day-reorder-fallback");
+  }
+  await syncPlanMetaToDoc("local-day-reorder-meta");
+  await saveCollaborativePlanChange(direction === "up" ? "上移当天" : "下移当天");
+  broadcastDaysReordered();
+  render();
+  return true;
+}
+
+async function rebuildStopTextState(stop) {
+  if (!stop?.id) return "";
+  let Y = yjsModule;
+  if (!Y) {
+    try {
+      Y = await ensureYjs();
+    } catch {
+      return "";
+    }
+  }
+  const textState = bytesToBase64(buildInitialTextUpdate(Y, stop));
+  stop.textYjs = textState;
+  stop.noteYjs = textState;
+  return textState;
+}
+
+async function updateTimelineStopTime(stopIndex, nextTime = "") {
+  const day = currentDay();
+  const index = Math.max(0, Math.min(Number(stopIndex) || 0, (day?.stops || []).length - 1));
+  const stop = day?.stops?.[index];
+  const time = String(nextTime || "").trim();
+  if (!day || !stop || stop.time === time) return false;
+  if (!confirmRemoteStopEdit(stop.id, "修改行程时间")) return false;
+  if (!mutate(`修改「${stop.title || "地点"}」时间`, () => {
+    stop.time = time;
+    if (index === activeStop && dom.fieldTime) dom.fieldTime.value = time;
+    clearCurrentAmapRoute();
+  }, { requireUnlocked: false, save: false, render: false, activityTarget: stopActivityTarget(day.id || "", stop.id || "", { action: "time" }) })) return false;
+  if (!(await patchStopInDoc(stop.id, { time }, "local-timeline-stop-time"))) {
+    await syncStopSnapshotToPlanDoc(stop.id, "local-timeline-stop-time-fallback");
+  }
+  await saveCollaborativeTextChange(`修改「${stop.title || "地点"}」时间`);
+  render();
+  return true;
+}
+
+async function addTimelineStopComment(stopIndex, text = "") {
+  const day = currentDay();
+  const index = Math.max(0, Math.min(Number(stopIndex) || 0, (day?.stops || []).length - 1));
+  const stop = day?.stops?.[index];
+  const commentText = String(text || "").trim();
+  if (!day || !stop || !commentText) return false;
+  if (!confirmRemoteStopEdit(stop.id, "添加景点注释")) return false;
+  if (stop.id === currentStop()?.id) {
+    const collaborativeComment = await addCollaborativeComment(commentText, null);
+    if (collaborativeComment) {
+      stop.comments = normalizeComments([...(stop.comments || []), collaborativeComment]);
+      await syncStopSnapshotToPlanDoc(stop.id, "local-timeline-comment-snapshot");
+      await saveCollaborativeTextChange(`注释「${stop.title || "地点"}」`);
+      render();
+      return true;
+    }
+  }
+  const fallbackComment = normalizeCommentEntry({
+    id: uid(),
+    author: getCollabName(),
+    text: commentText,
+    at: new Date().toISOString(),
+  });
+  if (!fallbackComment) return false;
+  if (!mutate(`注释「${stop.title || "地点"}」`, () => {
+    stop.comments = normalizeComments([...(stop.comments || []), fallbackComment]);
+  }, { requireUnlocked: false, save: false, render: false, activityTarget: stopActivityTarget(day.id || "", stop.id || "", { action: "comment" }) })) return false;
+  await rebuildStopTextState(stop);
+  await syncStopSnapshotToPlanDoc(stop.id, "local-timeline-comment-fallback-snapshot");
+  await saveCollaborativeTextChange(`注释「${stop.title || "地点"}」`);
+  render();
+  return true;
+}
+
+async function submitTimelineStopCommentForm(form) {
+  if (!form) return false;
+  const input = form.querySelector("[data-stop-card-comment-input]");
+  const text = input?.value.trim() || "";
+  if (!text) return false;
+  const saved = await addTimelineStopComment(Number(form.dataset.stopCardComment), text);
+  if (saved && input) input.value = "";
+  return saved;
+}
+
+dom.dayList.addEventListener("click", async (event) => {
+  const moveButton = event.target.closest("[data-move-day-index]");
+  if (moveButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await moveDayByIndex(Number(moveButton.dataset.moveDayIndex), moveButton.dataset.moveDayDirection || "down");
+    return;
+  }
   const button = event.target.closest("[data-day]");
   if (!button) return;
   activeDay = Number(button.dataset.day);
@@ -14897,6 +15072,13 @@ dom.dayList.addEventListener("click", (event) => {
 });
 
 dom.timeline.addEventListener("click", async (event) => {
+  const commentSubmitButton = event.target.closest("[data-submit-stop-card-comment]");
+  if (commentSubmitButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    await submitTimelineStopCommentForm(commentSubmitButton.closest("[data-stop-card-comment]"));
+    return;
+  }
   const deleteButton = event.target.closest("[data-delete-stop-index]");
   if (deleteButton) {
     event.preventDefault();
@@ -14904,10 +15086,59 @@ dom.timeline.addEventListener("click", async (event) => {
     await deleteStopAtIndex(Number(deleteButton.dataset.deleteStopIndex));
     return;
   }
+  if (event.target.closest("input, textarea, button, a, select, label")) return;
   const card = event.target.closest("[data-stop]");
   if (!card) return;
   userSelectedStop = true;
   switchActiveStop(Number(card.dataset.stop));
+});
+
+dom.timeline.addEventListener("pointerdown", async (event) => {
+  const commentSubmitButton = event.target.closest("[data-submit-stop-card-comment]");
+  if (!commentSubmitButton) return;
+  event.preventDefault();
+  event.stopPropagation();
+  await submitTimelineStopCommentForm(commentSubmitButton.closest("[data-stop-card-comment]"));
+});
+
+dom.timeline.addEventListener("change", async (event) => {
+  const input = event.target.closest("[data-stop-time-index]");
+  if (!input) return;
+  await updateTimelineStopTime(Number(input.dataset.stopTimeIndex), input.value);
+});
+
+dom.timeline.addEventListener("focusout", async (event) => {
+  const input = event.target.closest("[data-stop-time-index]");
+  if (!input) return;
+  await updateTimelineStopTime(Number(input.dataset.stopTimeIndex), input.value);
+});
+
+dom.timeline.addEventListener("keydown", async (event) => {
+  const commentInput = event.target.closest("[data-stop-card-comment-input]");
+  if (commentInput && event.key === "Enter") {
+    event.preventDefault();
+    await submitTimelineStopCommentForm(commentInput.closest("[data-stop-card-comment]"));
+    return;
+  }
+  const input = event.target.closest("[data-stop-time-index]");
+  if (!input) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    await updateTimelineStopTime(Number(input.dataset.stopTimeIndex), input.value);
+    input.blur();
+  }
+  if (event.key === "Escape") {
+    const stop = currentDay()?.stops?.[Number(input.dataset.stopTimeIndex)];
+    input.value = stop?.time || "";
+    input.blur();
+  }
+});
+
+dom.timeline.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-stop-card-comment]");
+  if (!form) return;
+  event.preventDefault();
+  await submitTimelineStopCommentForm(form);
 });
 
 dom.mapCanvas.addEventListener("click", (event) => {
@@ -15081,51 +15312,11 @@ dom.deleteDayBtn.addEventListener("click", async () => {
 });
 
 dom.moveDayUpBtn.addEventListener("click", async () => {
-  if (activeDay <= 0) return;
-  let changed = false;
-  const movingDayId = currentDay()?.id || "";
-  const previousDayId = state.days[activeDay - 1]?.id || "";
-  if (!confirmRemoteDayEdit([movingDayId, previousDayId], "上移当天")) return;
-  if (!mutate("上移当天", () => {
-    [state.days[activeDay - 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay - 1]];
-    activeDay -= 1;
-    activeStop = 0;
-    reflowPlanDates();
-    changed = true;
-  }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(movingDayId, { action: "move-up" }) })) return;
-  if (changed) {
-    if (!(await reorderDayMetasInDoc(state.days, "local-day-reorder"))) {
-      await syncDayMetasToDoc("local-day-reorder-fallback");
-    }
-    await syncPlanMetaToDoc("local-day-reorder-meta");
-    await saveCollaborativePlanChange("上移当天");
-    broadcastDaysReordered();
-    render();
-  }
+  await moveDayByIndex(activeDay, "up");
 });
 
 dom.moveDayDownBtn.addEventListener("click", async () => {
-  if (activeDay >= state.days.length - 1) return;
-  let changed = false;
-  const movingDayId = currentDay()?.id || "";
-  const nextDayId = state.days[activeDay + 1]?.id || "";
-  if (!confirmRemoteDayEdit([movingDayId, nextDayId], "下移当天")) return;
-  if (!mutate("下移当天", () => {
-    [state.days[activeDay + 1], state.days[activeDay]] = [state.days[activeDay], state.days[activeDay + 1]];
-    activeDay += 1;
-    activeStop = 0;
-    reflowPlanDates();
-    changed = true;
-  }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(movingDayId, { action: "move-down" }) })) return;
-  if (changed) {
-    if (!(await reorderDayMetasInDoc(state.days, "local-day-reorder"))) {
-      await syncDayMetasToDoc("local-day-reorder-fallback");
-    }
-    await syncPlanMetaToDoc("local-day-reorder-meta");
-    await saveCollaborativePlanChange("下移当天");
-    broadcastDaysReordered();
-    render();
-  }
+  await moveDayByIndex(activeDay, "down");
 });
 
 dom.stopForm.addEventListener("submit", async (event) => {

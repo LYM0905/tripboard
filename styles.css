@@ -234,6 +234,13 @@ button {
   gap: 8px;
 }
 
+.day-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .day-button {
   display: grid;
   grid-template-columns: 42px 1fr auto;
@@ -293,6 +300,24 @@ button {
 .day-button.is-active small,
 .day-button.is-active em {
   color: rgba(255, 255, 255, 0.78);
+}
+
+.day-card-actions {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 5px;
+}
+
+.day-card-actions .icon-btn {
+  width: 34px;
+  height: 34px;
+  background: #fff;
+  border-color: var(--line);
+  border-radius: 8px;
+}
+
+.day-card.is-active .day-card-actions .icon-btn:not(:disabled) {
+  border-color: rgba(36, 115, 92, 0.34);
 }
 
 .side-block,
@@ -2285,10 +2310,38 @@ button:disabled {
   box-shadow: 0 12px 32px rgba(36, 115, 92, 0.12);
 }
 
+.stop-time-control {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .stop-time {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+}
+
+.stop-time-input {
+  width: 58px;
+  min-height: 34px;
+  padding: 0 7px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.stop-time-input:focus {
+  border-color: rgba(36, 115, 92, 0.58);
+  box-shadow: 0 0 0 3px rgba(36, 115, 92, 0.12);
+  outline: none;
 }
 
 .stop-photo {
@@ -2299,6 +2352,10 @@ button:disabled {
   background: var(--soft);
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 8px;
+}
+
+.stop-card-main {
+  min-width: 0;
 }
 
 .stop-card h4 {
@@ -2346,6 +2403,63 @@ button:disabled {
   align-items: center;
   gap: 5px;
   white-space: nowrap;
+}
+
+.stop-card-comments {
+  display: grid;
+  grid-column: 3 / -1;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(218, 228, 224, 0.75);
+}
+
+.stop-comment-preview {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.stop-comment-preview span {
+  overflow-wrap: anywhere;
+}
+
+.stop-comment-preview strong {
+  margin-right: 6px;
+  color: var(--ink);
+}
+
+.stop-comment-empty {
+  color: #8b9ca2;
+}
+
+.stop-comment-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
+}
+
+.stop-comment-form input {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.stop-comment-form input:focus {
+  border-color: rgba(36, 115, 92, 0.58);
+  box-shadow: 0 0 0 3px rgba(36, 115, 92, 0.12);
+  outline: none;
+}
+
+.stop-comment-form .icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
 }
 
 .stop-actions .stop-delete-btn {
@@ -4655,6 +4769,10 @@ svg {
     align-items: flex-start;
     flex-direction: row;
     flex-wrap: wrap;
+  }
+
+  .stop-card-comments {
+    grid-column: 1 / -1;
   }
 
   .timeline::before {
