@@ -9476,6 +9476,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const forceLocalMode = urlParams.get("local") === "1";
 let tripId = urlParams.get("trip") || (forceLocalMode ? "" : localStorage.getItem("tripboard-current-trip-id")) || "";
 let forcedReadonlyMode = urlParams.get("mode") === "readonly";
+let remotePlanWriteBlocked = Boolean(tripId);
 const planStore = window.createTripboardPlanStore({
   localStorage,
   storageKey: STORAGE_KEY,
@@ -9696,6 +9697,7 @@ function disconnectSharedSessionForLocalPlan() {
     realtimeChannel = null;
   }
   tripId = "";
+  remotePlanWriteBlocked = false;
   localStorage.removeItem("tripboard-current-trip-id");
   lastRemoteUpdatedAt = "";
   lastSyncedState = null;
@@ -10588,11 +10590,16 @@ function getReadonlyShareUrl() {
 }
 
 function canEdit() {
-  return !forcedReadonlyMode && !isReadonlyMode;
+  return !forcedReadonlyMode && !isReadonlyMode && !remotePlanWriteBlocked;
 }
 
 function requireEdit(actionLabel = "编辑") {
   if (canEdit()) return true;
+  if (remotePlanWriteBlocked) {
+    dom.saveState.textContent = "云端计划尚未成功载入";
+    dom.collabStatus.textContent = "为保护已有数据，读取共享计划失败时已禁止编辑和云端写入。请恢复连接后重新打开链接。";
+    return false;
+  }
   dom.saveState.textContent = editAccessRequired ? "需要编辑口令" : `只读模式不能${actionLabel}`;
   dom.collabStatus.textContent = editAccessRequired
     ? "当前计划已启用编辑口令。请输入口令解锁后才能修改行程。"
@@ -10614,6 +10621,10 @@ function initSupabaseClient() {
 
 async function pushRemoteState(label = "已同步云端", options = {}) {
   if (!supabaseClient || !tripId) return false;
+  if (remotePlanWriteBlocked) {
+    dom.collabStatus.textContent = "云端计划尚未成功载入，已阻止写入以保护原有数据。";
+    return false;
+  }
   if (!canEdit()) {
     dom.collabStatus.textContent = editAccessRequired ? "需要编辑口令，不能向云端写入计划。" : "当前是只读链接，不能向云端写入计划。";
     return false;
@@ -10736,9 +10747,17 @@ async function fetchRemotePlan() {
 }
 
 async function loadRemoteState() {
-  if (!supabaseClient || !tripId) return;
+  if (!supabaseClient || !tripId) return false;
   const data = await fetchRemotePlan();
+  if (data?.error) {
+    remotePlanWriteBlocked = true;
+    dom.saveState.textContent = "共享计划读取失败，已停止自动保存";
+    dom.collabStatus.textContent = `读取共享计划失败：${data.error.message}。为保护已有数据，本页面不会写入云端。`;
+    render();
+    return false;
+  }
   if (data?.data?.days?.length) {
+    remotePlanWriteBlocked = false;
     saveVersionSnapshot("载入云端前版本");
     await applyRemotePlan(data.data, { updatedAt: data.updated_at || "" });
     dom.saveState.textContent = `已载入共享计划`;
@@ -10753,11 +10772,13 @@ async function loadRemoteState() {
         : `已连接共享计划`;
     render();
     await flushPendingPlanUpdates("载入共享计划后重放离线协作更新");
-  } else if (!isReadonlyMode) {
-    await pushRemoteState("已创建共享计划");
+    return true;
   } else {
-    dom.saveState.textContent = "只读模式";
-    dom.collabStatus.textContent = "这个只读链接暂时没有找到对应的共享计划，请向创建者确认链接。";
+    remotePlanWriteBlocked = true;
+    dom.saveState.textContent = isReadonlyMode ? "只读模式" : "未找到共享计划，已停止自动保存";
+    dom.collabStatus.textContent = "没有找到对应的共享计划。为保护已有数据，本页面不会自动创建或覆盖同一共享 ID。";
+    render();
+    return false;
   }
 }
 
@@ -10880,6 +10901,7 @@ function subscribeRemoteState() {
 
 async function connectSharedTrip(id) {
   tripId = id;
+  remotePlanWriteBlocked = true;
   lastRemoteUpdatedAt = "";
   lastSyncedState = null;
   collapsedDayBlockIds = loadCollapsedDayBlocks();
@@ -10890,7 +10912,8 @@ async function connectSharedTrip(id) {
   const url = new URL(window.location.href);
   url.searchParams.set("trip", tripId);
   window.history.replaceState({}, "", url.toString());
-  await loadRemoteState();
+  const loaded = await loadRemoteState();
+  if (!loaded) return false;
   await loadRemoteVersionHistory();
   renderVersionHistory();
   subscribeRemoteState();
@@ -10907,6 +10930,7 @@ async function createSharedTrip() {
   }
   const id = crypto.randomUUID ? crypto.randomUUID() : uid();
   tripId = id;
+  remotePlanWriteBlocked = false;
   lastRemoteUpdatedAt = "";
   lastSyncedState = null;
   collapsedDayBlockIds = loadCollapsedDayBlocks();
@@ -13619,6 +13643,8 @@ async function updateStopImageAfterLookup(stop, image, reason = "specific-image-
 async function updateStopImagePatchAfterLookup(stop, patch = {}, reason = "dynamic-place-image-lookup") {
   if (!stop?.id || !patch || (!patch.image && !patch.imageStatus)) return false;
   const safePatch = { ...patch };
+  const changed = Object.entries(safePatch).some(([field, value]) => !sameSerialized(stop[field], value));
+  if (!changed) return false;
   Object.assign(stop, safePatch);
   if (canEdit() && !isReadonlyMode) {
     try {
@@ -13641,7 +13667,7 @@ async function updateStopImagePatchAfterLookup(stop, patch = {}, reason = "dynam
 }
 
 function scheduleSpecificImageForStop(stop = {}, options = {}) {
-  if (!shouldLookupSpecificStopImage(stop)) return;
+  if (!shouldLookupSpecificStopImage(stop) || hasResolvedPlaceImageMiss(stop)) return;
   const key = stopImageLookupKey(stop);
   if (!key || specificImageLookupPending.has(key)) return;
   specificImageLookupPending.add(key);
@@ -13667,7 +13693,7 @@ function scheduleSpecificCoverImage() {
   if (hasTrustedCoverImage(state, state.cover)) return;
   const stops = (state.days || [])
     .flatMap((day) => day.stops || [])
-    .filter((stop) => !isPlaceholderStop(stop) && shouldLookupSpecificStopImage(stop));
+    .filter((stop) => !isPlaceholderStop(stop) && shouldLookupSpecificStopImage(stop) && !hasResolvedPlaceImageMiss(stop));
   const scenicStops = stops.filter((item) => /Scenic|Mountain|Lake|Museum|Forest|Canyon|Grottoes|Geopark|Temple|Heritage|Grassland|Wetland|Desert|\u666f\u533a|\u666f\u70b9|\u535a\u7269\u9986|\u5bfa|\u6e56|\u5c71|\u76d0\u6e56/i.test(`${item.type || ""} ${item.title || ""}`));
   const orderedStops = [...scenicStops, ...stops.filter((stop) => !scenicStops.includes(stop))].slice(0, 8);
   if (!orderedStops.length) return;
@@ -13755,6 +13781,15 @@ function shouldAutoEnrichImages() {
 async function enrichPlacesFromAmap(options = {}) {
   const auto = Boolean(options.auto);
   if (!auto && !requireEdit("补全地点图片")) return;
+  if (!auto) {
+    allPlanStops(state).forEach((stop) => {
+      if (!hasResolvedPlaceImageMiss(stop)) return;
+      placeImageCache.delete(placeImageLookupKey(stop, state.destination));
+      specificImageLookupCache.delete(stopImageLookupKey(stop));
+      stop.imageStatus = "";
+      stop.imageLookupVersion = "";
+    });
+  }
   const candidates = imageEnrichmentCandidates();
   if (!candidates.length) {
     if (!auto) dom.saveState.textContent = "当前地点已经有较完整的地址、坐标或图片信息。";
@@ -13899,7 +13934,6 @@ function renderShell() {
   setVerifiedBackgroundImage(document.querySelector(".template-card"), "--template-cover", coverImage, coverFallback, state.destination || state.name, { trusted: trustedCover, candidates: coverCandidates });
   dom.tripCover?.classList.toggle("is-missing-image", !isDynamicPlaceImageCandidate(coverImage));
   document.querySelector(".template-card")?.classList.toggle("is-missing-image", !isDynamicPlaceImageCandidate(coverImage));
-  scheduleSpecificCoverImage();
   dom.budgetTotal.textContent = `${money(total)} / ${money(limit)}`;
   dom.budgetMeter.style.width = `${percent}%`;
   const groups = categoryBudget();
@@ -14067,7 +14101,6 @@ function renderTimeline() {
             .join("")
           : `<span class="stop-comment-empty">还没有注释</span>`;
         const disabledAttr = editable ? "" : " disabled";
-        scheduleSpecificImageForStop(stop, { render: true, reason: "specific-image-timeline-card" });
         return `
         <article class="stop-card ${index === activeStop ? "is-active" : ""}" data-stop="${index}">
           <label class="stop-time-control">
@@ -14207,7 +14240,6 @@ function renderCandidates() {
         const candidateTrustedImage = hasVerifiedPlaceImage(stop) && cleanImageUrl(stop.image) === cleanImageUrl(candidateImage);
         const candidateImageQueue = encodeImageCandidateUrls(imageCandidateUrlsForStop(stop, candidateImage));
         const referenceUrl = candidateReferenceUrl(stop);
-        scheduleSpecificImageForStop(stop, { render: true, reason: "specific-image-candidate-card" });
         return `
         <article class="candidate ${stop.id === editingCandidateId ? "is-editing" : ""}${selected ? " is-selected" : ""}${remoteEditors ? " is-remote-editing" : ""}${candidateMissingImage ? " is-missing-image" : ""}" data-candidate="${index}" data-candidate-id="${escapeHtml(stop.id || "")}" role="button" tabindex="${editable ? "0" : "-1"}" aria-disabled="${editable ? "false" : "true"}">
           <img class="candidate-photo" src="${escapeHtml(candidateImage)}" data-fallback-src="${escapeHtml(candidateFallback)}" data-image-candidates="${escapeHtml(candidateImageQueue)}" data-trusted-src="${candidateTrustedImage ? "true" : "false"}" alt="" loading="lazy" aria-hidden="true">
@@ -14964,13 +14996,13 @@ async function moveDayByIndex(dayIndex = activeDay, direction = "down") {
     changed = true;
   }, { requireUnlocked: false, save: false, render: false, activityTarget: dayActivityTarget(movingDay.id || "", { action: direction === "up" ? "move-up" : "move-down" }) })) return false;
   if (!changed) return false;
+  render();
   if (!(await reorderDayMetasInDoc(state.days, "local-day-reorder"))) {
     await syncDayMetasToDoc("local-day-reorder-fallback");
   }
   await syncPlanMetaToDoc("local-day-reorder-meta");
   await saveCollaborativePlanChange(direction === "up" ? "上移当天" : "下移当天");
   broadcastDaysReordered();
-  render();
   return true;
 }
 
@@ -15006,8 +15038,22 @@ async function updateTimelineStopTime(stopIndex, nextTime = "") {
     await syncStopSnapshotToPlanDoc(stop.id, "local-timeline-stop-time-fallback");
   }
   await saveCollaborativeTextChange(`修改「${stop.title || "地点"}」时间`);
-  render();
+  renderTimeline();
+  renderActivities();
+  renderAmapRouteReport(null);
+  refreshIcons();
   return true;
+}
+
+function refreshTimelineStopCommentViews(stop) {
+  renderTimeline();
+  if (stop?.id === currentStop()?.id) {
+    renderStopComments(stop);
+    dom.commentCount.textContent = (stop.comments || []).length;
+  }
+  renderCommentIndex();
+  renderActivities();
+  refreshIcons();
 }
 
 async function addTimelineStopComment(stopIndex, text = "") {
@@ -15023,7 +15069,7 @@ async function addTimelineStopComment(stopIndex, text = "") {
       stop.comments = normalizeComments([...(stop.comments || []), collaborativeComment]);
       await syncStopSnapshotToPlanDoc(stop.id, "local-timeline-comment-snapshot");
       await saveCollaborativeTextChange(`注释「${stop.title || "地点"}」`);
-      render();
+      refreshTimelineStopCommentViews(stop);
       return true;
     }
   }
@@ -15037,21 +15083,33 @@ async function addTimelineStopComment(stopIndex, text = "") {
   if (!mutate(`注释「${stop.title || "地点"}」`, () => {
     stop.comments = normalizeComments([...(stop.comments || []), fallbackComment]);
   }, { requireUnlocked: false, save: false, render: false, activityTarget: stopActivityTarget(day.id || "", stop.id || "", { action: "comment" }) })) return false;
-  await rebuildStopTextState(stop);
+  if (tripId) await rebuildStopTextState(stop);
   await syncStopSnapshotToPlanDoc(stop.id, "local-timeline-comment-fallback-snapshot");
   await saveCollaborativeTextChange(`注释「${stop.title || "地点"}」`);
-  render();
+  refreshTimelineStopCommentViews(stop);
   return true;
 }
 
 async function submitTimelineStopCommentForm(form) {
   if (!form) return false;
   const input = form.querySelector("[data-stop-card-comment-input]");
+  const submitButton = form.querySelector("[data-submit-stop-card-comment]");
   const text = input?.value.trim() || "";
-  if (!text) return false;
-  const saved = await addTimelineStopComment(Number(form.dataset.stopCardComment), text);
-  if (saved && input) input.value = "";
-  return saved;
+  if (!text || form.getAttribute("aria-busy") === "true") return false;
+  form.setAttribute("aria-busy", "true");
+  if (input) input.disabled = true;
+  if (submitButton) submitButton.disabled = true;
+  try {
+    const saved = await addTimelineStopComment(Number(form.dataset.stopCardComment), text);
+    if (saved && input) input.value = "";
+    return saved;
+  } finally {
+    if (form.isConnected) {
+      form.removeAttribute("aria-busy");
+      if (input) input.disabled = false;
+      if (submitButton) submitButton.disabled = false;
+    }
+  }
 }
 
 dom.dayList.addEventListener("click", async (event) => {
@@ -15091,14 +15149,6 @@ dom.timeline.addEventListener("click", async (event) => {
   if (!card) return;
   userSelectedStop = true;
   switchActiveStop(Number(card.dataset.stop));
-});
-
-dom.timeline.addEventListener("pointerdown", async (event) => {
-  const commentSubmitButton = event.target.closest("[data-submit-stop-card-comment]");
-  if (!commentSubmitButton) return;
-  event.preventDefault();
-  event.stopPropagation();
-  await submitTimelineStopCommentForm(commentSubmitButton.closest("[data-stop-card-comment]"));
 });
 
 dom.timeline.addEventListener("change", async (event) => {
@@ -17813,7 +17863,6 @@ async function createRecommendedPlan() {
   await broadcastPlanReplaced("生成推荐计划", { replacementType: "recommended-plan" });
   setFlowStep("itinerary", { showAll: false, pinned: true });
   render();
-  scheduleAutoImageEnrichment(600);
   closeCreateChoice();
 }
 
@@ -17842,7 +17891,6 @@ async function createBlankTemplate() {
   await broadcastPlanReplaced("生成空白模板", { replacementType: "blank-plan" });
   setFlowStep("itinerary", { showAll: false, pinned: true });
   render();
-  scheduleAutoImageEnrichment(600);
   closeCreateChoice();
 }
 
@@ -18538,10 +18586,8 @@ async function boot() {
     const pendingCount = pendingPlanUpdates().length;
     if (pendingCount) dom.collabStatus.textContent = `检测到 ${pendingCount} 条离线协作更新，连接共享计划后会自动同步。`;
     await connectSharedTrip(tripId);
-    scheduleAutoImageEnrichment();
   } else {
     saveState();
-    scheduleAutoImageEnrichment();
   }
 }
 

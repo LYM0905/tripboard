@@ -127,6 +127,11 @@ assert(source.includes('confirmRemoteTransportQuoteEdit(editingTransportQuoteId,
 assert(functionBody("applyFieldAmapPlace").includes('confirmRemoteStopEdit(stop.id, "选择高德候选")'), "Selecting an Amap place for the active stop must confirm when another member is editing that stop.");
 assert(functionBody("applyFieldAmapPlace").includes('confirmRemoteTextFieldEdit(changedFields, "stop", "选择高德候选")'), "Selecting an Amap place must confirm when another member is editing the same changed stop fields.");
 assert(functionBody("syncWeather").includes('confirmRemoteDayEdit(weatherPatches.map((patch) => patch.id), "同步天气")'), "Weather sync must confirm when another member is editing affected days.");
+const loadRemoteStateBody = functionBody("loadRemoteState");
+assert(loadRemoteStateBody.includes("if (data?.error)"), "A failed shared-plan read must be handled separately from a missing plan.");
+assert(!loadRemoteStateBody.includes("pushRemoteState("), "Loading an existing shared-plan link must never create or overwrite the remote record.");
+assert(functionBody("connectSharedTrip").includes("if (!loaded) return false"), "A failed shared-plan load must stop version loading and realtime subscription.");
+assert(functionBody("pushRemoteState").includes("if (remotePlanWriteBlocked)"), "Remote writes must stay blocked until the requested shared plan has loaded successfully.");
 assert(functionBody("applyBudgetEstimateFromToken").includes('confirmRemoteStopEdit(stop.id, "采用地点门票估算")'), "Single stop budget estimate adoption must confirm when another member is editing that stop.");
 assert(functionBody("applyBudgetEstimateFromToken").includes('confirmRemoteCandidateEdit(candidate.id, "采用备选门票估算")'), "Single candidate budget estimate adoption must confirm when another member is editing that candidate.");
 assert(functionBody("adoptAllBudgetEstimates").includes('confirmRemoteCandidateEdit(affectedCandidateIds, "批量采用门票估算")'), "Batch budget estimate adoption must confirm when another member is editing affected candidates.");
@@ -140,8 +145,11 @@ assert(source.includes('confirmRemoteStopEdit(movingStopId, "上移地点")'), "
 assert(source.includes('confirmRemoteStopEdit(movingStopId, "下移地点")'), "Moving a stop down must confirm when another member is editing that stop.");
 assert(source.includes('confirmRemoteDayEdit(dayId, "保存当天设置")'), "Saving day settings must confirm when another member is editing that day.");
 assert(source.includes('confirmRemoteDayEdit(deletedDay.id, "删除当天")'), "Deleting a day must confirm when another member is editing that day.");
-assert(source.includes('confirmRemoteDayEdit([movingDayId, previousDayId], "上移当天")'), "Moving a day up must confirm when another member is editing affected days.");
-assert(source.includes('confirmRemoteDayEdit([movingDayId, nextDayId], "下移当天")'), "Moving a day down must confirm when another member is editing affected days.");
+const moveDayBody = functionBody("moveDayByIndex");
+assert(moveDayBody.includes('confirmRemoteDayEdit([movingDay.id || "", targetDay.id || ""]'), "Moving a day must confirm when another member is editing either affected day.");
+assert(moveDayBody.includes('direction === "up" ? "上移当天" : "下移当天"'), "Moving a day must retain direction-specific conflict confirmation labels.");
+assert(source.includes('moveDayByIndex(activeDay, "up")'), "The move-day-up control must use the guarded shared move helper.");
+assert(source.includes('moveDayByIndex(activeDay, "down")'), "The move-day-down control must use the guarded shared move helper.");
 assert(functionBody("resolveConflict").includes("confirmRemotePlanReplace("), "Conflict resolution must confirm when another member is actively editing the plan.");
 assert(functionBody("restoreVersion").includes('confirmRemotePlanReplace("恢复历史版本")'), "Version restore must confirm when another member is actively editing the plan.");
 assert(functionBody("createRecommendedPlan").includes('confirmRemotePlanReplace("生成推荐计划")'), "Recommended plan generation must confirm when another member is actively editing the plan.");
